@@ -1,0 +1,14 @@
+# deps / build / local
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.log
+
+# dados e artefatos locais de carga — NAO versionar (contem PII do CRM / dumps)
+migracoes/
+carga_cat_b64.sql
+gen_seed_local.py
+seed_local*.sql
+seed_t5*.sql
+devlog*.txt

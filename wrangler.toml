@@ -1,0 +1,49 @@
+name = "portal-intelecto"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+# C1 — desliga a rota publica *.workers.dev: o Worker responde SO pelo dominio dedicado
+# (portal.intelecto-eng.com.br). Remove o hostname alternativo nao-gated (defesa de perimetro).
+# O dominio custom e configurado no painel Cloudflare e nao e afetado por esta flag.
+workers_dev = false
+
+# Assets estaticos do front-end (index.html, cursos.js, seed.js e imagens).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Banco D1 (SQLite) - criado em 2026-09-15 na conta Cloudflare da casa.
+[[d1_databases]]
+binding = "DB"
+database_name = "portal-intelecto"
+database_id = "75a51d70-63a3-47d6-8986-39f241874d73"
+
+# R2: painéis de Leads Ambientais (aba Comercial) servidos de forma PRIVADA pelo Worker
+# (gate por allowlist perm:comercial). Criar o bucket antes do deploy:
+#   npx wrangler r2 bucket create portal-intelecto-blob
+[[r2_buckets]]
+binding = "BLOB"
+bucket_name = "portal-intelecto-blob"
+
+# R2: bucket-fonte do Acervo (os 953 docs que o AutoRAG 'acervo-intelecto' indexa).
+# Lido de forma PRIVADA pelo Worker (rota /acervo/arquivo + acao acervo_list), gate por
+# concessao de acervo (isOwner || acgrant). Permite ABRIR o arquivo, nao so o trecho.
+[[r2_buckets]]
+binding = "ACERVO"
+bucket_name = "acervo-intelecto"
+
+[vars]
+REPO_URL = ""
+MAIL_FROM = ""
+MAIL_TO = ""
+# RESEND_API_KEY entra como secret:  npx wrangler secret put RESEND_API_KEY
+
+# AI Search (AutoRAG) - acervo-intelecto (adicionado p/ acervo_search)
+[ai]
+binding = "AI"
+
+# Keep-alive do MCP: mantem o Worker e o D1 quentes para o handshake /mcp nao
+# estourar o timeout de 30 s do cliente apos ociosidade (ver scheduled em src/index.ts).
+# A cada 5 min; minimo da Cloudflare e 1 min. Crons sao gratuitos no plano Workers.
+[triggers]
+crons = ["*/5 * * * *"]
