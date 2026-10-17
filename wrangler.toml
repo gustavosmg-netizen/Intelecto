@@ -32,6 +32,12 @@ bucket_name = "portal-intelecto-blob"
 binding = "ACERVO"
 bucket_name = "acervo-intelecto"
 
+# R2: destino do BACKUP diario do D1 (export JSON datado por cron; retencao 90 dias no codigo).
+# Criado em 2026-10-17. Proteção offsite contra incidente de perda de dados (ver LAUDO).
+[[r2_buckets]]
+binding = "BACKUP"
+bucket_name = "portal-intelecto-backup"
+
 [vars]
 REPO_URL = ""
 MAIL_FROM = ""
@@ -42,8 +48,9 @@ MAIL_TO = ""
 [ai]
 binding = "AI"
 
-# Keep-alive do MCP: mantem o Worker e o D1 quentes para o handshake /mcp nao
-# estourar o timeout de 30 s do cliente apos ociosidade (ver scheduled em src/index.ts).
-# A cada 5 min; minimo da Cloudflare e 1 min. Crons sao gratuitos no plano Workers.
+# Crons (gratuitos no plano Workers). Ver handler scheduled() em src/index.ts, que ramifica
+# por event.cron:
+#  - "*/5 * * * *" : keep-alive (aquece Worker/D1 p/ o handshake /mcp nao estourar timeout).
+#  - "0 6 * * *"   : backup diario do D1 -> R2 (03:00 BRT / 06:00 UTC).
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 6 * * *"]

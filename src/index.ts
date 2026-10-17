@@ -1230,6 +1230,8 @@ const MIN: Record<string, Papel> = {
   // e coordenacao herdam por aninhamento; cliente rank 0 < equipe e fornecedor lateral ficam
   // de fora, exatamente como pedido). Adicionar/triar e apagar sao gestao: piso 'coordenacao'.
   brief: "equipe", briefadd: "coordenacao", briefdel: "coordenacao",
+  // Backup manual do D1 (verificacao sob demanda); o handler ainda exige isOwner.
+  backup_now: "coordenacao",
   // T4 — Hub/Launcher: piso = cliente (TODO logado pode perguntar o PROPRIO Hub). A acao
   // 'hub' apenas DEVOLVE a lista de modulos liberados; a liberacao de cada card deriva do
   // piso MIN da acao que o governa (ver MODULOS/modulosLiberados), nunca de flag de front.
@@ -1550,6 +1552,14 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const min = MIN[action];
     const autorizado = g.papel === "fornecedor" ? FORNECEDOR_OK.has(action) : temPapelMinimo(g.papel, min);
     if (!autorizado) throw new Error("Sem acesso: esta ação exige o papel mínimo \"" + min + "\".");
+  }
+
+  if (action === "backup_now") {
+    const u = await auth(p);
+    if (!isOwner(u.slug)) throw new Error("Apenas o dono pode disparar o backup.");
+    const r = await backupD1(ENV);
+    if (!r.ok) throw new Error("Backup falhou: " + (r.erro || "erro desconhecido"));
+    return { ok: true, backup: r } as P;
   }
 
   if (action === "escritorio") {
@@ -4218,7 +4228,49 @@ async function keepAlive(env: any) {
   try { await ensureSchema(); } catch { /* aquecer nunca pode derrubar o cron */ }
 }
 
+/* ---------- Backup diario do D1 -> R2 (0.3) ----------
+ * Exporta TODAS as tabelas de dados do D1 para o bucket BACKUP em JSON datado. Nao usa
+ * DB.dump() (indisponivel no D1 remoto): varre sqlite_master e serializa linha a linha via
+ * o helper sqlite. Retencao simples por data no nome do arquivo. Nunca lanca (cron robusto). */
+const BACKUP_RET_DIAS = 90;
+async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?: number; linhas?: number; bytes?: number; removidos?: number; erro?: string }> {
+  ENV = env; /* mesmo padrao do keepAlive: helpers usam o ENV global */
+  if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
+  try {
+    await ensureSchema();
+    const tb = await sqlite.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%' ORDER BY name");
+    const nomes = tb.rows.map((r: any) => r.name as string);
+    const dump: any = { gerado_em: new Date().toISOString(), db: "portal-intelecto", tabelas: {} };
+    let linhas = 0;
+    for (const t of nomes) {
+      const r = await sqlite.execute('SELECT * FROM "' + t + '"');
+      dump.tabelas[t] = r.rows;
+      linhas += r.rows.length;
+    }
+    const corpo = JSON.stringify(dump);
+    const key = "d1/portal-intelecto-" + new Date().toISOString().slice(0, 10) + ".json";
+    await ENV.BACKUP.put(key, corpo, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    /* retencao best-effort: remove backups mais antigos que BACKUP_RET_DIAS (data no nome) */
+    let removidos = 0;
+    try {
+      const corte = Date.now() - BACKUP_RET_DIAS * 86400000;
+      const lista: any = await ENV.BACKUP.list({ prefix: "d1/" });
+      for (const o of (lista.objects || [])) {
+        const m = /(\d{4}-\d{2}-\d{2})\.json$/.exec(o.key);
+        if (m && new Date(m[1] + "T00:00:00Z").getTime() < corte) { await ENV.BACKUP.delete(o.key); removidos++; }
+      }
+    } catch { /* retencao e best-effort */ }
+    return { ok: true, key, tabelas: nomes.length, linhas, bytes: corpo.length, removidos };
+  } catch (e: any) {
+    return { ok: false, erro: e && e.message ? e.message : String(e) };
+  }
+}
+
 export default {
   fetch: app.fetch,
-  scheduled: (_event: any, env: any, ctx: any) => { ctx.waitUntil(keepAlive(env)); },
+  scheduled: (event: any, env: any, ctx: any) => {
+    /* ramifica por cron: backup diario vs keep-alive (ver [triggers] no wrangler.toml) */
+    if (event && event.cron === "0 6 * * *") ctx.waitUntil(backupD1(env));
+    else ctx.waitUntil(keepAlive(env));
+  },
 };
