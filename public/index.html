@@ -1048,6 +1048,21 @@ function _colabBloco(j){
   }).join("");
   return '<div style="margin-top:12px"><div class="muted" style="font-size:.76rem;margin-bottom:4px">Horas por colaborador <span style="font-size:.72rem">· total '+fmtH(tot)+'</span></div>'+linhas+'</div>';
 }
+/* Histórico de horas do projeto: cada apontamento efetivo com o que foi feito (lanc.t).
+   Colapsável (pode haver muitos); mostra "—" quando a atividade veio vazia (comum nos importados). */
+function _lancsBloco(j){
+  var ls=j.lancs||[];if(!ls.length)return "";
+  var comT=ls.filter(function(r){return r.t&&String(r.t).trim();}).length;
+  var linhas=ls.map(function(r){
+    return '<tr style="border-top:1px solid var(--line)">'+
+      '<td style="padding:4px 8px;font-size:.78rem;white-space:nowrap">'+esc(r.d)+'</td>'+
+      '<td style="padding:4px 8px;font-size:.78rem">'+esc(r.nome||r.slug)+'</td>'+
+      '<td style="padding:4px 8px;font-size:.78rem;text-align:right;font-variant-numeric:tabular-nums">'+fmtH(r.h)+'</td>'+
+      '<td style="padding:4px 8px;font-size:.8rem">'+(r.t&&String(r.t).trim()?esc(r.t):'<span class="muted">—</span>')+'</td></tr>';
+  }).join("");
+  return '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:.76rem;color:var(--muted,#888)">Histórico de horas · '+ls.length+' lançamento(s)'+(comT?(' · '+comT+' com atividade descrita'):' · atividades não descritas (importados)')+'</summary>'+
+    '<div style="overflow:auto;margin-top:6px;border:1px solid var(--line);border-radius:8px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="padding:4px 8px;text-align:left;font-size:.7rem">Data</th><th style="padding:4px 8px;text-align:left;font-size:.7rem">Colaborador</th><th style="padding:4px 8px;text-align:right;font-size:.7rem">Horas</th><th style="padding:4px 8px;text-align:left;font-size:.7rem">Atividade</th></tr></thead><tbody>'+linhas+'</tbody></table></div></details>';
+}
 /* Bloco financeiro (SÓ dono): custo real × contratado, decomposto, com margem verde/vermelha. */
 function _finBloco(j){
   if(!j.podeFin||!j.fin)return "";
@@ -1131,6 +1146,7 @@ function _pjRender(){
       '</div>'+
       '<div style="margin-top:10px"><div class="muted" style="font-size:.76rem;margin-bottom:4px">Próxima etapa / andamento'+(etTxt?' · '+esc(etTxt):'')+'</div>'+andItens+andForm+'</div>'+
       _colabBloco(j)+
+      _lancsBloco(j)+
       pfBloco+
       (x.obs?'<div style="margin-top:12px"><div class="muted" style="font-size:.76rem;margin-bottom:3px">Observações</div><div style="font-size:.86rem;white-space:pre-wrap">'+esc(x.obs)+'</div></div>':'')+
       (p.alterado_por?'<div class="muted" style="font-size:.7rem;margin-top:12px">Última edição de gestão: '+esc(nomeDe(p.alterado_por))+(p.alterado_em?' · '+esc(String(p.alterado_em).slice(0,10)):'')+'</div>':'')+
@@ -2228,7 +2244,7 @@ function _finResumo(){
     var mCor=(f.margem||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
     var snap=j.ultimoSnapshot;
     var kpi=function(rot,val,cor){return '<div style="min-width:130px"><div class="muted" style="font-size:.72rem">'+esc(rot)+'</div><div style="font-weight:700'+(cor?';color:'+cor:'')+'">'+val+'</div></div>';};
-    var cardFin='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Carteira (projetos ativos com contrato)</div>'+
+    var cardFin='<div class="card" id="res-go-cart" title="Abrir a carteira financeira" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Carteira (projetos ativos com contrato) <span class="muted" style="font-size:.7rem;font-weight:400">→</span></div>'+
       '<div style="display:flex;gap:22px;flex-wrap:wrap">'+
         kpi("Contratado",fmtBRL(f.contratado))+kpi("Custo real",fmtBRL(f.custoTotal))+
         kpi("Margem",fmtBRL(f.margem),mCor)+kpi("Margem %",(f.margemPct==null?"—":f.margemPct+"%"),mCor)+
@@ -2236,12 +2252,12 @@ function _finResumo(){
       '</div></div>';
     var fases=pl.funil||{};var ordem=["Prospecção & Qualificação","Diagnóstico Técnico","Proposta","Negociação & Contrato","Execução","Pós-venda & Expansão"];
     var linhasFunil=ordem.filter(function(k){return fases[k];}).map(function(k){var g=fases[k];return '<tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px;font-size:.82rem">'+esc(k)+'</td><td style="padding:5px 10px;text-align:right;font-size:.82rem">'+g.n+'</td><td style="padding:5px 10px;text-align:right;font-size:.82rem">'+fmtBRL(g.val)+'</td></tr>';}).join("");
-    var cardPipe='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Pipeline comercial (CRM)</div>'+
+    var cardPipe='<div class="card" id="res-go-pipe" title="Abrir o Comercial · CRM" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Pipeline comercial (CRM) <span class="muted" style="font-size:.7rem;font-weight:400">→</span></div>'+
       '<div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:8px">'+kpi("Negócios",(pl.dealsN||0)+"")+kpi("Assinados",(pl.assinN||0)+" · "+fmtBRL(pl.assinVal))+kpi("Em aberto",fmtBRL(pl.pipeAberto))+'</div>'+
       (linhasFunil?('<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="padding:5px 10px;text-align:left;font-size:.72rem">Macro-fase</th><th style="padding:5px 10px;text-align:right;font-size:.72rem">Nº</th><th style="padding:5px 10px;text-align:right;font-size:.72rem">Valor</th></tr></thead><tbody>'+linhasFunil+'</tbody></table>'):'')+
     '</div>';
     var saldoPCor=(fx.saldoPrev||0)<0?"var(--crit)":"var(--ok,#1f7a3d)",saldoRCor=(fx.saldoReal||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
-    var cardHx='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Horas & Fluxo de caixa</div>'+
+    var cardHx='<div class="card" id="res-go-fx" title="Abrir o fluxo de caixa" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Horas & Fluxo de caixa <span class="muted" style="font-size:.7rem;font-weight:400">→</span></div>'+
       '<div style="display:flex;gap:22px;flex-wrap:wrap">'+
         kpi("Horas apontadas",(h.horasTotais||0)+" h")+kpi("Custo MO",fmtBRL(h.moTotal))+
         kpi("Saldo previsto",fmtBRL(fx.saldoPrev),saldoPCor)+kpi("Saldo realizado",fmtBRL(fx.saldoReal),saldoRCor)+kpi("Lançamentos",(fx.n||0)+"")+
@@ -2254,6 +2270,11 @@ function _finResumo(){
     var m=$("#res-msg");var bt=$("#res-fechar");
     if(bt)bt.onclick=function(){bt.disabled=true;if(m)m.textContent="Materializando…";
       api("resumoExecFechar").then(function(){if(m)m.textContent="Snapshot gravado.";_finResumo();}).catch(function(e){bt.disabled=false;if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};
+    /* Cards do resumo abrem o detalhe: carteira → aba Carteira; fluxo → aba Fluxo; pipeline → módulo Comercial. */
+    var jt=function(id,fn){var e=$("#"+id);if(e){e.style.cursor="pointer";e.onclick=fn;}};
+    jt("res-go-cart",function(){var b=document.querySelector('[data-tab="fin-tab-cart"]');if(b)b.click();});
+    jt("res-go-fx",function(){var b=document.querySelector('[data-tab="fin-tab-fx"]');if(b)b.click();});
+    jt("res-go-pipe",function(){if(typeof irPara==="function")irPara("comercial");});
   }).catch(function(e){var box=$("#fin-res");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 /* FLUXO DE CAIXA — base de lançamentos (entrada/saída, previsto × realizado), editável e
@@ -3058,10 +3079,10 @@ function viewInicio(){
   return '<div class="animate-in">'+
     '<p class="muted" style="margin-bottom:18px">Resumo das suas atividades e indicadores do portal.</p>'+
     '<div class="kpis">'+
-      '<div class="kpi"><div class="v" style="color:var(--brand)">'+fmtH(hSem)+'</div><div class="l">Horas nesta semana</div></div>'+
-      '<div class="kpi"><div class="v">'+fmtH(hMes)+'</div><div class="l">Horas no mês</div></div>'+
-      '<div class="kpi"><div class="v"'+(pend>0?' style="color:var(--warn)"':'')+'>'+ pend+'</div><div class="l">Lançamentos pendentes</div></div>'+
-      (dev?'<div class="kpi"><div class="v" style="color:var(--crit)">'+dev+'</div><div class="l">Devolvidos para ajuste</div></div>':'')+
+      '<div class="kpi" data-go="apont" title="Ver apontamentos" style="cursor:pointer"><div class="v" style="color:var(--brand)">'+fmtH(hSem)+'</div><div class="l">Horas nesta semana</div></div>'+
+      '<div class="kpi" data-go="apont" title="Ver apontamentos" style="cursor:pointer"><div class="v">'+fmtH(hMes)+'</div><div class="l">Horas no mês</div></div>'+
+      '<div class="kpi" data-go="apont" title="Ver apontamentos" style="cursor:pointer"><div class="v"'+(pend>0?' style="color:var(--warn)"':'')+'>'+ pend+'</div><div class="l">Lançamentos pendentes</div></div>'+
+      (dev?'<div class="kpi" data-go="apont" title="Ver apontamentos" style="cursor:pointer"><div class="v" style="color:var(--crit)">'+dev+'</div><div class="l">Devolvidos para ajuste</div></div>':'')+
     '</div>'+
     '<div class="grid2">'+
       '<div class="card">'+
@@ -3204,20 +3225,26 @@ function _execResumo(){
       '<td style="white-space:nowrap">'+chip+movTag+'</td>'+
     '</tr>';
   }).join("")||'<tr><td colspan="5" class="muted center" style="padding:22px">Nenhum projeto em andamento na carteira.</td></tr>';
-  var tile=function(v,l,cor,st){return '<div class="kpi'+(st?' kpi-st':'')+'"'+(st?' data-st="'+esc(st)+'" title="Abrir na carteira" style="cursor:pointer"':'')+'><div class="v"'+(cor?' style="color:'+cor+'"':'')+'>'+v+'</div><div class="l">'+l+'</div></div>';};
+  /* tile: st => abre a carteira no status (kpi-st/data-st); senão go => navega a um módulo
+     (data-go, religado por liga()); senão tile simples. Torna os indicadores clicáveis. */
+  var tile=function(v,l,cor,st,go){
+    var cls='kpi'+(st?' kpi-st':'');
+    var extra=st?(' data-st="'+esc(st)+'" title="Abrir na carteira" style="cursor:pointer"'):(go?(' data-go="'+esc(go)+'" title="Abrir" style="cursor:pointer"'):'');
+    return '<div class="'+cls+'"'+extra+'><div class="v"'+(cor?' style="color:'+cor+'"':'')+'>'+v+'</div><div class="l">'+l+'</div></div>';
+  };
   return ''+
     viewHead("Gestão da Engenharia","Resumo Executivo","Panorama da carteira para decisão — projetos em andamento, prazos em risco e indicadores da operação. Sem valores monetários.")+
     '<div class="kpis">'+
       tile(nAnd,"Em andamento","var(--brand)","EM ANDAMENTO")+
       tile(nIni+nEsp,"A iniciar / em espera","","*")+
       tile(nConc,"Concluídos","var(--ok)","CONCLUÍDO")+
-      tile(pend,"Aprovações pendentes",pend>0?"var(--warn)":"")+
+      tile(pend,"Aprovações pendentes",pend>0?"var(--warn)":"","","pend")+
       tile(fmtH(hMes),"Horas da equipe no mês","")+
     '</div>'+
     '<div class="kpis" style="margin-top:12px">'+
-      tile(nVenc,"Prazos vencidos",nVenc>0?"var(--crit)":"var(--ok)")+
-      tile(nRisco,"Em risco (≤ 14 dias)",nRisco>0?"var(--warn)":"var(--ok)")+
-      tile(nSemMov,"Em andamento sem movimentação (30d+)",nSemMov>0?"var(--warn)":"")+
+      tile(nVenc,"Prazos vencidos",nVenc>0?"var(--crit)":"var(--ok)","","projetos")+
+      tile(nRisco,"Em risco (≤ 14 dias)",nRisco>0?"var(--warn)":"var(--ok)","","projetos")+
+      tile(nSemMov,"Em andamento sem movimentação (30d+)",nSemMov>0?"var(--warn)":"","","projetos")+
     '</div>'+
     _execDestaques()+
     _execHorasComp()+
@@ -3323,7 +3350,21 @@ async function enviarLanc(){
 
 /* ---- Apontamentos ---- */
 function viewApont(){
-  const meu=meusLanc().filter(r=>r.slug===state.slug);
+  /* Seletor de colaborador (coord/dono): além dos "seus apontamentos", a gestão escolhe QUEM ver.
+     Para outro colaborador o backend (lancColab) entrega o histórico COMPLETO; a visão é só leitura
+     (não se edita hora de ninguém por aqui). O gate real é o servidor; aqui é só a UI. */
+  const podeVerOutros=!!(state.coord||state.owner);
+  const alvo=(podeVerOutros&&window.__apColab)?window.__apColab:state.slug;
+  const readonly=alvo!==state.slug;
+  const meu=readonly
+    ? ((window.__apColabData&&window.__apColabData.slug===alvo)?window.__apColabData.lanc.slice():[])
+    : meusLanc().filter(r=>r.slug===state.slug);
+  let colabSel="";
+  if(podeVerOutros){
+    const slugs=Array.from(new Set((state.data.lanc||[]).map(r=>r.slug).concat([state.slug]))).filter(Boolean);
+    slugs.sort((a,b)=>String(nomeDe(a)).localeCompare(String(nomeDe(b)),"pt"));
+    colabSel='<div class="field" style="margin:0;min-width:190px"><label style="font-size:.75rem">Colaborador</label><select id="ap-colab">'+slugs.map(s=>'<option value="'+esc(s)+'"'+(s===alvo?' selected':'')+'>'+esc(nomeDe(s))+(s===state.slug?' (você)':'')+'</option>').join('')+'</select></div>';
+  }
   // Estado do navegador de período (persiste entre renders)
   if(!window.__apModo)window.__apModo="semana";
   if(!window.__apCursor)window.__apCursor=hoje();
@@ -3376,7 +3417,7 @@ function viewApont(){
       <td>${fmtH(r.h)}</td>
       <td>${esc(r.t)}${r.s==="DEVOLVIDO"&&r.m?`<div class="err" style="font-size:.8rem">Devolvido: ${esc(r.m)}</div>`:""}</td>
       <td><span class="tag s-${r.s}">${r.s}</span></td>
-      <td>${editavel?`<button class="linkbtn" data-edit="${r.id}">editar</button> · <button class="linkbtn" data-del="${r.id}">excluir</button>`:""}</td>
+      <td>${(!readonly&&editavel)?`<button class="linkbtn" data-edit="${r.id}">editar</button> · <button class="linkbtn" data-del="${r.id}">excluir</button>`:""}</td>
     </tr>`;
   }).join("");
   const hAprovP=aprovP.reduce((s,r)=>s+Number(r.h),0);
@@ -3391,6 +3432,7 @@ function viewApont(){
   const btn=(m,lbl)=>`<button class="btn sm ${modo===m?'':'sec'}" data-apmodo="${m}" type="button">${lbl}</button>`;
   const nav=`<div class="card" style="padding:12px 14px;margin:6px 0 16px">
     <div class="row" style="align-items:center;flex-wrap:wrap;gap:8px">
+      ${colabSel}
       <div class="row" style="gap:6px;margin:0">${btn("semana","Semana")}${btn("mes","Mês")}${btn("ano","Ano")}</div>
       <div class="row" style="gap:6px;margin:0;align-items:center">
         <button class="btn sm sec" id="ap-prev" type="button" title="Anterior">◀</button>
@@ -3407,7 +3449,7 @@ function viewApont(){
     </div>
     ${temRange?`<div class="muted" style="margin-top:8px;font-size:.82rem">📅 Filtro de datas ativo (${brData(deF)}/${deF.slice(0,4)} a ${brData(ateF)}/${ateF.slice(0,4)}) — a navegação de período fica suspensa até limpar.</div>`:''}
   </div>`;
-  return viewHead("Minhas Horas","Seus apontamentos","Suas horas lançadas, com situação de cada apontamento. Navegue por semana, mês ou ano, ou filtre um intervalo de datas.")+
+  return viewHead("Minhas Horas",readonly?("Apontamentos de "+esc(nomeDe(alvo))):"Seus apontamentos",readonly?("Visão somente-leitura dos apontamentos de "+esc(nomeDe(alvo))+" (histórico completo). Navegue por período ou filtre um intervalo de datas."):"Suas horas lançadas, com situação de cada apontamento. Navegue por semana, mês ou ano, ou filtre um intervalo de datas.")+
   nav+kpis+
   `<h3 style="font-size:1rem;margin-top:6px">${temRange?'Resumo do período selecionado no navegador':'Resumo — '+pLabel+' (só o aprovado)'}</h3>
   <div class="week" style="margin-bottom:20px">${resumo}</div>
@@ -3630,6 +3672,13 @@ function liga(){
     var apH=document.getElementById("ap-hoje"); if(apH)apH.onclick=function(){window.__apCursor=hoje();render()};
     var apF=document.getElementById("ap-filtrar"); if(apF)apF.onclick=function(){var de=document.getElementById("ap-de").value,ate=document.getElementById("ap-ate").value;if(!de||!ate){alert("Informe as duas datas (De e Até).");return}if(de>ate){alert("A data inicial não pode ser maior que a final.");return}window.__apDe=de;window.__apAte=ate;render()};
     var apL=document.getElementById("ap-limpar"); if(apL)apL.onclick=function(){window.__apDe="";window.__apAte="";render()};
+    var apC=document.getElementById("ap-colab"); if(apC)apC.onchange=function(){
+      var s=apC.value;
+      if(s===state.slug){window.__apColab="";window.__apColabData=null;render();return;}
+      if(window.__apColabData&&window.__apColabData.slug===s){window.__apColab=s;render();return;}
+      window.__apColab=s;
+      api("lancColab",{slug:s}).then(function(j){window.__apColabData={slug:s,lanc:j.lanc||[]};render();}).catch(function(e){window.__apColab="";window.__apColabData=null;alert(e.message||"Erro ao carregar apontamentos.");render();});
+    };
   }
   if(state.view==="pend"&&document.getElementById("pend-acesso"))carregarPinPend();
   if(state.view==="pend"&&document.getElementById("pend-solacesso"))carregarAcessoPend();

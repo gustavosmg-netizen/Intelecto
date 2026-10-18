@@ -1276,7 +1276,7 @@ const MIN: Record<string, Papel> = {
   comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmLeadAprovar: "equipe",
   andamento: "equipe", addandam: "equipe", delandam: "equipe", produtos: "equipe",
   // CARTEIRA EXECUTIVA: leitura rica de projeto (piso equipe); edição de gestão (piso coordenacao).
-  projdetalhe: "equipe", setproj: "coordenacao",
+  projdetalhe: "equipe", setproj: "coordenacao", lancColab: "coordenacao",
   state: "equipe", addcont: "equipe", editcont: "equipe", delcont: "equipe", setlink: "equipe",
   eventos: "equipe", addevento: "equipe", delevento: "equipe",
   addserie: "equipe", delserie: "equipe", biblio: "equipe",
@@ -2375,6 +2375,10 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       ? (await horasCustoPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h, custoHora: chMap[c.slug] || 0, custo: c.custo }))
       : (await horasPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h }));
     const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0)) : null;
+    // HISTÓRICO DE HORAS do projeto: cada apontamento efetivo (aprovado/lançado) com o que foi
+    // feito (lanc.t). Em importados o `t` costuma vir vazio — o front exibe "—" quando não houver.
+    const lcr = await sqlite.execute({ sql: "SELECT d, slug, h, t FROM lanc WHERE cc = ? AND tenant_id = ? AND s IN ('APROVADO','LANÇADO') ORDER BY d DESC LIMIT 300", args: [cc, u.tenant_id] });
+    const lancs = (lcr.rows as P[]).map((x) => ({ d: String(x.d || ""), slug: String(x.slug || ""), nome: NOMES[String(x.slug)] || String(x.slug), h: Math.round((Number(x.h) || 0) * 10) / 10, t: String(x.t || "") }));
     // etapa atual/total: o andamento mais recente que informou etapas
     let etapaAtual = 0, etapaTotal = 0, ultimoDetalhe = "", ultimaData = "";
     for (const a of andam) {
@@ -2405,9 +2409,20 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       },
       horas: { gastas, previstas: prev, restantes, consumo, estouro: prev > 0 && gastas > prev },
       etapa: { atual: etapaAtual, total: etapaTotal, ultimoDetalhe, ultimaData },
-      andam, prevf: pf.rows,
+      andam, prevf: pf.rows, lancs,
       colab, podeFin, fin,
     };
+  }
+  /* APONTAMENTOS DE OUTRO COLABORADOR (seletor da aba Horas): histórico COMPLETO de um colega,
+     para coordenação/dono. O servidor é a fronteira — equipe/cliente são negados aqui (o MIN
+     exige coordenacao; e reconfirmamos coord||owner). Só leitura; não edita horas de ninguém. */
+  if (action === "lancColab") {
+    const u = await auth(p);
+    if (!(u.coord || isOwner(u.slug))) throw new Error("Ver apontamentos de outro colaborador é restrito à coordenação.");
+    const alvo = String(p.slug || "").trim();
+    if (!alvo) throw new Error("Colaborador não informado.");
+    const r = await sqlite.execute({ sql: "SELECT id, slug, d, cc, h, t, s, m, a, c FROM lanc WHERE slug = ? AND tenant_id = ?", args: [alvo, u.tenant_id] });
+    return { ok: true, slug: alvo, lanc: r.rows };
   }
 
   /* ===== FINANCEIRO (admin-only, dono) ===== */
