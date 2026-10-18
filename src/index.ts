@@ -588,6 +588,26 @@ function ensureSchema(): Promise<void> {
         tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, d TEXT DEFAULT '',
         area TEXT DEFAULT '', hours REAL DEFAULT 0, note TEXT DEFAULT '', updatedat TEXT DEFAULT '',
         deleted INTEGER DEFAULT 0, PRIMARY KEY (tenant_id, id))`,
+      /* FINANCEIRO — RESUMO EXECUTIVO MATERIALIZADO. Cada linha é um snapshot DATADO do
+         consolidado (financeiro + pipeline CRM + horas + fluxo), gravado como JSON em `dados`.
+         "Materializar" = fechar o retrato de um dia e guardá-lo como registro histórico, com
+         autor e data — a trilha de auditoria registra o evento `resumo_exec`. Confidencial (R$):
+         só dono / coord. financeira. tenant_id inline (fora do loop de ALTER da T1). */
+      `CREATE TABLE IF NOT EXISTS fin_snapshot (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', d TEXT NOT NULL,
+        dados TEXT NOT NULL DEFAULT '{}', autor TEXT DEFAULT '', criado TEXT DEFAULT '')`,
+      /* FINANCEIRO — BASE DO FLUXO DE CAIXA (item "criar" do cérebro operacional). Lançamentos de
+         entradas e saídas, com previsto × realizado, por projeto (cc opcional). Editável e
+         rastreável NO PORTAL: toda criação/edição/exclusão grava o evento `fluxo` na auditoria.
+         Nasce VAZIA — nenhum valor é inventado; a casa lança o que é real. Confidencial (R$):
+         só dono / coord. financeira. tenant_id inline (fora do loop de ALTER da T1). */
+      `CREATE TABLE IF NOT EXISTS fluxo (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto',
+        tipo TEXT NOT NULL DEFAULT 'entrada' CHECK (tipo IN ('entrada','saida')),
+        categoria TEXT DEFAULT '', descricao TEXT DEFAULT '', cc TEXT DEFAULT '',
+        valor REAL DEFAULT 0, data_prev TEXT DEFAULT '', data_real TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'previsto' CHECK (status IN ('previsto','realizado','cancelado')),
+        origem TEXT DEFAULT 'manual', u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '')`,
     ].map((sql) => ({ sql, args: [] })));
     // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute impostos,
     // rateio e encargos de mão de obra; o custo real do projeto = MO + consumíveis + terceiros + outros.
@@ -1191,6 +1211,46 @@ function decompoeFin(px: P, moCustoIn: number): P {
     configurado, prejuizo: configurado && contratado > 0 && margem < 0,
   };
 }
+/* RESUMO EXECUTIVO — consolida, SEM inventar número (tudo derivado do D1): (1) Financeiro:
+ * contratado × custo real × margem da carteira ativa; (2) Pipeline CRM: deals por macro-fase,
+ * assinados × em aberto; (3) Horas apontadas e seu custo de MO; (4) Fluxo de caixa: saldo
+ * previsto × realizado. Usado ao vivo (ação resumoExec) e materializado (resumoExecFechar). */
+async function resumoExecutivo(tenant: string): Promise<P> {
+  // (1) Financeiro — mão de obra por cc (taxa vigente na data) + horas; projx; projetos ativos.
+  const hr = await sqlite.execute({ sql: "SELECT l.cc, COALESCE(SUM(l.h * " + CH_VIGENTE_SQL + "),0) AS mo, COALESCE(SUM(l.h),0) AS h FROM lanc l WHERE l.tenant_id = ? AND l.s IN ('APROVADO','LANÇADO') GROUP BY l.cc", args: [tenant] });
+  const moByCc: Record<string, number> = {}; let horasTotais = 0; let moTotal = 0;
+  for (const x of hr.rows as P[]) { moByCc[String(x.cc)] = Number(x.mo) || 0; horasTotais += Number(x.h) || 0; moTotal += Number(x.mo) || 0; }
+  const pxr = await sqlite.execute({ sql: "SELECT cc, contratado, pct_imposto, pct_rateio, pct_lucro, outros, consumiveis, terceiros FROM projx WHERE tenant_id = ?", args: [tenant] });
+  const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
+  const prr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [tenant] });
+  let contratado = 0, custoTotal = 0, margem = 0, nProj = 0, nPrej = 0;
+  for (const pr of prr.rows as P[]) {
+    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0);
+    if (d.contratado <= 0) continue;
+    contratado += d.contratado; custoTotal += d.custoTotal; margem += d.margem; nProj++;
+    if (d.margem < 0) nPrej++;
+  }
+  const margemPct = contratado > 0 ? Math.round((margem / contratado) * 1000) / 10 : null;
+  // (2) Pipeline CRM — por macro-fase (6 grupos das 21 subetapas); assinados × em aberto.
+  const dr = await sqlite.execute({ sql: "SELECT st, val, signeddate FROM crm_deal WHERE tenant_id = ?", args: [tenant] });
+  const macro = (st: number) => st <= 0 ? "" : st <= 4 ? "Prospecção & Qualificação" : st <= 8 ? "Diagnóstico Técnico" : st <= 12 ? "Proposta" : st <= 16 ? "Negociação & Contrato" : st <= 20 ? "Execução" : "Pós-venda & Expansão";
+  const funil: Record<string, { n: number; val: number }> = {}; let dealsN = 0, assinN = 0, assinVal = 0, pipeAberto = 0;
+  for (const d of dr.rows as P[]) {
+    dealsN++;
+    const m = macro(Number(d.st) || 0); if (m) { (funil[m] = funil[m] || { n: 0, val: 0 }); funil[m].n++; funil[m].val += Number(d.val) || 0; }
+    if (String(d.signeddate || "")) { assinN++; assinVal += Number(d.val) || 0; } else { pipeAberto += Number(d.val) || 0; }
+  }
+  // (4) Fluxo de caixa — saldo previsto × realizado (entradas − saídas).
+  const fx = await sqlite.execute({ sql: "SELECT tipo, status, COALESCE(SUM(valor),0) v, COUNT(*) n FROM fluxo WHERE tenant_id = ? GROUP BY tipo, status", args: [tenant] });
+  let fxEP = 0, fxSP = 0, fxER = 0, fxSR = 0, fxN = 0;
+  for (const r of fx.rows as P[]) { const v = Number(r.v) || 0; fxN += Number(r.n) || 0; const st = String(r.status); const entrada = String(r.tipo) === "entrada"; if (st === "realizado") { entrada ? (fxER += v) : (fxSR += v); } else if (st === "previsto") { entrada ? (fxEP += v) : (fxSP += v); } }
+  return {
+    fin: { contratado: arred2(contratado), custoTotal: arred2(custoTotal), margem: arred2(margem), margemPct, nProj, nPrej },
+    pipeline: { dealsN, funil, assinN, assinVal: arred2(assinVal), pipeAberto: arred2(pipeAberto) },
+    horas: { horasTotais: arred2(horasTotais), moTotal: arred2(moTotal) },
+    fluxo: { n: fxN, entradaPrev: arred2(fxEP), saidaPrev: arred2(fxSP), entradaReal: arred2(fxER), saidaReal: arred2(fxSR), saldoPrev: arred2(fxEP - fxSP), saldoReal: arred2(fxER - fxSR) },
+  };
+}
 
 /* ============================================================================
  * GUARD CENTRAL (T2) — a fronteira de autorizacao e o SERVIDOR, nunca a UI.
@@ -1277,6 +1337,10 @@ const MIN: Record<string, Papel> = {
   // (so o dono) DENTRO de cada branch e em modulosLiberados. Unico lugar do portal com valor
   // monetario. acervo_list/acervo_arquivo ficam no piso de acervo (equipe + grant), nao aqui.
   financeiro: "coordenacao", custohoraList: "coordenacao", custohoraSet: "coordenacao", custohoraDel: "coordenacao", projfinSet: "coordenacao",
+  // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
+  // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
+  resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
+  fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
   // Mesmo piso da busca (equipe) + grant de acervo checado dentro do branch (isOwner||acgrant).
   acervo_list: "equipe",
@@ -1638,7 +1702,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       { area: "Financeiro", cor: "ok", procedimentos: [
           { nome: "Custo real por projeto/CC", passos: "Horas × custo/hora (c/ encargos) + consumíveis + terceiros.", estado: "existe" },
           { nome: "Contratado × custo = margem", passos: "Valor contratado (do CRM) menos custo real; lucro×prejuízo.", estado: "existe" },
-          { nome: "Fluxo de caixa completo", passos: "Entradas, saídas, impostos, rateios, empréstimos, faturamento futuro, pagamentos.", estado: "criar" },
+          { nome: "Resumo executivo (snapshot datado)", passos: "Consolida financeiro + pipeline CRM + horas + fluxo; materializa snapshot datado com auditoria.", estado: "existe" },
+          { nome: "Fluxo de caixa", passos: "Base de lançamentos entrada/saída, previsto × realizado, por projeto — editável e auditada no portal. Falta completar (impostos, empréstimos, faturamento futuro).", estado: "a detalhar" },
         ], recursos: [ r("agente-financeiro", "agente", "criar", "Fecha QQP/preço, fluxo de caixa e custo por centro de custo.") ] },
       { area: "Pessoas / RH", cor: "warn", procedimentos: [
           { nome: "Cargos & capacidade", passos: "Catálogo de cargos, vínculo, horas/dia, capacidade da equipe.", estado: "existe" },
@@ -2426,6 +2491,69 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     rows.sort((a: any, b: any) => (a.margem - b.margem)); // prejuízo/menor margem primeiro
     const tot = rows.reduce((s: any, r: any) => ({ contratado: s.contratado + r.contratado, custoTotal: s.custoTotal + r.custoTotal, margem: s.margem + r.margem }), { contratado: 0, custoTotal: 0, margem: 0 });
     return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) } };
+  }
+  /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
+     restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */
+  if (action === "resumoExec") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const resumo = await resumoExecutivo(u.tenant_id);
+    const snap = await sqlite.execute({ sql: "SELECT id, d, autor, criado FROM fin_snapshot WHERE tenant_id = ? ORDER BY criado DESC LIMIT 1", args: [u.tenant_id] });
+    return { ok: true, resumo, ultimoSnapshot: snap.rows[0] || null };
+  }
+  /* RESUMO EXECUTIVO — MATERIALIZAR: fecha o retrato de hoje e grava como snapshot datado
+     (fin_snapshot) com autor e data. Registra `resumo_exec` na auditoria (rastreabilidade). */
+  if (action === "resumoExecFechar") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Materialização do resumo restrita à direção ou coordenação financeira.");
+    const resumo = await resumoExecutivo(u.tenant_id);
+    const d = now.slice(0, 10);
+    const id = "FS-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    await sqlite.execute({ sql: "INSERT INTO fin_snapshot (id, tenant_id, d, dados, autor, criado) VALUES (?,?,?,?,?,?)", args: [id, u.tenant_id, d, JSON.stringify(resumo), u.slug, now] });
+    await audit("resumo_exec", u.slug, "materializou snapshot " + d + " margem=" + resumo.fin.margem, ip);
+    return { ok: true, id, d, resumo };
+  }
+  /* RESUMO EXECUTIVO — histórico dos snapshots materializados (para a linha do tempo). */
+  if (action === "resumoExecHist") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const r = await sqlite.execute({ sql: "SELECT id, d, dados, autor, criado FROM fin_snapshot WHERE tenant_id = ? ORDER BY criado DESC LIMIT 60", args: [u.tenant_id] });
+    const snapshots = (r.rows as P[]).map((x) => ({ id: x.id, d: x.d, autor: x.autor, criado: x.criado, dados: (() => { try { return JSON.parse(String(x.dados || "{}")); } catch (_) { return {}; } })() }));
+    return { ok: true, snapshots };
+  }
+  /* FLUXO DE CAIXA — listar lançamentos + resumo (previsto × realizado). Leitura restrita. */
+  if (action === "fluxoList") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const r = await sqlite.execute({ sql: "SELECT id, tipo, categoria, descricao, cc, valor, data_prev, data_real, status, origem, u, criado, atualizado FROM fluxo WHERE tenant_id = ? ORDER BY COALESCE(NULLIF(data_prev,''), data_real, criado) ASC, criado ASC", args: [u.tenant_id] });
+    const rows = r.rows as P[];
+    let ep = 0, sp = 0, er = 0, sr = 0;
+    for (const x of rows) { const v = Number(x.valor) || 0; const st = String(x.status); const entrada = String(x.tipo) === "entrada"; if (st === "realizado") { entrada ? (er += v) : (sr += v); } else if (st === "previsto") { entrada ? (ep += v) : (sp += v); } }
+    return { ok: true, fluxos: rows, resumo: { entradaPrev: arred2(ep), saidaPrev: arred2(sp), entradaReal: arred2(er), saidaReal: arred2(sr), saldoPrev: arred2(ep - sp), saldoReal: arred2(er - sr) } };
+  }
+  /* FLUXO DE CAIXA — criar / editar lançamento. Upsert por id. Grava `fluxo` na auditoria. */
+  if (action === "fluxoSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    let id = String(p.id || "").trim(); const isNew = !id;
+    if (isNew) id = "FX-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const tipo = String(p.tipo || "entrada") === "saida" ? "saida" : "entrada";
+    const st0 = String(p.status || "previsto"); const status = (st0 === "realizado" || st0 === "cancelado") ? st0 : "previsto";
+    const valor = Math.max(0, Number(p.valor) || 0);
+    const g = (k: string, n = 200) => String(p[k] == null ? "" : p[k]).slice(0, n);
+    const dt = (k: string) => { const s = String(p[k] || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; };
+    const cc = g("cc", 40); if (cc && !/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
+    const descricao = g("descricao", 300); if (descricao.length < 2) throw new Error("Informe uma descrição do lançamento.");
+    await sqlite.execute({
+      sql: "INSERT INTO fluxo (id,tenant_id,tipo,categoria,descricao,cc,valor,data_prev,data_real,status,origem,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        + "ON CONFLICT(id) DO UPDATE SET tipo=excluded.tipo,categoria=excluded.categoria,descricao=excluded.descricao,cc=excluded.cc,valor=excluded.valor,data_prev=excluded.data_prev,data_real=excluded.data_real,status=excluded.status,u=excluded.u,atualizado=excluded.atualizado",
+      args: [id, u.tenant_id, tipo, g("categoria", 80), descricao, cc, valor, dt("data_prev"), dt("data_real"), status, g("origem", 40) || "manual", u.slug, now, now],
+    });
+    await audit("fluxo", u.slug, (isNew ? "novo " : "edit ") + id + " " + tipo + " " + valor + " " + status, ip);
+    return { ok: true, id, isNew };
+  }
+  /* FLUXO DE CAIXA — excluir lançamento. Grava `fluxo` na auditoria. */
+  if (action === "fluxoDel") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const id = String(p.id || "").trim(); if (!id) throw new Error("ID do lançamento ausente.");
+    await sqlite.execute({ sql: "DELETE FROM fluxo WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] });
+    await audit("fluxo", u.slug, "excluiu " + id, ip);
+    return { ok: true };
   }
 
   /* ===== ACERVO — navegar pastas do bucket-fonte (abrir arquivo é a rota POST /acervo/arquivo) ===== */

@@ -2208,13 +2208,107 @@ function viewFinanceiro(el){
     "Custo real (horas × custo/hora + impostos + rateio + outros) × valor contratado, por projeto, em tempo real. Área restrita ao dono.")+
     '<div class="tabs">'+
     '<nav class="subnav" role="tablist">'+
-      '<button class="subnav-btn is-active" data-tab="fin-tab-cart" type="button">Carteira financeira</button>'+
+      '<button class="subnav-btn is-active" data-tab="fin-tab-res" type="button">Resumo executivo</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-cart" type="button">Carteira financeira</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-ch" type="button">Custo/hora por colaborador</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-fx" type="button">Fluxo de caixa</button>'+
     '</nav>'+
-    '<section class="tabpanel" id="fin-tab-cart"><div id="fin-cart"><p class="muted" style="padding:8px 0">Carregando carteira…</p></div></section>'+
+    '<section class="tabpanel" id="fin-tab-res"><div id="fin-res"><p class="muted" style="padding:8px 0">Carregando resumo…</p></div></section>'+
+    '<section class="tabpanel hidden" id="fin-tab-cart"><div id="fin-cart"><p class="muted" style="padding:8px 0">Carregando carteira…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-ch"><div id="fin-ch"><p class="muted" style="padding:8px 0">Carregando custos…</p></div></section>'+
+    '<section class="tabpanel hidden" id="fin-tab-fx"><div id="fin-fx"><p class="muted" style="padding:8px 0">Carregando fluxo de caixa…</p></div></section>'+
     '</div>';
-  _finCarteira();_finCustoHora();
+  _finResumo();_finCarteira();_finCustoHora();_finFluxo();
+}
+/* RESUMO EXECUTIVO — consolidado ao vivo + materialização (snapshot datado). Tudo derivado do
+   D1 (sem número inventado): financeiro da carteira, pipeline do CRM, horas e fluxo de caixa. */
+function _finResumo(){
+  api("resumoExec").then(function(j){
+    var box=$("#fin-res");if(!box)return;var r=j.resumo||{},f=r.fin||{},pl=r.pipeline||{},h=r.horas||{},fx=r.fluxo||{};
+    var mCor=(f.margem||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
+    var snap=j.ultimoSnapshot;
+    var kpi=function(rot,val,cor){return '<div style="min-width:130px"><div class="muted" style="font-size:.72rem">'+esc(rot)+'</div><div style="font-weight:700'+(cor?';color:'+cor:'')+'">'+val+'</div></div>';};
+    var cardFin='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Carteira (projetos ativos com contrato)</div>'+
+      '<div style="display:flex;gap:22px;flex-wrap:wrap">'+
+        kpi("Contratado",fmtBRL(f.contratado))+kpi("Custo real",fmtBRL(f.custoTotal))+
+        kpi("Margem",fmtBRL(f.margem),mCor)+kpi("Margem %",(f.margemPct==null?"—":f.margemPct+"%"),mCor)+
+        kpi("Projetos",(f.nProj||0)+"")+kpi("Em prejuízo",(f.nPrej||0)+"",(f.nPrej||0)>0?"var(--crit)":"")+
+      '</div></div>';
+    var fases=pl.funil||{};var ordem=["Prospecção & Qualificação","Diagnóstico Técnico","Proposta","Negociação & Contrato","Execução","Pós-venda & Expansão"];
+    var linhasFunil=ordem.filter(function(k){return fases[k];}).map(function(k){var g=fases[k];return '<tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px;font-size:.82rem">'+esc(k)+'</td><td style="padding:5px 10px;text-align:right;font-size:.82rem">'+g.n+'</td><td style="padding:5px 10px;text-align:right;font-size:.82rem">'+fmtBRL(g.val)+'</td></tr>';}).join("");
+    var cardPipe='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Pipeline comercial (CRM)</div>'+
+      '<div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:8px">'+kpi("Negócios",(pl.dealsN||0)+"")+kpi("Assinados",(pl.assinN||0)+" · "+fmtBRL(pl.assinVal))+kpi("Em aberto",fmtBRL(pl.pipeAberto))+'</div>'+
+      (linhasFunil?('<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="padding:5px 10px;text-align:left;font-size:.72rem">Macro-fase</th><th style="padding:5px 10px;text-align:right;font-size:.72rem">Nº</th><th style="padding:5px 10px;text-align:right;font-size:.72rem">Valor</th></tr></thead><tbody>'+linhasFunil+'</tbody></table>'):'')+
+    '</div>';
+    var saldoPCor=(fx.saldoPrev||0)<0?"var(--crit)":"var(--ok,#1f7a3d)",saldoRCor=(fx.saldoReal||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
+    var cardHx='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.92rem;margin-bottom:8px">Horas & Fluxo de caixa</div>'+
+      '<div style="display:flex;gap:22px;flex-wrap:wrap">'+
+        kpi("Horas apontadas",(h.horasTotais||0)+" h")+kpi("Custo MO",fmtBRL(h.moTotal))+
+        kpi("Saldo previsto",fmtBRL(fx.saldoPrev),saldoPCor)+kpi("Saldo realizado",fmtBRL(fx.saldoReal),saldoRCor)+kpi("Lançamentos",(fx.n||0)+"")+
+      '</div>'+((fx.n||0)===0?'<p class="muted" style="font-size:.74rem;margin:8px 0 0">Nenhum lançamento de caixa ainda — use a aba <b>Fluxo de caixa</b>.</p>':'')+
+    '</div>';
+    var snapTxt=snap?('Último snapshot: <b>'+esc(snap.d)+'</b> por '+esc(snap.autor||'—')):'Nenhum snapshot materializado ainda.';
+    var acao='<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div class="muted" style="font-size:.8rem;flex:1;min-width:200px">'+snapTxt+'</div>'+
+      '<button class="btn sm" type="button" id="res-fechar">Materializar snapshot de hoje</button><span id="res-msg" class="muted" style="font-size:.78rem"></span></div>';
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Retrato consolidado da casa, em R$, derivado só de dados reais do portal. <b>Materializar</b> congela o retrato de hoje como registro histórico (com autor e data na trilha de auditoria).</p>'+cardFin+cardPipe+cardHx+acao;
+    var m=$("#res-msg");var bt=$("#res-fechar");
+    if(bt)bt.onclick=function(){bt.disabled=true;if(m)m.textContent="Materializando…";
+      api("resumoExecFechar").then(function(){if(m)m.textContent="Snapshot gravado.";_finResumo();}).catch(function(e){bt.disabled=false;if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};
+  }).catch(function(e){var box=$("#fin-res");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+/* FLUXO DE CAIXA — base de lançamentos (entrada/saída, previsto × realizado), editável e
+   auditada. Nasce vazia; a casa lança o que é real. */
+function _finFluxo(){
+  api("fluxoList").then(function(j){
+    var box=$("#fin-fx");if(!box)return;var xs=j.fluxos||[],rs=j.resumo||{};
+    var sPCor=(rs.saldoPrev||0)<0?"var(--crit)":"var(--ok,#1f7a3d)",sRCor=(rs.saldoReal||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
+    var topo='<div class="card" style="display:flex;gap:22px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px">'+
+      '<div><div class="muted" style="font-size:.72rem">Entradas prev.</div><div style="font-weight:700">'+fmtBRL(rs.entradaPrev)+'</div></div>'+
+      '<div><div class="muted" style="font-size:.72rem">Saídas prev.</div><div style="font-weight:700">'+fmtBRL(rs.saidaPrev)+'</div></div>'+
+      '<div><div class="muted" style="font-size:.72rem">Saldo previsto</div><div style="font-weight:700;color:'+sPCor+'">'+fmtBRL(rs.saldoPrev)+'</div></div>'+
+      '<div><div class="muted" style="font-size:.72rem">Saldo realizado</div><div style="font-weight:700;color:'+sRCor+'">'+fmtBRL(rs.saldoReal)+'</div></div>'+
+    '</div>';
+    var form='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.9rem;margin-bottom:8px">Novo lançamento</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
+        '<div class="field" style="margin:0;max-width:110px"><label style="font-size:.7rem">Tipo</label><select class="sm" id="fx-tipo"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div>'+
+        '<div class="field" style="margin:0;flex:1;min-width:160px"><label style="font-size:.7rem">Descrição</label><input class="sm" id="fx-desc" maxlength="300" placeholder="ex.: parcela contrato INT-0274"></div>'+
+        '<div class="field" style="margin:0;max-width:130px"><label style="font-size:.7rem">Categoria</label><input class="sm" id="fx-cat" maxlength="80" placeholder="opcional"></div>'+
+        '<div class="field" style="margin:0;max-width:120px"><label style="font-size:.7rem">Valor R$</label><input class="sm" id="fx-val" type="number" min="0" step="0.01" style="text-align:right" placeholder="0,00"></div>'+
+        '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">Centro de custo</label><input class="sm" id="fx-cc" maxlength="40" placeholder="opcional"></div>'+
+        '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">Prevista p/</label><input class="sm" id="fx-dp" type="date"></div>'+
+        '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">Realizada em</label><input class="sm" id="fx-dr" type="date"></div>'+
+        '<div class="field" style="margin:0;max-width:130px"><label style="font-size:.7rem">Status</label><select class="sm" id="fx-st"><option value="previsto">Previsto</option><option value="realizado">Realizado</option><option value="cancelado">Cancelado</option></select></div>'+
+        '<button class="btn sm" type="button" id="fx-add">Lançar</button>'+
+      '</div><div id="fx-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div></div>';
+    var td='padding:6px 10px;font-size:.82rem',tdr='padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.82rem';
+    var linhas=xs.map(function(x){
+      var ent=x.tipo==='entrada';var cor=ent?"var(--ok,#1f7a3d)":"var(--crit)";var sig=ent?'+':'−';
+      var can=x.status==='cancelado';
+      return '<tr style="border-top:1px solid var(--line)'+(can?';opacity:.5':'')+'">'+
+        '<td style="'+td+'"><div style="font-weight:600">'+esc(x.descricao)+'</div><div class="muted" style="font-size:.72rem">'+esc(x.categoria||'')+(x.cc?' · '+esc(x.cc):'')+'</div></td>'+
+        '<td style="'+td+'">'+(ent?'Entrada':'Saída')+'</td>'+
+        '<td style="'+tdr+';color:'+cor+';font-weight:600">'+sig+fmtBRL(x.valor)+'</td>'+
+        '<td style="'+td+'">'+esc(x.data_prev||'—')+'</td>'+
+        '<td style="'+td+'">'+esc(x.data_real||'—')+'</td>'+
+        '<td style="'+td+'">'+esc(x.status)+'</td>'+
+        '<td style="'+td+';text-align:right"><button class="linkbtn fx-del" data-id="'+esc(x.id)+'" style="font-size:.72rem">excluir</button></td></tr>';
+    }).join("");
+    var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Lançamento</th><th style="'+td+';text-align:left">Tipo</th><th style="'+tdr+'">Valor</th><th style="'+td+';text-align:left">Prevista</th><th style="'+td+';text-align:left">Realizada</th><th style="'+td+';text-align:left">Status</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum lançamento ainda. Base pronta — lance a primeira entrada ou saída acima.</p></div>';
+    box.innerHTML=topo+form+tabela;
+    var m=$("#fx-msg");var msg=function(t,err){if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
+    var gv=function(id){var e=$(id);return e?e.value:"";};
+    var add=$("#fx-add");if(add)add.onclick=function(){
+      var desc=gv("#fx-desc");if(!desc||desc.length<2){msg("Informe a descrição.",true);return;}
+      var val=Number(gv("#fx-val"))||0;
+      msg("Salvando…");
+      api("fluxoSet",{tipo:gv("#fx-tipo"),descricao:desc,categoria:gv("#fx-cat"),valor:val,cc:gv("#fx-cc"),data_prev:gv("#fx-dp"),data_real:gv("#fx-dr"),status:gv("#fx-st")})
+        .then(function(){_finFluxo();_finResumo();}).catch(function(e){msg(e.message||"Erro",true);});
+    };
+    box.querySelectorAll(".fx-del").forEach(function(b){b.onclick=function(){
+      if(!confirm("Excluir este lançamento do fluxo de caixa?"))return;
+      api("fluxoDel",{id:b.getAttribute("data-id")}).then(function(){_finFluxo();_finResumo();}).catch(function(e){msg(e.message||"Erro",true);});
+    };});
+  }).catch(function(e){var box=$("#fin-fx");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 function _finCarteira(){
   api("financeiro").then(function(j){
