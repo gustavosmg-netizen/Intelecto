@@ -2371,15 +2371,17 @@ function viewFinanceiro(el){
       '<button class="subnav-btn" data-tab="fin-tab-cart" type="button">Carteira financeira</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-ch" type="button">Custo/hora por colaborador</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cf" type="button">Custos fixos &amp; overhead</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-cap" type="button">Capacidade × apontado</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-fx" type="button">Fluxo de caixa</button>'+
     '</nav>'+
     '<section class="tabpanel" id="fin-tab-res"><div id="fin-res"><p class="muted" style="padding:8px 0">Carregando resumo…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cart"><div id="fin-cart"><p class="muted" style="padding:8px 0">Carregando carteira…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-ch"><div id="fin-ch"><p class="muted" style="padding:8px 0">Carregando custos…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cf"><div id="fin-cf"><p class="muted" style="padding:8px 0">Carregando custos fixos…</p></div></section>'+
+    '<section class="tabpanel hidden" id="fin-tab-cap"><div id="fin-cap"><p class="muted" style="padding:8px 0">Carregando capacidade…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-fx"><div id="fin-fx"><p class="muted" style="padding:8px 0">Carregando fluxo de caixa…</p></div></section>'+
     '</div>';
-  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finFluxo();
+  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finCapacidade();_finFluxo();
 }
 /* RESUMO EXECUTIVO — consolidado ao vivo + materialização (snapshot datado). Tudo derivado do
    D1 (sem número inventado): financeiro da carteira, pipeline do CRM, horas e fluxo de caixa. */
@@ -2457,6 +2459,42 @@ function _finCustoFixo(){
       api("custoFixoDel",{id:b.getAttribute("data-id")}).then(function(){_finCustoFixo();_finResumo();_finCarteira();}).catch(function(e){alert(e.message||"Erro");});
     };});
   }).catch(function(e){var box=$("#fin-cf");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+/* CAPACIDADE × APONTADO — horas extras/déficit por colaborador e mês (Onda 3 financeiro). */
+function _finCapacidade(){
+  api("capacidade").then(function(j){
+    var box=$("#fin-cap");if(!box)return;var ps=j.pessoas||[];
+    if(!ps.length){box.innerHTML='<div class="card"><p class="muted" style="margin:0">Sem horas apontadas para calcular capacidade.</p></div>';return;}
+    var fH=function(h){return (Math.round((Number(h)||0)*10)/10)+'h';};
+    var td='padding:6px 10px;font-size:.84rem', tdr='padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.84rem';
+    var linhas=ps.map(function(p,i){
+      var sCor=p.tSaldo<0?'var(--crit)':'var(--ok,#1f7a3d)';
+      var det=(p.meses||[]).map(function(m){
+        var c=m.saldo<0?'var(--crit)':'var(--ok,#1f7a3d)';
+        return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'">'+esc(m.ym)+'</td>'+
+          '<td style="'+tdr+'">'+fH(m.esperado)+'</td><td style="'+tdr+'">'+fH(m.realizado)+'</td>'+
+          '<td style="'+tdr+';color:'+c+';font-weight:600">'+(m.saldo>=0?'+':'')+fH(m.saldo)+'</td>'+
+          '<td style="'+tdr+'">'+((m.feriado||0)?fH(m.feriado):'—')+'</td><td style="'+tdr+'">'+((m.ferias||0)?fH(m.ferias):'—')+'</td>'+
+          '<td style="'+tdr+'">'+((m.ausj||0)?fH(m.ausj):'—')+'</td><td style="'+tdr+'">'+((m.ausn||0)?fH(m.ausn):'—')+'</td>'+
+          '<td style="'+tdr+'">'+((m.custoExtra||0)?fmtBRL(m.custoExtra):'—')+'</td></tr>';
+      }).join("");
+      return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'"><div style="font-weight:600">'+esc(p.nome)+'</div><div class="muted" style="font-size:.72rem">'+p.hsem+'h/sem</div></td>'+
+        '<td style="'+tdr+'">'+fH(p.tEsper)+'</td><td style="'+tdr+'">'+fH(p.tReal)+'</td>'+
+        '<td style="'+tdr+';color:'+sCor+';font-weight:700">'+(p.tSaldo>=0?'+':'')+fH(p.tSaldo)+'</td>'+
+        '<td style="'+tdr+';color:var(--ok,#1f7a3d)">'+(p.tExtra?fH(p.tExtra):'—')+'</td>'+
+        '<td style="'+tdr+';color:var(--crit)">'+(p.tDef?fH(p.tDef):'—')+'</td>'+
+        '<td style="'+tdr+'">'+(p.tCustoExtra?fmtBRL(p.tCustoExtra):'—')+'</td>'+
+        '<td style="'+td+';text-align:center"><button class="linkbtn cap-det" data-i="'+i+'" style="font-size:.72rem">meses ▾</button></td></tr>'+
+        '<tr class="cap-detrow" data-i="'+i+'" style="display:none"><td colspan="8" style="padding:0 10px 10px">'+
+          '<div style="overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:4px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Mês</th><th style="'+tdr+'">Esper.</th><th style="'+tdr+'">Real.</th><th style="'+tdr+'">Saldo</th><th style="'+tdr+'">Feriado</th><th style="'+tdr+'">Férias</th><th style="'+tdr+'">Aus.J</th><th style="'+tdr+'">Aus.NJ</th><th style="'+tdr+'">Custo extra</th></tr></thead><tbody>'+det+'</tbody></table></div></td></tr>';
+    }).join("");
+    var totExtra=ps.reduce(function(s,p){return s+(p.tCustoExtra||0);},0);
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Capacidade esperada (dias úteis × 8h; estagiário 4h) menos feriados, férias e ausências justificadas, comparada ao efetivamente apontado. <b>Saldo +</b> = horas extras (pagar/folga); <b>saldo −</b> = déficit a compensar. Ausência não justificada puxa p/ déficit. Custo da extra = saldo+ × custo/hora vigente no mês.</p>'+
+      '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)">'+
+      '<th style="'+td+';text-align:left">Colaborador</th><th style="'+tdr+'">Esperado</th><th style="'+tdr+'">Realizado</th><th style="'+tdr+'">Saldo</th><th style="'+tdr+'">Extra</th><th style="'+tdr+'">Déficit</th><th style="'+tdr+'">Custo extra</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+      '<p class="muted" style="font-size:.74rem;margin-top:8px">Custo total de horas extras no período: <b>'+fmtBRL(totExtra)+'</b>. Clique em "meses" para o detalhe mensal. Saldo negativo = horas a compensar pelo colaborador.</p>';
+    box.querySelectorAll(".cap-det").forEach(function(b){b.onclick=function(){var i=b.getAttribute("data-i");var row=box.querySelector('.cap-detrow[data-i="'+i+'"]');if(row){var vis=row.style.display!=="none";row.style.display=vis?"none":"";b.textContent=vis?"meses ▾":"meses ▴";}};});
+  }).catch(function(e){var box=$("#fin-cap");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 /* FLUXO DE CAIXA — base de lançamentos (entrada/saída, previsto × realizado), editável e
    auditada. Nasce vazia; a casa lança o que é real. */

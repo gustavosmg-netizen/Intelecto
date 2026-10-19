@@ -1387,6 +1387,50 @@ async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number
  * contratado × custo real × margem da carteira ativa; (2) Pipeline CRM: deals por macro-fase,
  * assinados × em aberto; (3) Horas apontadas e seu custo de MO; (4) Fluxo de caixa: saldo
  * previsto × realizado. Usado ao vivo (ação resumoExec) e materializado (resumoExecFechar). */
+/* CAPACIDADE × APONTADO (horas extras / déficit). Capacidade estagiário = 20h/sem (4h/dia); demais
+ * 40h/sem (8h/dia). Ajustável aqui até virar campo de cargo. */
+const CAP20 = new Set<string>(["cecilia", "david"]);
+function diasUteisMes(ym: string): number {
+  const [y, m] = ym.split("-").map(Number); if (!y || !m) return 0;
+  let n = 0; const d = new Date(Date.UTC(y, m - 1, 1));
+  while (d.getUTCMonth() === m - 1) { const w = d.getUTCDay(); if (w >= 1 && w <= 5) n++; d.setUTCDate(d.getUTCDate() + 1); }
+  return n;
+}
+/* Saldo capacidade×apontado por colaborador/mês, derivado do lanc (feriado/férias/ausência pelos
+ * rótulos da atividade t). Esperado = dias úteis×h/dia − feriado − férias − ausência JUSTIFICADA;
+ * Realizado = trabalho (tudo menos os 4 rótulos); Saldo = Realizado − Esperado (>0 extra, <0 déficit;
+ * ausência NÃO justificada puxa p/ déficit). Custo da extra = saldo+ × custo/hora vigente no mês. */
+async function capacidadeApontado(tenant: string): Promise<P[]> {
+  const r = await sqlite.execute({
+    sql: "SELECT slug, substr(d,1,7) ym," +
+      " SUM(CASE WHEN t LIKE '%Feriado%' THEN h ELSE 0 END) feriado," +
+      " SUM(CASE WHEN t LIKE '%Ferias%' OR t LIKE '%Férias%' THEN h ELSE 0 END) ferias," +
+      " SUM(CASE WHEN t LIKE '%Ausente Justificado%' THEN h ELSE 0 END) ausj," +
+      " SUM(CASE WHEN t LIKE '%Ausente N%o Justificado%' THEN h ELSE 0 END) ausn," +
+      " SUM(CASE WHEN t LIKE '%Feriado%' OR t LIKE '%Ferias%' OR t LIKE '%Férias%' OR t LIKE '%Ausente Justificado%' OR t LIKE '%Ausente N%o Justificado%' THEN 0 ELSE h END) trab" +
+      " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym",
+    args: [tenant],
+  });
+  const cvr = await sqlite.execute({ sql: "SELECT slug, desde, valor FROM custohora_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
+  const vig: Record<string, { desde: string; valor: number }[]> = {};
+  for (const x of cvr.rows as P[]) { (vig[String(x.slug)] = vig[String(x.slug)] || []).push({ desde: String(x.desde), valor: Number(x.valor) || 0 }); }
+  const taxaEm = (slug: string, ym: string) => { let v = 0; const ref = ym + "-01"; for (const e of (vig[slug] || [])) { if (e.desde <= ref) v = e.valor; else break; } return v; };
+  const porSlug: Record<string, P> = {};
+  for (const row of r.rows as P[]) {
+    const slug = String(row.slug); const ym = String(row.ym);
+    const hdia = CAP20.has(slug) ? 4 : 8;
+    const feriado = arred2(Number(row.feriado) || 0), ferias = arred2(Number(row.ferias) || 0), ausj = arred2(Number(row.ausj) || 0), ausn = arred2(Number(row.ausn) || 0), trab = arred2(Number(row.trab) || 0);
+    const esperado = arred2(diasUteisMes(ym) * hdia - feriado - ferias - ausj);
+    const saldo = arred2(trab - esperado);
+    const custoExtra = saldo > 0 ? arred2(saldo * taxaEm(slug, ym)) : 0;
+    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem: CAP20.has(slug) ? 20 : 40, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, custoExtra });
+    o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = arred2(o.tSaldo + saldo);
+    o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0)); o.tCustoExtra = arred2(o.tCustoExtra + custoExtra);
+    o.tFeriado = arred2(o.tFeriado + feriado); o.tFerias = arred2(o.tFerias + ferias); o.tAusJ = arred2(o.tAusJ + ausj); o.tAusN = arred2(o.tAusN + ausn);
+  }
+  return Object.values(porSlug).sort((a: any, b: any) => (b.tSaldo as number) - (a.tSaldo as number));
+}
 async function resumoExecutivo(tenant: string): Promise<P> {
   // (1) Financeiro — mão de obra por cc (taxa vigente na data) + horas; projx; projetos ativos.
   const hr = await sqlite.execute({ sql: "SELECT l.cc, COALESCE(SUM(l.h * " + CH_VIGENTE_SQL + "),0) AS mo, COALESCE(SUM(l.h),0) AS h FROM lanc l WHERE l.tenant_id = ? AND l.s IN ('APROVADO','LANÇADO') GROUP BY l.cc", args: [tenant] });
@@ -1517,6 +1561,7 @@ const MIN: Record<string, Papel> = {
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
+  capacidade: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
   // Mesmo piso da busca (equipe) + grant de acervo checado dentro do branch (isOwner||acgrant).
   acervo_list: "equipe",
@@ -2774,6 +2819,12 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "DELETE FROM custo_fixo WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] });
     await audit("custo_fixo", u.slug, "excluiu " + id, ip);
     return { ok: true };
+  }
+  /* CAPACIDADE × APONTADO — horas extras / déficit por colaborador e mês (derivado do lanc). Leitura restrita. */
+  if (action === "capacidade") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const pessoas = await capacidadeApontado(u.tenant_id);
+    return { ok: true, pessoas };
   }
   /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
      restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */
