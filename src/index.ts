@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19e";
+const SCHEMA_VER = "2026-10-19f";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -982,6 +982,12 @@ function ensureSchema(): Promise<void> {
         PRIMARY KEY (tenant_id, id))`);
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS lead_instr_lead ON lead_instrumento (tenant_id, lead_id)"); } catch (_) {}
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS lead_instr_mun ON lead_instrumento (tenant_id, municipio)"); } catch (_) {}
+      /* Agregados pré-calculados que NÃO são registros de linha (ex.: fiscalizações, que na base
+       * vêm só somadas por município/tipo). dim='mun'|'tipo'|'total'. Nasce VAZIA (carga wrangler). */
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS amb_agg (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', bank TEXT NOT NULL, bacia TEXT DEFAULT '',
+        dim TEXT NOT NULL DEFAULT '', chave TEXT NOT NULL DEFAULT '', valor REAL DEFAULT 0,
+        PRIMARY KEY (tenant_id, bank, bacia, dim, chave))`);
     } catch (_) { /* ja existe */ }
 
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
@@ -2135,6 +2141,22 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const rs = await sqlite.execute({ sql: "SELECT id, lat, lon, ord, rotulo FROM amb_registro WHERE " + w + " AND lat IS NOT NULL AND lon IS NOT NULL " + ob + " LIMIT ?", args: [...args, cap] });
     const pts = (rs.rows as P[]).map((r) => ({ id: r.id, lat: r.lat, lon: r.lon, ord: r.ord, rotulo: r.rotulo }));
     return { ok: true, bank, pts, truncated: pts.length >= cap, cap };
+  }
+  /* Agregados (ex.: fiscalizações) — total + top por município e por tipo. Soma entre bacias
+     quando nenhuma é escolhida. Lê amb_agg (bank='fiscalizacao'). */
+  if (action === "ambAgg") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const bank = String(p.bank || "fiscalizacao").replace(/[^a-z_]/gi, "").slice(0, 40);
+    const where: string[] = ["tenant_id = ?", "bank = ?"]; const args: P[] = [u.tenant_id, bank];
+    const bacia = String(p.bacia || "").slice(0, 60); if (bacia) { where.push("bacia = ?"); args.push(bacia); }
+    const w = where.join(" AND ");
+    const totR = await sqlite.execute({ sql: "SELECT COALESCE(SUM(valor),0) v FROM amb_agg WHERE " + w + " AND dim='total'", args });
+    const mkDim = async (dim: string, lim: number) => {
+      const r = await sqlite.execute({ sql: "SELECT chave, SUM(valor) v FROM amb_agg WHERE " + w + " AND dim=? GROUP BY chave ORDER BY v DESC LIMIT ?", args: [...args, dim, lim] });
+      return (r.rows as P[]).map((x) => ({ chave: String(x.chave), valor: Number(x.v) || 0 }));
+    };
+    return { ok: true, bank, total: Number((totR.rows[0] as P).v) || 0, mun: await mkDim("mun", 20), tipo: await mkDim("tipo", 20) };
   }
   if (action === "ambFicha") {
     const u = await auth(p);

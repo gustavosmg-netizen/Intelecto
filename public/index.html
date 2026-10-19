@@ -3216,75 +3216,19 @@ function viewComercial(el){
     +'<button class="subnav-btn" data-tab="com-leads" type="button">Leads inbound</button>'
     +'<button class="subnav-btn" data-tab="com-horas" type="button">Horas comerciais</button>'
     +'<button class="subnav-btn" data-tab="com-amb" id="com-amb-btn" type="button">Leads Ambientais · MG</button>'
-    +'<button class="subnav-btn" data-tab="com-lamg" type="button">Painéis por bacia (mapa)</button>'
     +'</nav>'
     +'<section class="tabpanel" id="com-painel"><div id="crm-painel-box"><p class="muted" style="padding:14px">Carregando painel…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-crm"><div id="crm-box"><p class="muted" style="padding:14px">Carregando CRM…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-leads"><div id="crm-leads-box"><p class="muted" style="padding:14px">Carregando…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-horas"><div id="crm-horas-box"><p class="muted" style="padding:14px">Carregando…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-amb"><div id="amb-wrap"><p class="muted" style="padding:14px">Abra esta aba para carregar o explorador de leads…</p></div></section>'
-    +'<section class="tabpanel hidden" id="com-lamg">'
-    +'<div id="lamg-cards" class="hub-grid"><p class="muted" style="padding:14px">Carregando…</p></div>'
-    +'<div id="lamg-view" style="display:none">'
-    +'<div style="display:flex;align-items:center;gap:12px;margin:8px 0 12px">'
-    +'<button class="btn sec sm" id="lamg-back">← Voltar às bacias</button><b id="lamg-tit"></b></div>'
-    +'<iframe id="lamg-fr" style="width:100%;height:80vh;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)" title="Painel da bacia"></iframe>'
-    +'</div></section></div>'
+    +'</div>'
     +'<div id="crm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;padding:20px;overflow:auto"></div>';
   _crmLoad();
   /* Explorador de leads ambientais (tela única): lazy — só inicializa ao abrir a aba, p/ não
      atrasar o landing do Comercial. _ambInit é idempotente (guarda interna). */
   var _ambBtn=document.getElementById("com-amb-btn");
   if(_ambBtn)_ambBtn.addEventListener("click",function(){_ambInit();});
-  /* Ponte do funil: ouve o painel (iframe) e grava/lê no D1 via /api. Registra o listener 1x. */
-  if(!window.__lamgBridge){
-    window.__lamgBridge=true;
-    window.addEventListener("message",function(ev){
-      var d=ev.data||{}; if(d.source!=="leads-mg")return;
-      if(d.type==="funnel:pull"){
-        api("funnel_pull",{}).then(function(j){
-          var fr=document.getElementById("lamg-fr");
-          if(fr&&fr.contentWindow)fr.contentWindow.postMessage({source:"portal",type:"funnel:data",records:(j&&j.records)||[]},"*");
-        }).catch(function(){});
-      } else if(d.type==="funnel:push"&&d.record){
-        api("funnel_push",d.record).catch(function(){});
-      }
-    });
-  }
-  api("comercial").then(function(j){
-    var regs=(j&&j.index&&j.index.regioes)||[];
-    var g=document.getElementById("lamg-cards");
-    if(!regs.length){g.innerHTML='<p class="muted" style="padding:14px">Os painéis ainda não foram publicados no portal (upload para o R2 pendente).</p>';return;}
-    g.innerHTML=regs.map(function(r){
-      var nm=(r.nmun||r.n_mun||0), emp=Number(r.emp||0).toLocaleString("pt-BR"), out=Number(r.out||0).toLocaleString("pt-BR");
-      return '<button class="hub-card" data-slug="'+esc(r.slug)+'">'
-        +'<span class="hub-card-top"><span class="hub-ic">📍</span><span class="hub-badge">'+nm+' mun.</span></span>'
-        +'<span class="hub-ct">'+esc(r.nome)+'</span>'
-        +'<span class="hub-cd">'+emp+' leads · '+out+' outorgas</span>'
-        +'<span class="hub-cta">Abrir painel →</span></button>';
-    }).join("");
-    g.querySelectorAll("[data-slug]").forEach(function(b){b.onclick=function(){abrirBacia(b.dataset.slug,regs);};});
-  }).catch(function(e){
-    document.getElementById("lamg-cards").innerHTML='<p class="err" style="padding:14px">Não foi possível carregar: '+esc(e.message||e)+'</p>';
-  });
-  var back=document.getElementById("lamg-back");
-  if(back)back.onclick=function(){
-    document.getElementById("lamg-view").style.display="none";
-    document.getElementById("lamg-cards").style.display="";
-    var fr=document.getElementById("lamg-fr");if(fr)fr.srcdoc="";
-  };
-}
-function abrirBacia(slug,regs){
-  var r=(regs||[]).filter(function(x){return x.slug===slug;})[0]||{};
-  document.getElementById("lamg-cards").style.display="none";
-  document.getElementById("lamg-view").style.display="";
-  document.getElementById("lamg-tit").textContent=r.nome||slug;
-  var fr=document.getElementById("lamg-fr");
-  fr.srcdoc="<p style='font-family:sans-serif;padding:20px'>Carregando painel…</p>";
-  fetch("/comercial/leads-region",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({slug:slug})})
-    .then(function(resp){if(!resp.ok)throw new Error("HTTP "+resp.status);return resp.text();})
-    .then(function(html){fr.srcdoc=html;})
-    .catch(function(e){fr.srcdoc="<p style='font-family:sans-serif;padding:20px;color:#b00'>Não foi possível abrir: "+String(e.message||e)+"</p>";});
 }
 
 /* ===================== LEADS AMBIENTAIS — explorador multi-banco (tela única) =====================
@@ -3343,7 +3287,21 @@ var AMB_COLS_MORE={
   embargos:[["outras","Outras penalidades","txt"]],
   contaminadas:[["uso","Uso declarado","txt"]]
 };
-var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",weights:null,showMore:false,mapOpen:false,page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null,_map:null,_mk:null,_bg:false};
+/* Atalhos temáticos: 1 clique define banco + filtros + ordenação (substituem as abas curadas
+   do painel por bacia). fx aplica filtros categóricos (props). */
+var AMB_SHORTCUTS=[
+  {lbl:"🎯 Top Leads",bank:"empreendimentos",st:{}},
+  {lbl:"⏰ Licenças vencendo",bank:"empreendimentos",st:{dv:"12"}},
+  {lbl:"⛏️ Mineração",bank:"empreendimentos",st:{fx:{s:"Mineração"}}},
+  {lbl:"🏭 Indústria",bank:"empreendimentos",st:{fx:{s:"Ind. alimentos"}}},
+  {lbl:"💧 Outorgas vencendo",bank:"outorgas",st:{dv:"12"}},
+  {lbl:"🚫 Embargos",bank:"embargos",st:{}},
+  {lbl:"☣️ Contaminadas",bank:"contaminadas",st:{}},
+  {lbl:"🚰 ETEs",bank:"etes",st:{}},
+  {lbl:"📋 Fiscalizações",bank:"fiscalizacao",st:{}}
+];
+var FISC_BANK=["fiscalizacao","Fiscalizações (agregado)","📋"];
+var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",weights:null,showMore:false,mapOpen:false,page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null,_map:null,_mk:null,_bg:false,_charts:null,_chartLib:false};
 function _ambResetFilters(){AMB.municipio="";AMB.q="";AMB.fx={};AMB.dv="";AMB.nmin="";AMB.nmax="";AMB.sortKey="";AMB.sortType="";AMB.sortDir="desc";AMB.weights=null;AMB.showMore=false;AMB.page=0;}
 function _ambEffCols(){var base=(AMB_COLS[AMB.bank]||[]).slice();if(AMB.showMore&&AMB_COLS_MORE[AMB.bank])base=base.concat(AMB_COLS_MORE[AMB.bank]);return base;}
 function _ambScoreW(r){var W=AMB.weights||AMB_DEFW,b=r.brk||{},s=0;for(var k in W){s+=(Number(W[k])||0)*(Number(b[k])||0);}return Math.round(s);}
@@ -3366,7 +3324,8 @@ function _ambInit(){
   if(AMB.inited)return; AMB.inited=true;
   var wrap=document.getElementById("amb-wrap"); if(!wrap)return;
   wrap.innerHTML=
-    '<div id="amb-chips" class="hub-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:12px"><p class="muted">Carregando bancos…</p></div>'
+    '<div id="amb-shortcuts" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>'
+    +'<div id="amb-chips" class="hub-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:12px"><p class="muted">Carregando bancos…</p></div>'
     +'<div id="amb-filtros" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:10px"></div>'
     +'<div id="amb-resumo" style="margin-bottom:8px"></div>'
     +'<div id="amb-info" class="muted" style="font-size:13px;margin-bottom:6px"></div>'
@@ -3383,25 +3342,46 @@ function _ambInit(){
     wrap.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar: '+esc(e.message||e)+'</p>';
   });
 }
+function _ambSelectBank(bank){
+  if(AMB.busy)return; AMB.bank=bank; _ambResetFilters();
+  _ambRenderChips(); _ambRenderFiltros(); if(bank!=="fiscalizacao")_ambLoadFacets(); _ambFetch();
+}
+function _ambApplyShortcut(sc){
+  if(AMB.busy)return; AMB.bank=sc.bank; _ambResetFilters();
+  var st=sc.st||{}; if(st.dv)AMB.dv=st.dv; if(st.fx)AMB.fx=Object.assign({},st.fx);
+  _ambRenderChips(); _ambRenderFiltros(); if(sc.bank!=="fiscalizacao")_ambLoadFacets(); _ambFetch();
+}
+function _ambRenderShortcuts(){
+  var s=document.getElementById("amb-shortcuts"); if(!s)return;
+  var banks=(AMB.meta&&AMB.meta.banks)||{};
+  s.innerHTML='<span class="muted" style="font-size:11px;align-self:center">atalhos:</span>'+AMB_SHORTCUTS.filter(function(sc){return sc.bank==="fiscalizacao"||((banks[sc.bank]||0)>0);}).map(function(sc,i){return '<button class="btn sec sm" data-sc="'+i+'" type="button">'+esc(sc.lbl)+'</button>';}).join("");
+  s.querySelectorAll("[data-sc]").forEach(function(b){b.onclick=function(){_ambApplyShortcut(AMB_SHORTCUTS[+b.getAttribute("data-sc")]);};});
+}
 function _ambRenderChips(){
   var g=document.getElementById("amb-chips"); if(!g)return;
+  _ambRenderShortcuts();
   var banks=(AMB.meta&&AMB.meta.banks)||{};
   var presentes=AMB_BANKS.filter(function(b){return (banks[b[0]]||0)>0;});
   if(!presentes.length){g.innerHTML='<p class="muted" style="padding:6px">A base ainda não foi carregada no portal (import para o D1 pendente). Assim que a carga rodar, os bancos aparecem aqui.</p>';return;}
-  g.innerHTML=presentes.map(function(b){
-    var n=(banks[b[0]]||0).toLocaleString("pt-BR");
+  var lista=presentes.concat([FISC_BANK]); // fiscalização = pseudo-banco (agregado, fora do amb_registro)
+  g.innerHTML=lista.map(function(b){
+    var fisc=b[0]==="fiscalizacao";
+    var n=fisc?"agregado":(banks[b[0]]||0).toLocaleString("pt-BR");
     var on=b[0]===AMB.bank;
     return '<button class="hub-card'+(on?" is-active":"")+'" data-bank="'+esc(b[0])+'" style="text-align:left;'+(on?"outline:2px solid var(--brand)":"")+'">'
       +'<span class="hub-card-top"><span class="hub-ic">'+b[2]+'</span><span class="hub-badge">'+n+'</span></span>'
       +'<span class="hub-ct" style="font-size:14px">'+esc(b[1])+'</span></button>';
   }).join("");
-  g.querySelectorAll("[data-bank]").forEach(function(btn){btn.onclick=function(){
-    if(AMB.busy)return; AMB.bank=btn.getAttribute("data-bank"); _ambResetFilters();
-    _ambRenderChips(); _ambRenderFiltros(); _ambLoadFacets(); _ambFetch();
-  };});
+  g.querySelectorAll("[data-bank]").forEach(function(btn){btn.onclick=function(){_ambSelectBank(btn.getAttribute("data-bank"));};});
 }
 function _ambRenderFiltros(){
   var f=document.getElementById("amb-filtros"); if(!f)return;
+  if(AMB.bank==="fiscalizacao"){
+    var bcs=(AMB.meta&&AMB.meta.bacias)||[];
+    f.innerHTML='<label style="font-size:12px">Bacia<br><select id="amb-f-bacia" class="input sm"><option value="">Todas as bacias</option>'+bcs.map(function(b){return '<option value="'+esc(b)+'"'+(b===AMB.bacia?" selected":"")+'>'+esc(_ambFmtBacia(b))+'</option>';}).join("")+'</select></label><span class="muted" style="font-size:12px;align-self:center">Fiscalizações são dados agregados (por município e tipo), não registros de linha.</span>';
+    var bsf=document.getElementById("amb-f-bacia"); if(bsf)bsf.onchange=function(){AMB.bacia=bsf.value;_ambFetch();};
+    return;
+  }
   var cfg=AMB_META_CFG[AMB.bank]||{};
   var bacias=(AMB.meta&&AMB.meta.bacias)||[];
   var fac=AMB.facets||{};
@@ -3457,7 +3437,22 @@ function _ambLoadFacets(){
     }).catch(function(){});
   },60);
 }
+function _ambFetchAgg(){
+  var tbl=document.getElementById("amb-tbl"),info=document.getElementById("amb-info"),pg=document.getElementById("amb-pager"),res=document.getElementById("amb-resumo");
+  if(pg)pg.innerHTML=""; if(res)res.innerHTML="";
+  if(AMB.mapOpen){AMB.mapOpen=false;var mp=document.getElementById("amb-map");if(mp)mp.style.display="none";}
+  if(tbl){tbl.style.opacity="1";tbl.innerHTML='<p class="muted" style="padding:14px">Carregando agregado…</p>';}
+  var mySeq=++AMB.seq;
+  api("ambAgg",{bank:"fiscalizacao",bacia:AMB.bacia}).then(function(j){
+    if(mySeq!==AMB.seq)return;
+    if(info)info.textContent=(j.total||0).toLocaleString("pt-BR")+" fiscalizações · "+(AMB.bacia?_ambFmtBacia(AMB.bacia):"todas as bacias");
+    var mun=j.mun||[],tipo=j.tipo||[];
+    if(!mun.length&&!tipo.length){if(tbl)tbl.innerHTML='<p class="muted" style="padding:14px">Agregado de fiscalização ainda não carregado no portal (import amb_agg pendente).</p>';return;}
+    if(tbl)tbl.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:12px;padding:12px">'+_ambBars("Fiscalizações por município (top 20)",mun,"#1f7a3d")+_ambBars("Fiscalizações por tipo",tipo,"#b9770e")+'</div>';
+  }).catch(function(e){if(mySeq!==AMB.seq)return;if(tbl)tbl.innerHTML='<p class="err" style="padding:14px">Erro: '+esc(e.message||e)+'</p>';});
+}
 function _ambFetch(){
+  if(AMB.bank==="fiscalizacao"){_ambFetchAgg();return;}
   var tbl=document.getElementById("amb-tbl"); var info=document.getElementById("amb-info"); var pg=document.getElementById("amb-pager");
   if(!tbl)return;
   AMB.busy=true; var mySeq=++AMB.seq;
@@ -3591,16 +3586,23 @@ function _ambMapRefresh(){
 }
 /* Panorama compacto: total do recorte atual + distribuição (topo) da 1ª categórica do banco
    na bacia selecionada (dos facets já carregados). Sem lib de gráfico. */
+/* Barras HTML (sem lib): distribuição de uma faceta [{v,n}]. */
+function _ambBars(title,arr,color){
+  if(!arr||!arr.length)return "";
+  var max=arr.reduce(function(m,x){return Math.max(m,Number(x.n||x.valor)||0);},1);
+  return '<div style="flex:1;min-width:260px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px"><h4 style="margin:0 0 6px;font-size:13px">'+esc(title)+'</h4>'
+    +arr.map(function(x){var v=Number(x.n!=null?x.n:x.valor)||0,lb=x.v!=null?x.v:x.chave,pct=Math.round(v*100/max);
+      return '<div style="margin:3px 0;font-size:12px"><div style="display:flex;justify-content:space-between;gap:8px"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(lb)+'</span><b>'+v.toLocaleString("pt-BR")+'</b></div><div style="height:6px;background:var(--line);border-radius:4px"><div style="height:6px;width:'+pct+'%;background:'+color+';border-radius:4px"></div></div></div>';}).join("")+'</div>';
+}
 function _ambRenderResumo(){
   var box=document.getElementById("amb-resumo"); if(!box)return;
+  if(AMB.bank==="fiscalizacao"){box.innerHTML="";return;}
   var cfg=AMB_META_CFG[AMB.bank]||{}; var fac=AMB.facets||{};
-  var cards='<span style="display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 8px 6px 0;font-size:13px"><b>'+AMB.total.toLocaleString("pt-BR")+'</b> <span class="muted">no recorte atual</span></span>';
+  var strip='<span style="display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 8px 8px 0;font-size:13px"><b>'+AMB.total.toLocaleString("pt-BR")+'</b> <span class="muted">no recorte atual</span></span>';
   var ex=(cfg.extra||[])[0];
-  if(ex&&fac[ex[0]]&&fac[ex[0]].length){
-    var top=fac[ex[0]].slice(0,4);
-    cards+='<span style="display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 8px 6px 0;font-size:12px"><span class="muted">'+esc(ex[1])+' na bacia:</span> '+top.map(function(o){return esc(o.v)+' <b>'+Number(o.n).toLocaleString("pt-BR")+'</b>';}).join(' · ')+'</span>';
-  }
-  box.innerHTML=cards;
+  var c1=ex?_ambBars((ex[1])+(AMB.bacia?" · "+_ambFmtBacia(AMB.bacia):""),(fac[ex[0]]||[]).slice(0,8),"#1f7a3d"):"";
+  var c2=_ambBars("Top municípios",(fac["municipio"]||[]).slice(0,8),"#3b7dd8");
+  box.innerHTML=strip+((c1||c2)?'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:4px">'+c1+c2+'</div>':'');
 }
 function _ambFicha(id){
   var m=document.getElementById("crm-modal"); if(!m)return;
