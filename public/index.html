@@ -651,6 +651,7 @@ function render(){
   else if(state.view==="trilhas"){viewTrilhas(el);return;}
   else if(state.view==="dna"){viewDna(el);return;}
   else if(state.view==="rh"){viewRh(el);return;}
+  else if(state.view==="ficha"){viewFicha(el);return;}
   else if(state.view==="perfil"){viewPerfil(el);return;}
   liga();
 }
@@ -2584,6 +2585,160 @@ function _finCustoHora(){
    onboarding por função. Leitura para todo interno (piso equipe); edição só Coordenação
    (o servidor nega 'rhset'/'rhdel' fora de coord). O vínculo pessoa→cargo vem de config
    cargo:<slug> (ação setcargo). Sem valor monetário. */
+/* ===== Onda 3 / INC 2 — Ficha da pessoa (CV/Lattes, habilidades, metas, treinamentos, evolução) ===== */
+var _fichaAlvo=null; /* null = minha própria ficha; RH pode abrir a de outra pessoa */
+function viewFicha(el){
+  el.innerHTML=viewHead("Pessoas","Ficha da Pessoa",
+    "Seu currículo, Lattes, habilidades, metas e treinamentos — com a evolução alimentada pelas horas que você apontou. Dados pessoais: só você e o RH têm acesso.")+
+    '<div id="ficha-sel"></div><div id="ficha-box"><p class="muted" style="padding:8px 0">Carregando ficha…</p></div>';
+  // Seletor de pessoa (só para RH/coordenação/dono).
+  if((state&&state.coord)||temCap('rh.ver')||temCap('pessoas.cargo_atribuir')){
+    api("rhmembros").then(function(j){
+      var sel=$("#ficha-sel");if(!sel)return;var ms=(j.membros||[]).filter(function(m){return m.ativo;});
+      sel.innerHTML='<div class="card" style="padding:10px 12px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:.8rem">Ver ficha de:</span>'+
+        '<select id="ficha-who" style="min-width:220px"><option value="">— eu ('+esc(state.slug||'')+') —</option>'+ms.map(function(m){return '<option value="'+esc(m.slug)+'"'+(m.slug===_fichaAlvo?' selected':'')+'>'+esc(m.nome)+'</option>';}).join("")+'</select></div>';
+      $("#ficha-who").onchange=function(){_fichaAlvo=this.value||null;_fichaLoad();};
+    }).catch(function(){});
+  }
+  _fichaLoad();
+}
+function _fichaStars(n){n=Math.max(0,Math.min(5,Number(n)||0));var s="";for(var i=1;i<=5;i++)s+=(i<=n?"●":"○");return s;}
+function _fichaPdf(tipo,id){
+  var body={tipo:tipo};if(_fichaAlvo)body.slug=_fichaAlvo;if(id)body.id=id;
+  fetch(BASE+"/pessoa/arquivo",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error("Arquivo indisponível");return r.blob();})
+    .then(function(b){var u=URL.createObjectURL(b);window.open(u,"_blank","noopener");setTimeout(function(){URL.revokeObjectURL(u);},60000);})
+    .catch(function(e){alert(e.message||e);});
+}
+function _fichaUpload(file,action,extra,cb){
+  if(!file)return;if(file.type&&file.type.indexOf("pdf")<0&&!/\.pdf$/i.test(file.name)){alert("Envie um arquivo PDF.");return;}
+  var r=new FileReader();r.onload=function(){api(action,Object.assign({b64:r.result,nome:file.name},extra||{})).then(cb).catch(function(e){alert(e.message||e);});};r.readAsDataURL(file);
+}
+function _fichaLoad(){
+  api("pessoaficha",_fichaAlvo?{alvo:_fichaAlvo}:undefined).then(_fichaRender).catch(function(e){var b=$("#ficha-box");if(b)b.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+function _fichaRender(j){
+  var box=$("#ficha-box");if(!box)return;
+  var A=_fichaAlvo?{alvo:_fichaAlvo}:{};
+  var f=j.ficha||{},ev=j.evolucao||{},tot=ev.total||{h:0,n:0};
+  var titulo=j.ehProprio?'Minha ficha':('Ficha de '+esc(j.nome||j.alvo));
+  // --- CV & Lattes ---
+  var cvLinha=j.temCv
+    ? '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0"><span style="font-size:.86rem">📎 '+esc(j.cvNome||'currículo.pdf')+'</span><button class="btn sm sec" type="button" id="fi-cv-ver">Abrir</button><button class="btn sm danger" type="button" id="fi-cv-rm">Remover</button><label class="btn sm" style="cursor:pointer">Trocar<input type="file" accept="application/pdf" id="fi-cv-up" style="display:none"></label></div>'
+    : '<div class="row" style="gap:8px;align-items:center;margin:6px 0"><span class="muted" style="font-size:.84rem">Nenhum PDF de currículo enviado.</span><label class="btn sm" style="cursor:pointer">Enviar PDF<input type="file" accept="application/pdf" id="fi-cv-up" style="display:none"></label></div>';
+  var cvCard='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:8px">Currículo & Lattes</div>'+
+    '<div class="field" style="margin:0 0 8px"><label style="font-size:.74rem">Resumo profissional</label><textarea id="fi-resumo" rows="3" style="width:100%">'+esc(f.resumo||"")+'</textarea></div>'+
+    '<div class="field" style="margin:0 0 8px"><label style="font-size:.74rem">Formação</label><textarea id="fi-formacao" rows="3" style="width:100%" placeholder="Uma por linha: curso, instituição, ano">'+esc(f.formacao||"")+'</textarea></div>'+
+    '<div class="field" style="margin:0 0 8px"><label style="font-size:.74rem">Experiência</label><textarea id="fi-exp" rows="4" style="width:100%" placeholder="Uma por linha: cargo, onde, período">'+esc(f.experiencia||"")+'</textarea></div>'+
+    '<div class="row" style="gap:8px;flex-wrap:wrap;margin:0 0 8px"><div class="field" style="margin:0;flex:1;min-width:220px"><label style="font-size:.74rem">Lattes (URL)</label><input id="fi-laturl" value="'+esc(f.lattes_url||"")+'" placeholder="http://lattes.cnpq.br/..."></div>'+
+      '<div class="field" style="margin:0;max-width:200px"><label style="font-size:.74rem">Lattes (ID)</label><input id="fi-latid" value="'+esc(f.lattes_id||"")+'"></div></div>'+
+    cvLinha+
+    '<div class="row" style="gap:8px;align-items:center"><button class="btn sm" type="button" id="fi-cv-save">Salvar currículo</button><span id="fi-cv-msg" class="muted" style="font-size:.78rem"></span></div></div>';
+  // --- Habilidades ---
+  var skills=j.skills||[];
+  var skRows=skills.length?skills.map(function(s){
+    return '<div class="row" style="gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap">'+
+      '<span style="font-weight:600;font-size:.88rem;min-width:140px">'+esc(s.nome)+'</span>'+
+      '<span title="nível '+s.nivel+'/5" style="font-family:monospace;color:var(--brand)">'+_fichaStars(s.nivel)+'</span>'+
+      (s.area?'<span class="muted" style="font-size:.76rem">'+esc(s.area)+'</span>':'')+
+      (s.origem==='auto'?'<span class="tag" style="font-size:.66rem">auto</span>':'')+
+      (s.obs?'<span class="muted" style="font-size:.76rem">— '+esc(s.obs)+'</span>':'')+
+      '<span style="flex:1"></span><button class="btn sm sec fi-sk-ed" data-id="'+esc(s.id)+'" data-nome="'+esc(s.nome)+'" data-nivel="'+s.nivel+'" data-area="'+esc(s.area||"")+'" data-obs="'+esc(s.obs||"")+'" type="button">Editar</button>'+
+      '<button class="btn sm danger fi-sk-del" data-id="'+esc(s.id)+'" type="button">×</button></div>';
+  }).join(""):'<p class="muted" style="font-size:.82rem;margin:4px 0">Nenhuma habilidade cadastrada.</p>';
+  var sug=(j.sugestoes||[]);
+  var sugHtml=sug.length?'<div style="margin-top:8px"><div class="muted" style="font-size:.72rem;margin-bottom:4px">Sugestões pelas suas horas (clique para adicionar):</div>'+sug.map(function(x){return '<button class="fi-sk-sug" data-nome="'+esc(x)+'" type="button" style="background:var(--surf2,var(--surf));border:1px dashed var(--brand,#1f7a3d);border-radius:999px;padding:2px 10px;font-size:.76rem;margin:0 5px 5px 0;cursor:pointer">+ '+esc(x)+'</button>';}).join("")+'</div>':'';
+  var skCard='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:6px">Habilidades & competências</div>'+skRows+sugHtml+
+    '<div class="card" style="padding:10px 12px;margin-top:10px;background:var(--surface2)"><div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
+      '<input type="hidden" id="fi-sk-id">'+
+      '<div class="field" style="margin:0;flex:1;min-width:140px"><label style="font-size:.72rem">Habilidade</label><input id="fi-sk-nome" placeholder="ex.: Dimensionamento de ETE"></div>'+
+      '<div class="field" style="margin:0;max-width:90px"><label style="font-size:.72rem">Nível</label><select id="fi-sk-nivel"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>'+
+      '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.72rem">Área</label><input id="fi-sk-area" placeholder="opcional"></div>'+
+      '<div class="field" style="margin:0;flex:1;min-width:140px"><label style="font-size:.72rem">Observação</label><input id="fi-sk-obs" placeholder="opcional"></div>'+
+      '<button class="btn sm" type="button" id="fi-sk-add">Salvar</button></div></div></div>';
+  // --- Metas ---
+  var _stLabel={aberta:"Aberta",andamento:"Em andamento",concluida:"Concluída",cancelada:"Cancelada"};
+  var metas=j.metas||[];
+  var mtRows=metas.length?metas.map(function(m){
+    return '<div style="padding:6px 0;border-bottom:1px dashed var(--line)"><div class="row" style="gap:8px;align-items:baseline;flex-wrap:wrap">'+
+      '<span style="font-weight:600;font-size:.88rem;flex:1;min-width:160px">'+esc(m.objetivo)+'</span>'+
+      '<span class="tag '+(m.status==='concluida'?'s-APROVADO':(m.status==='cancelada'?'s-DEVOLVIDO':''))+'" style="font-size:.68rem">'+esc(_stLabel[m.status]||m.status)+'</span>'+
+      (m.prazo?'<span class="muted" style="font-size:.76rem">prazo '+esc(m.prazo)+'</span>':'')+
+      '<span class="muted" style="font-size:.76rem">'+(m.progresso||0)+'%</span>'+
+      '<button class="btn sm sec fi-mt-ed" data-id="'+esc(m.id)+'" data-objetivo="'+esc(m.objetivo)+'" data-prazo="'+esc(m.prazo||"")+'" data-status="'+esc(m.status)+'" data-progresso="'+(m.progresso||0)+'" data-obs="'+esc(m.obs||"")+'" type="button">Editar</button>'+
+      '<button class="btn sm danger fi-mt-del" data-id="'+esc(m.id)+'" type="button">×</button></div>'+
+      (m.obs?'<div class="muted" style="font-size:.78rem;margin-top:2px">'+esc(m.obs)+'</div>':'')+'</div>';
+  }).join(""):'<p class="muted" style="font-size:.82rem;margin:4px 0">Nenhuma meta cadastrada.</p>';
+  var mtCard='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:6px">Metas</div>'+mtRows+
+    '<div class="card" style="padding:10px 12px;margin-top:10px;background:var(--surface2)"><div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
+      '<input type="hidden" id="fi-mt-id">'+
+      '<div class="field" style="margin:0;flex:1;min-width:180px"><label style="font-size:.72rem">Objetivo</label><input id="fi-mt-obj" placeholder="ex.: Concluir curso de biogás"></div>'+
+      '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.72rem">Prazo</label><input id="fi-mt-prazo" type="date"></div>'+
+      '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.72rem">Status</label><select id="fi-mt-status"><option value="aberta">Aberta</option><option value="andamento">Em andamento</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option></select></div>'+
+      '<div class="field" style="margin:0;max-width:90px"><label style="font-size:.72rem">%</label><input id="fi-mt-prog" type="number" min="0" max="100" value="0"></div>'+
+      '<button class="btn sm" type="button" id="fi-mt-add">Salvar</button></div>'+
+      '<div class="field" style="margin:8px 0 0"><input id="fi-mt-obs" placeholder="observação (opcional)" style="width:100%"></div></div></div>';
+  // --- Treinamentos ---
+  var treinos=j.treinos||[];
+  var trRows=treinos.length?treinos.map(function(t){
+    var comp=t.temComprov?'<button class="btn sm sec fi-tr-ver" data-id="'+esc(t.id)+'" type="button">comprovante</button><button class="btn sm danger fi-tr-rmc" data-id="'+esc(t.id)+'" type="button">×c</button>':'<label class="btn sm" style="cursor:pointer">+ comprovante<input type="file" accept="application/pdf" class="fi-tr-up" data-id="'+esc(t.id)+'" style="display:none"></label>';
+    return '<div style="padding:6px 0;border-bottom:1px dashed var(--line)"><div class="row" style="gap:8px;align-items:baseline;flex-wrap:wrap">'+
+      '<span style="font-weight:600;font-size:.88rem;min-width:150px">'+esc(t.nome)+'</span>'+
+      (t.instituicao?'<span class="muted" style="font-size:.78rem">'+esc(t.instituicao)+'</span>':'')+
+      (t.data?'<span class="muted" style="font-size:.76rem">'+esc(t.data)+'</span>':'')+
+      (t.carga_h>0?'<span class="muted" style="font-size:.76rem">'+t.carga_h+'h</span>':'')+
+      '<span style="flex:1"></span>'+comp+
+      '<button class="btn sm sec fi-tr-ed" data-id="'+esc(t.id)+'" data-nome="'+esc(t.nome)+'" data-inst="'+esc(t.instituicao||"")+'" data-data="'+esc(t.data||"")+'" data-carga="'+(t.carga_h||0)+'" data-obs="'+esc(t.obs||"")+'" type="button">Editar</button>'+
+      '<button class="btn sm danger fi-tr-del" data-id="'+esc(t.id)+'" type="button">×</button></div>'+
+      (t.obs?'<div class="muted" style="font-size:.78rem;margin-top:2px">'+esc(t.obs)+'</div>':'')+'</div>';
+  }).join(""):'<p class="muted" style="font-size:.82rem;margin:4px 0">Nenhum treinamento registrado.</p>';
+  var trCard='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:6px">Treinamentos</div>'+trRows+
+    '<div class="card" style="padding:10px 12px;margin-top:10px;background:var(--surface2)"><div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
+      '<input type="hidden" id="fi-tr-id">'+
+      '<div class="field" style="margin:0;flex:1;min-width:150px"><label style="font-size:.72rem">Treinamento</label><input id="fi-tr-nome" placeholder="ex.: NR-33"></div>'+
+      '<div class="field" style="margin:0;flex:1;min-width:120px"><label style="font-size:.72rem">Instituição</label><input id="fi-tr-inst"></div>'+
+      '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.72rem">Data</label><input id="fi-tr-data" type="date"></div>'+
+      '<div class="field" style="margin:0;max-width:90px"><label style="font-size:.72rem">Carga (h)</label><input id="fi-tr-carga" type="number" min="0" value="0"></div>'+
+      '<button class="btn sm" type="button" id="fi-tr-add">Salvar</button></div>'+
+      '<div class="field" style="margin:8px 0 0"><input id="fi-tr-obs" placeholder="observação (opcional)" style="width:100%"></div></div></div>';
+  // --- Evolução (horas reais) ---
+  var maxM=0;(ev.porMes||[]).forEach(function(x){if(Number(x.h)>maxM)maxM=Number(x.h);});
+  var mesBars=(ev.porMes||[]).slice().reverse().map(function(x){var w=maxM>0?Math.round(Number(x.h)/maxM*100):0;return '<div class="row" style="gap:8px;align-items:center;margin:2px 0"><span class="muted" style="font-size:.74rem;min-width:62px">'+esc(x.ym)+'</span><div style="flex:1;background:var(--line);border-radius:4px;height:10px"><div style="width:'+w+'%;background:var(--brand,#1f7a3d);height:10px;border-radius:4px"></div></div><span style="font-size:.74rem;min-width:48px;text-align:right">'+x.h+'h</span></div>';}).join("");
+  var projRows=(ev.porProjeto||[]).map(function(x){return '<div class="row" style="gap:8px;padding:3px 0;border-bottom:1px dashed var(--line)"><span style="font-size:.8rem;flex:1">'+esc(x.cc)+(x.projeto?' — '+esc(x.projeto):'')+(x.subtipo?' <span class="muted">['+esc(x.subtipo)+']</span>':'')+'</span><span style="font-size:.8rem;font-weight:600">'+x.h+'h</span></div>';}).join("")||'<p class="muted" style="font-size:.82rem;margin:4px 0">Sem horas aprovadas ainda.</p>';
+  var evCard='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:6px">Evolução (pelas horas aprovadas)</div>'+
+    '<div class="row" style="gap:20px;flex-wrap:wrap;margin-bottom:8px"><div><div class="muted" style="font-size:.72rem">Horas aprovadas</div><div style="font-weight:700">'+tot.h+' h</div></div>'+
+      '<div><div class="muted" style="font-size:.72rem">Lançamentos</div><div style="font-weight:700">'+tot.n+'</div></div>'+
+      '<div><div class="muted" style="font-size:.72rem">Projetos</div><div style="font-weight:700">'+(ev.porProjeto||[]).length+'</div></div></div>'+
+    '<div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;margin:6px 0 2px">Por mês</div>'+(mesBars||'<p class="muted" style="font-size:.82rem;margin:2px 0">Sem histórico.</p>')+
+    '<div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 2px">Por projeto</div>'+projRows+'</div>';
+
+  box.innerHTML='<h3 style="font-size:1.05rem;margin:4px 0 12px">'+titulo+'</h3>'+cvCard+skCard+mtCard+trCard+evCard;
+
+  // ---- wiring ----
+  var q=function(id){return box.querySelector(id);};
+  var cvMsg=function(t,err){var m=q("#fi-cv-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);if(t&&!err)setTimeout(function(){if(m&&m.textContent===t)m.textContent="";},1600);}};
+  q("#fi-cv-save").onclick=function(){cvMsg("Salvando…");api("pessoafichaset",Object.assign({resumo:q("#fi-resumo").value,formacao:q("#fi-formacao").value,experiencia:q("#fi-exp").value,lattes_url:q("#fi-laturl").value,lattes_id:q("#fi-latid").value},A)).then(function(){cvMsg("Salvo.");}).catch(function(e){cvMsg(e.message||"Erro",1);});};
+  var up=q("#fi-cv-up");if(up)up.onchange=function(){_fichaUpload(up.files[0],"pessoafichacv",A,_fichaLoad);};
+  var cvv=q("#fi-cv-ver");if(cvv)cvv.onclick=function(){_fichaPdf("cv");};
+  var cvr=q("#fi-cv-rm");if(cvr)cvr.onclick=function(){if(!confirm("Remover o PDF do currículo?"))return;api("pessoafichacv",Object.assign({remover:1},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};
+  // skills
+  q("#fi-sk-add").onclick=function(){var nome=q("#fi-sk-nome").value.trim();if(!nome){alert("Informe a habilidade.");return;}api("pessoaskillset",Object.assign({id:q("#fi-sk-id").value||undefined,nome:nome,nivel:q("#fi-sk-nivel").value,area:q("#fi-sk-area").value,obs:q("#fi-sk-obs").value},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};
+  box.querySelectorAll(".fi-sk-ed").forEach(function(b){b.onclick=function(){q("#fi-sk-id").value=b.dataset.id;q("#fi-sk-nome").value=b.dataset.nome;q("#fi-sk-nivel").value=b.dataset.nivel;q("#fi-sk-area").value=b.dataset.area;q("#fi-sk-obs").value=b.dataset.obs;q("#fi-sk-nome").focus();};});
+  box.querySelectorAll(".fi-sk-del").forEach(function(b){b.onclick=function(){if(!confirm("Remover esta habilidade?"))return;api("pessoaskilldel",Object.assign({id:b.dataset.id},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};});
+  box.querySelectorAll(".fi-sk-sug").forEach(function(b){b.onclick=function(){api("pessoaskillset",Object.assign({nome:b.dataset.nome,nivel:2,area:b.dataset.nome,origem:"auto"},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};});
+  // metas
+  q("#fi-mt-add").onclick=function(){var o=q("#fi-mt-obj").value.trim();if(!o){alert("Descreva a meta.");return;}api("pessoametaset",Object.assign({id:q("#fi-mt-id").value||undefined,objetivo:o,prazo:q("#fi-mt-prazo").value,status:q("#fi-mt-status").value,progresso:q("#fi-mt-prog").value,obs:q("#fi-mt-obs").value},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};
+  box.querySelectorAll(".fi-mt-ed").forEach(function(b){b.onclick=function(){q("#fi-mt-id").value=b.dataset.id;q("#fi-mt-obj").value=b.dataset.objetivo;q("#fi-mt-prazo").value=b.dataset.prazo;q("#fi-mt-status").value=b.dataset.status;q("#fi-mt-prog").value=b.dataset.progresso;q("#fi-mt-obs").value=b.dataset.obs;q("#fi-mt-obj").focus();};});
+  box.querySelectorAll(".fi-mt-del").forEach(function(b){b.onclick=function(){if(!confirm("Remover esta meta?"))return;api("pessoametadel",Object.assign({id:b.dataset.id},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};});
+  // treinos
+  q("#fi-tr-add").onclick=function(){var nome=q("#fi-tr-nome").value.trim();if(!nome){alert("Informe o treinamento.");return;}api("pessoatreinoset",Object.assign({id:q("#fi-tr-id").value||undefined,nome:nome,instituicao:q("#fi-tr-inst").value,data:q("#fi-tr-data").value,carga_h:q("#fi-tr-carga").value,obs:q("#fi-tr-obs").value},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};
+  box.querySelectorAll(".fi-tr-ed").forEach(function(b){b.onclick=function(){q("#fi-tr-id").value=b.dataset.id;q("#fi-tr-nome").value=b.dataset.nome;q("#fi-tr-inst").value=b.dataset.inst;q("#fi-tr-data").value=b.dataset.data;q("#fi-tr-carga").value=b.dataset.carga;q("#fi-tr-obs").value=b.dataset.obs;q("#fi-tr-nome").focus();};});
+  box.querySelectorAll(".fi-tr-del").forEach(function(b){b.onclick=function(){if(!confirm("Remover este treinamento?"))return;api("pessoatreinodel",Object.assign({id:b.dataset.id},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};});
+  box.querySelectorAll(".fi-tr-ver").forEach(function(b){b.onclick=function(){_fichaPdf("treino",b.dataset.id);};});
+  box.querySelectorAll(".fi-tr-rmc").forEach(function(b){b.onclick=function(){if(!confirm("Remover o comprovante?"))return;api("pessoatreinocomprov",Object.assign({id:b.dataset.id,remover:1},A)).then(_fichaLoad).catch(function(e){alert(e.message||e);});};});
+  box.querySelectorAll(".fi-tr-up").forEach(function(inp){inp.onchange=function(){_fichaUpload(inp.files[0],"pessoatreinocomprov",Object.assign({id:inp.dataset.id},A),_fichaLoad);};});
+}
+
 function viewRh(el){
   el.innerHTML=viewHead("Gestão","RH, Cargos e Rotinas",
     "O que se espera de cada função na casa: missão, responsabilidades, entregáveis, rotinas, cadência e onboarding. A Coordenação edita; o vínculo de cada pessoa ao cargo vem do cadastro de colaboradores.")+

@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19b";
+const SCHEMA_VER = "2026-10-19c";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -892,6 +892,40 @@ function ensureSchema(): Promise<void> {
       } catch (_) { /* backfill best-effort */ }
     } catch (_) { /* ja existe */ }
 
+    /* ===== Onda 3 / INC 2 — FICHA DA PESSOA (CV estruturado + Lattes + skills + metas +
+     * treinamentos). Dados PESSOAIS: o gate de leitura/escrita e aplicado NA FONTE (acoes
+     * pessoaficha*): a propria pessoa (piso equipe) OU RH/coordenacao/dono. O PDF do CV e do
+     * comprovante vivem no R2 (BLOB), servidos de forma privada pela rota /pessoa/arquivo.
+     * Sem valor monetario. Nascem VAZIAS — nada inventado. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS pessoa_ficha (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL,
+        resumo TEXT DEFAULT '', formacao TEXT DEFAULT '', experiencia TEXT DEFAULT '',
+        lattes_url TEXT DEFAULT '', lattes_id TEXT DEFAULT '',
+        cv_key TEXT DEFAULT '', cv_nome TEXT DEFAULT '', cv_atualizado TEXT DEFAULT '',
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, slug))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS pessoa_skill (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL,
+        nome TEXT DEFAULT '', nivel INTEGER DEFAULT 1, origem TEXT DEFAULT 'manual',
+        area TEXT DEFAULT '', obs TEXT DEFAULT '', atualizado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS pessoa_skill_slug ON pessoa_skill (tenant_id, slug)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS pessoa_meta (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL,
+        objetivo TEXT DEFAULT '', prazo TEXT DEFAULT '', status TEXT DEFAULT 'aberta',
+        progresso INTEGER DEFAULT 0, obs TEXT DEFAULT '', atualizado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS pessoa_meta_slug ON pessoa_meta (tenant_id, slug)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS pessoa_treino (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL,
+        nome TEXT DEFAULT '', instituicao TEXT DEFAULT '', data TEXT DEFAULT '', carga_h REAL DEFAULT 0,
+        comprov_key TEXT DEFAULT '', comprov_nome TEXT DEFAULT '', obs TEXT DEFAULT '',
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS pessoa_treino_slug ON pessoa_treino (tenant_id, slug)"); } catch (_) {}
+    } catch (_) { /* ja existe */ }
+
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
      * os cold starts seguintes deste D1 (nova instancia = `ready` resetado) leem
      * schema_ver == SCHEMA_VER e pulam todo o setup. Em D1 EXISTENTE sem sentinela
@@ -1470,6 +1504,11 @@ const MIN: Record<string, Papel> = {
   rh: "coordenacao", rhset: "coordenacao", rhdel: "coordenacao", rhatribuir: "coordenacao",
   // Onda 3 / INC 1 — multi-cargo (piso coordenacao; cap fina pessoas.cargo_atribuir no branch).
   rhcargoadd: "coordenacao", rhcargodel: "coordenacao", rhcargoprincipal: "coordenacao", rhcargofoco: "coordenacao",
+  // Onda 3 / INC 2 — ficha da pessoa (piso equipe = time interno vê/edita a PRÓPRIA; o acesso à
+  // ficha de OUTRA pessoa é gated no branch: self OU rh.ver/pessoas.cargo_atribuir/coord/dono).
+  pessoaficha: "equipe", pessoafichaset: "equipe", pessoafichacv: "equipe",
+  pessoaskillset: "equipe", pessoaskilldel: "equipe", pessoametaset: "equipe", pessoametadel: "equipe",
+  pessoatreinoset: "equipe", pessoatreinodel: "equipe", pessoatreinocomprov: "equipe",
   // G3 — gestão de colaboradores (quadro `membro`): piso coordenacao; gate fino por capability no branch.
   rhmembros: "coordenacao", rhmembroadd: "coordenacao", rhmembroset: "coordenacao", rhmembrodel: "coordenacao",
   // "Meu cargo": todo logado vê o DETALHE do PRÓPRIO cargo (piso cliente). Só leitura.
@@ -1513,6 +1552,7 @@ const MODULOS: Modulo[] = [
   { id: "escritorio", view: "escritorio", acao: "escritorio",   label: "Escritório de IA", titulo: "Escritório de IA",     resumo: "Catalogo e lancador dos agentes, skills e tools da casa (rodam no Claude Code).",     icon: "🤖", grupo: "CONHECIMENTO" },
   { id: "comercial",  view: "comercial",  acao: "comercial",    label: "Comercial · CRM",  titulo: "Comercial · CRM & Leads",resumo: "Pipeline comercial (CRM), leads inbound, horas da equipe e prospecção georreferenciada por bacia.", icon: "📍", grupo: "COMERCIAL" },
   { id: "rh",         view: "rh",         acao: "rh",           label: "RH & Cargos",      titulo: "RH, Cargos e Rotinas", resumo: "Cargos, responsabilidades, rotinas e onboarding por função. Área de gestão.", icon: "👥", grupo: "PESSOAS" },
+  { id: "ficha",      view: "ficha",      acao: "pessoaficha",  label: "Minha ficha",      titulo: "Ficha da Pessoa",      resumo: "Seu currículo, Lattes, habilidades, metas, treinamentos e evolução pelas horas.", icon: "🧑‍🎓", grupo: "PESSOAS" },
   { id: "dna",        view: "dna",        acao: "dna",          label: "DNA & Ativos",     titulo: "DNA & Ativos da Marca",resumo: "Kit de marca, logos e documentos institucionais da casa.", icon: "🎨", grupo: "CONHECIMENTO" },
   { id: "financeiro", view: "financeiro", acao: "financeiro",   label: "Financeiro",       titulo: "Financeiro — Lucro × Prejuízo", resumo: "Custo real × valor contratado por projeto, em tempo real. Área do dono.", icon: "💰", grupo: "FINANCEIRO" },
   { id: "permissoes", view: "permissoes", acao: "perms",        label: "Permissões",       titulo: "Permissões & Acessos", resumo: "Áreas confidenciais e concessão de acervo.",           icon: "🔒", grupo: "ADMINISTRAÇÃO" },
@@ -1700,6 +1740,9 @@ const EVENTOS_SENSIVEIS: string[] = [
   "membro_add", "membro_set", "membro_del",
   // Onda 3 — atribuição de cargo (dirige o ACESSO da pessoa): multi-cargo e vínculo.
   "rh_atribuir", "rh_cargo_add", "rh_cargo_del", "rh_cargo_princ", "rh_cargo_foco",
+  // Onda 3 — ficha da pessoa (dados pessoais/LGPD): CV, skills, metas, treinamentos.
+  "pessoa_ficha", "pessoa_cv", "pessoa_skill", "pessoa_skill_del", "pessoa_meta", "pessoa_meta_del",
+  "pessoa_treino", "pessoa_treino_del", "pessoa_arquivo",
   // M4 — falha de entrega de e-mail (retida para rastreio operacional).
   "email_falha",
 ];
@@ -1707,6 +1750,22 @@ const EVENTOS_SENSIVEIS: string[] = [
  *  e PEQUENA e sem upload externo; o front reduz a imagem a um quadrado pequeno antes de
  *  enviar. O servidor ainda assim valida formato e tamanho (fronteira no servidor). */
 const AVATAR_MAX = 65536;
+/** Onda 3 / INC 2 — teto do PDF (CV e comprovante de treinamento) enviado ao R2, em bytes. 6 MB
+ *  cobre currículos e certificados; o servidor valida tamanho e assinatura %PDF (fronteira real). */
+const PDF_MAX_BYTES = 6 * 1024 * 1024;
+/** Decodifica uma data URL / base64 de PDF em bytes, validando assinatura e teto. Lanca em erro. */
+function pdfFromB64(raw: string): { bytes: Uint8Array } {
+  let b = String(raw || "");
+  const v = b.indexOf("base64,"); if (v >= 0) b = b.slice(v + 7);
+  b = b.replace(/\s/g, "");
+  if (!b) throw new Error("Arquivo vazio.");
+  let bin: string; try { bin = atob(b); } catch { throw new Error("Arquivo inválido (base64)."); }
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  if (bytes.length > PDF_MAX_BYTES) throw new Error("PDF grande demais (limite de 6 MB).");
+  if (!(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)) throw new Error("Envie um arquivo PDF.");
+  return { bytes };
+}
 
 /* CARTEIRA EXECUTIVA — DESTAQUES DA SEMANA (derivados no SERVIDOR dos dados reais, tenant-filtrados).
  * Quatro lentes, cada uma com os projetos que mais pedem atenção nesta semana corrente (segunda→domingo):
@@ -3703,6 +3762,166 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true };
   }
 
+  /* ===== Onda 3 / INC 2 — FICHA DA PESSOA (CV/Lattes + skills + metas + treinamentos +
+   * evolução pelas horas). Dados pessoais (LGPD): a própria pessoa (piso equipe) OU
+   * RH/coordenação/dono. O gate é aplicado AQUI, na fonte. ========================= */
+  if (action === "pessoaficha" || action === "pessoafichaset" || action === "pessoafichacv" ||
+      action === "pessoaskillset" || action === "pessoaskilldel" || action === "pessoametaset" ||
+      action === "pessoametadel" || action === "pessoatreinoset" || action === "pessoatreinodel" ||
+      action === "pessoatreinocomprov") {
+    const u = await auth(p);
+    const T = u.tenant_id;
+    const alvo = (String(p.alvo || "").trim() || u.slug);
+    const ehOutro = alvo !== u.slug;
+    if (ehOutro) {
+      const caps = await capsDe({ slug: u.slug, papel: u.papel });
+      if (!(isOwner(u.slug) || u.coord || temCapSet(caps, "rh.ver") || temCapSet(caps, "pessoas.cargo_atribuir")))
+        throw new Error("Sem acesso à ficha de outra pessoa.");
+      const ex = await sqlite.execute({ sql: "SELECT slug FROM membro WHERE tenant_id = ? AND slug = ? LIMIT 1", args: [T, alvo] });
+      if (!ex.rows.length && !COLABS.includes(alvo)) throw new Error("Colaborador desconhecido.");
+    }
+    const nowIso = new Date().toISOString();
+    const g = (k: string, n: number) => String(p[k] == null ? "" : p[k]).slice(0, n);
+
+    if (action === "pessoaficha") {
+      const fr = await sqlite.execute({ sql: "SELECT resumo, formacao, experiencia, lattes_url, lattes_id, cv_key, cv_nome, cv_atualizado, atualizado FROM pessoa_ficha WHERE tenant_id = ? AND slug = ? LIMIT 1", args: [T, alvo] });
+      const f = (fr.rows[0] as P) || {};
+      const sk = await sqlite.execute({ sql: "SELECT id, nome, nivel, origem, area, obs, atualizado FROM pessoa_skill WHERE tenant_id = ? AND slug = ? ORDER BY area, nome", args: [T, alvo] });
+      const mt = await sqlite.execute({ sql: "SELECT id, objetivo, prazo, status, progresso, obs, atualizado FROM pessoa_meta WHERE tenant_id = ? AND slug = ? ORDER BY (status='concluida'), (status='cancelada'), prazo", args: [T, alvo] });
+      const tr = await sqlite.execute({ sql: "SELECT id, nome, instituicao, data, carga_h, comprov_key, comprov_nome, obs FROM pessoa_treino WHERE tenant_id = ? AND slug = ? ORDER BY data DESC, nome", args: [T, alvo] });
+      // EVOLUÇÃO = horas APROVADAS reais (nada inventado): total, por projeto, por mês.
+      let total = { h: 0, n: 0 }, porProjeto: P[] = [], porMes: P[] = [], sugestoes: string[] = [];
+      try {
+        const tot = await sqlite.execute({ sql: "SELECT COALESCE(SUM(h),0) h, COUNT(*) n FROM lanc WHERE tenant_id = ? AND slug = ? AND s = 'APROVADO'", args: [T, alvo] });
+        total = { h: Math.round((Number((tot.rows[0] as P).h) || 0) * 10) / 10, n: Number((tot.rows[0] as P).n) || 0 };
+        const pp = await sqlite.execute({ sql: "SELECT l.cc cc, COALESCE(p.projeto,'') projeto, COALESCE(p.subtipo,'') subtipo, ROUND(SUM(l.h),1) h FROM lanc l LEFT JOIN proj p ON p.cc = l.cc AND p.tenant_id = l.tenant_id WHERE l.tenant_id = ? AND l.slug = ? AND l.s = 'APROVADO' GROUP BY l.cc ORDER BY h DESC LIMIT 15", args: [T, alvo] });
+        porProjeto = pp.rows as P[];
+        const pm = await sqlite.execute({ sql: "SELECT substr(d,1,7) ym, ROUND(SUM(h),1) h FROM lanc WHERE tenant_id = ? AND slug = ? AND s = 'APROVADO' AND length(d) >= 7 GROUP BY ym ORDER BY ym DESC LIMIT 12", args: [T, alvo] });
+        porMes = pm.rows as P[];
+        // SUGESTÃO de skill (confirmação humana): subtipos reais dos projetos trabalhados, que
+        // ainda não viraram skill. Nunca grava sozinho — vira skill só quando a pessoa/RH aceita.
+        const jaTem = new Set((sk.rows as P[]).map((x) => String(x.nome || "").trim().toLowerCase()));
+        const seen = new Set<string>();
+        for (const row of porProjeto) {
+          const st = String(row.subtipo || "").trim();
+          if (st && !jaTem.has(st.toLowerCase()) && !seen.has(st.toLowerCase())) { seen.add(st.toLowerCase()); sugestoes.push(st); }
+        }
+        sugestoes = sugestoes.slice(0, 8);
+      } catch (_) { /* lanc/proj sem tenant_id em algum ambiente: evolução fica vazia */ }
+      return {
+        ok: true, alvo, nome: (NOMES[alvo] || alvo), ehProprio: !ehOutro, podeEditar: true,
+        ficha: { resumo: f.resumo || "", formacao: f.formacao || "", experiencia: f.experiencia || "", lattes_url: f.lattes_url || "", lattes_id: f.lattes_id || "", atualizado: f.atualizado || "" },
+        temCv: !!f.cv_key, cvNome: f.cv_nome || "", cvAtualizado: f.cv_atualizado || "",
+        skills: sk.rows, metas: mt.rows, treinos: (tr.rows as P[]).map((x) => ({ id: x.id, nome: x.nome, instituicao: x.instituicao, data: x.data, carga_h: x.carga_h, obs: x.obs, temComprov: !!x.comprov_key, comprovNome: x.comprov_nome || "" })),
+        evolucao: { total, porProjeto, porMes }, sugestoes,
+      };
+    }
+
+    if (action === "pessoafichaset") {
+      await sqlite.execute({
+        sql: "INSERT INTO pessoa_ficha (tenant_id, slug, resumo, formacao, experiencia, lattes_url, lattes_id, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id, slug) DO UPDATE SET resumo=excluded.resumo, formacao=excluded.formacao, experiencia=excluded.experiencia, lattes_url=excluded.lattes_url, lattes_id=excluded.lattes_id, atualizado=excluded.atualizado, u=excluded.u",
+        args: [T, alvo, g("resumo", 4000), g("formacao", 4000), g("experiencia", 6000), g("lattes_url", 300), g("lattes_id", 60), nowIso, u.slug],
+      });
+      await audit("pessoa_ficha", u.slug, alvo, ip);
+      return { ok: true, alvo };
+    }
+
+    if (action === "pessoafichacv") {
+      if (p.remover) {
+        const cur = await sqlite.execute({ sql: "SELECT cv_key FROM pessoa_ficha WHERE tenant_id = ? AND slug = ? LIMIT 1", args: [T, alvo] });
+        const key = String((cur.rows[0] as P || {}).cv_key || "");
+        if (key && ENV.BLOB) { try { await ENV.BLOB.delete(key); } catch (_) {} }
+        await sqlite.execute({ sql: "INSERT INTO pessoa_ficha (tenant_id, slug, cv_key, cv_nome, cv_atualizado, u) VALUES (?,?, '', '', '', ?) ON CONFLICT(tenant_id, slug) DO UPDATE SET cv_key='', cv_nome='', cv_atualizado='', u=excluded.u", args: [T, alvo, u.slug] });
+        await audit("pessoa_cv", u.slug, alvo + " (removido)", ip);
+        return { ok: true, alvo, removido: true };
+      }
+      if (!ENV.BLOB) throw new Error("Armazenamento de arquivos indisponível.");
+      const { bytes } = pdfFromB64(String(p.b64 || p.data || ""));
+      const key = "ficha/" + T + "/" + alvo + "/cv.pdf";
+      await ENV.BLOB.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
+      const nome = (g("nome", 160) || "curriculo.pdf");
+      await sqlite.execute({ sql: "INSERT INTO pessoa_ficha (tenant_id, slug, cv_key, cv_nome, cv_atualizado, atualizado, u) VALUES (?,?,?,?,?,?,?) ON CONFLICT(tenant_id, slug) DO UPDATE SET cv_key=excluded.cv_key, cv_nome=excluded.cv_nome, cv_atualizado=excluded.cv_atualizado, atualizado=excluded.atualizado, u=excluded.u", args: [T, alvo, key, nome, nowIso, nowIso, u.slug] });
+      await audit("pessoa_cv", u.slug, alvo + " (" + bytes.length + "B)", ip);
+      return { ok: true, alvo, cvNome: nome };
+    }
+
+    if (action === "pessoaskillset") {
+      const nome = g("nome", 120).trim(); if (!nome) throw new Error("Informe a habilidade.");
+      const nivel = Math.max(1, Math.min(5, Number(p.nivel) || 1));
+      const origem = String(p.origem || "").trim() === "auto" ? "auto" : "manual";
+      let id = String(p.id || "").trim();
+      if (id) { const ex = await sqlite.execute({ sql: "SELECT slug FROM pessoa_skill WHERE tenant_id = ? AND id = ? LIMIT 1", args: [T, id] }); if (ex.rows.length && String((ex.rows[0] as P).slug) !== alvo) throw new Error("Habilidade de outra pessoa."); }
+      else id = crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO pessoa_skill (tenant_id, id, slug, nome, nivel, origem, area, obs, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id, id) DO UPDATE SET nome=excluded.nome, nivel=excluded.nivel, area=excluded.area, obs=excluded.obs, atualizado=excluded.atualizado, u=excluded.u", args: [T, id, alvo, nome, nivel, origem, g("area", 80), g("obs", 600), nowIso, u.slug] });
+      await audit("pessoa_skill", u.slug, alvo + ": " + nome, ip);
+      return { ok: true, alvo, id };
+    }
+    if (action === "pessoaskilldel") {
+      const id = String(p.id || "").trim(); if (!id) throw new Error("Habilidade inválida.");
+      await sqlite.execute({ sql: "DELETE FROM pessoa_skill WHERE tenant_id = ? AND id = ? AND slug = ?", args: [T, id, alvo] });
+      await audit("pessoa_skill_del", u.slug, alvo + "/" + id, ip);
+      return { ok: true };
+    }
+
+    if (action === "pessoametaset") {
+      const objetivo = g("objetivo", 600).trim(); if (!objetivo) throw new Error("Descreva a meta.");
+      const status = ["aberta", "andamento", "concluida", "cancelada"].includes(String(p.status)) ? String(p.status) : "aberta";
+      const progresso = Math.max(0, Math.min(100, Number(p.progresso) || 0));
+      let id = String(p.id || "").trim();
+      if (id) { const ex = await sqlite.execute({ sql: "SELECT slug FROM pessoa_meta WHERE tenant_id = ? AND id = ? LIMIT 1", args: [T, id] }); if (ex.rows.length && String((ex.rows[0] as P).slug) !== alvo) throw new Error("Meta de outra pessoa."); }
+      else id = crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO pessoa_meta (tenant_id, id, slug, objetivo, prazo, status, progresso, obs, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id, id) DO UPDATE SET objetivo=excluded.objetivo, prazo=excluded.prazo, status=excluded.status, progresso=excluded.progresso, obs=excluded.obs, atualizado=excluded.atualizado, u=excluded.u", args: [T, id, alvo, objetivo, g("prazo", 20), status, progresso, g("obs", 600), nowIso, u.slug] });
+      await audit("pessoa_meta", u.slug, alvo + ": " + objetivo.slice(0, 40), ip);
+      return { ok: true, alvo, id };
+    }
+    if (action === "pessoametadel") {
+      const id = String(p.id || "").trim(); if (!id) throw new Error("Meta inválida.");
+      await sqlite.execute({ sql: "DELETE FROM pessoa_meta WHERE tenant_id = ? AND id = ? AND slug = ?", args: [T, id, alvo] });
+      await audit("pessoa_meta_del", u.slug, alvo + "/" + id, ip);
+      return { ok: true };
+    }
+
+    if (action === "pessoatreinoset") {
+      const nome = g("nome", 160).trim(); if (!nome) throw new Error("Informe o treinamento.");
+      const cargaH = Math.max(0, Math.min(100000, Number(p.carga_h) || 0));
+      let id = String(p.id || "").trim();
+      if (id) { const ex = await sqlite.execute({ sql: "SELECT slug FROM pessoa_treino WHERE tenant_id = ? AND id = ? LIMIT 1", args: [T, id] }); if (ex.rows.length && String((ex.rows[0] as P).slug) !== alvo) throw new Error("Treinamento de outra pessoa."); }
+      else id = crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO pessoa_treino (tenant_id, id, slug, nome, instituicao, data, carga_h, obs, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id, id) DO UPDATE SET nome=excluded.nome, instituicao=excluded.instituicao, data=excluded.data, carga_h=excluded.carga_h, obs=excluded.obs, atualizado=excluded.atualizado, u=excluded.u", args: [T, id, alvo, nome, g("instituicao", 160), g("data", 20), cargaH, g("obs", 600), nowIso, u.slug] });
+      await audit("pessoa_treino", u.slug, alvo + ": " + nome, ip);
+      return { ok: true, alvo, id };
+    }
+    if (action === "pessoatreinocomprov") {
+      const id = String(p.id || "").trim(); if (!id) throw new Error("Treinamento inválido.");
+      const cur = await sqlite.execute({ sql: "SELECT slug, comprov_key FROM pessoa_treino WHERE tenant_id = ? AND id = ? LIMIT 1", args: [T, id] });
+      if (!cur.rows.length) throw new Error("Treinamento não encontrado.");
+      if (String((cur.rows[0] as P).slug) !== alvo) throw new Error("Treinamento de outra pessoa.");
+      const antigo = String((cur.rows[0] as P).comprov_key || "");
+      if (p.remover) {
+        if (antigo && ENV.BLOB) { try { await ENV.BLOB.delete(antigo); } catch (_) {} }
+        await sqlite.execute({ sql: "UPDATE pessoa_treino SET comprov_key='', comprov_nome='', atualizado=?, u=? WHERE tenant_id = ? AND id = ?", args: [nowIso, u.slug, T, id] });
+        await audit("pessoa_treino", u.slug, alvo + "/" + id + " (comprov removido)", ip);
+        return { ok: true, removido: true };
+      }
+      if (!ENV.BLOB) throw new Error("Armazenamento de arquivos indisponível.");
+      const { bytes } = pdfFromB64(String(p.b64 || p.data || ""));
+      const key = "ficha/" + T + "/" + alvo + "/treino-" + id + ".pdf";
+      await ENV.BLOB.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
+      const nome = (g("nome", 160) || "comprovante.pdf");
+      await sqlite.execute({ sql: "UPDATE pessoa_treino SET comprov_key=?, comprov_nome=?, atualizado=?, u=? WHERE tenant_id = ? AND id = ?", args: [key, nome, nowIso, u.slug, T, id] });
+      await audit("pessoa_treino", u.slug, alvo + "/" + id + " (comprov " + bytes.length + "B)", ip);
+      return { ok: true, comprovNome: nome };
+    }
+    // pessoatreinodel
+    const id = String(p.id || "").trim(); if (!id) throw new Error("Treinamento inválido.");
+    const cur = await sqlite.execute({ sql: "SELECT comprov_key FROM pessoa_treino WHERE tenant_id = ? AND id = ? AND slug = ? LIMIT 1", args: [T, id, alvo] });
+    const ck = String((cur.rows[0] as P || {}).comprov_key || "");
+    if (ck && ENV.BLOB) { try { await ENV.BLOB.delete(ck); } catch (_) {} }
+    await sqlite.execute({ sql: "DELETE FROM pessoa_treino WHERE tenant_id = ? AND id = ? AND slug = ?", args: [T, id, alvo] });
+    await audit("pessoa_treino_del", u.slug, alvo + "/" + id, ip);
+    return { ok: true };
+  }
+
   /* ===== G3 — Gestão de colaboradores (tabela `membro` editável pelo RH) =====
    * A `membro` já é a autoridade de auth; aqui a Coord. Adm/RH mantém o quadro:
    * adiciona, edita (nome/e-mail/papel), inativa/reativa e (com guardas) remove.
@@ -4601,6 +4820,39 @@ app.post("/acervo/arquivo", async (c) => {
       : "application/octet-stream";
     await audit("acervo_arquivo", u.slug, key.slice(0, 80), c.req.header("cf-connecting-ip") || "");
     return new Response(o.body, { headers: { "content-type": tipo, "cache-control": "private, max-age=120" } });
+  } catch (e: any) {
+    return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);
+  }
+});
+
+/* Onda 3 / INC 2 — serve PRIVADO do CV / comprovante de treinamento (R2 BLOB). O cliente passa
+ * slug+tipo (+id p/ treino); a CHAVE vem do banco (nunca do cliente) — sem path injection. Gate
+ * LGPD: a própria pessoa OU RH/coordenação/dono. */
+app.post("/pessoa/arquivo", async (c) => {
+  try {
+    await ensureSchema();
+    const b: P = await c.req.json().catch(() => ({} as P));
+    const u = await auth({ token: String(b.token || "") || cookieVal(c.req.header("cookie") || "", "ce_t") } as P);
+    const alvo = String(b.slug || "").trim() || u.slug;
+    if (alvo !== u.slug) {
+      const caps = await capsDe({ slug: u.slug, papel: u.papel });
+      if (!(isOwner(u.slug) || u.coord || temCapSet(caps, "rh.ver") || temCapSet(caps, "pessoas.cargo_atribuir"))) return c.text("Sem acesso à ficha de outra pessoa.", 403);
+    }
+    const tipo = String(b.tipo || "cv");
+    let key = "";
+    if (tipo === "treino") {
+      const id = String(b.id || "").trim(); if (!id) return c.text("Treinamento inválido.", 400);
+      const r = await sqlite.execute({ sql: "SELECT comprov_key FROM pessoa_treino WHERE tenant_id = ? AND id = ? AND slug = ? LIMIT 1", args: [u.tenant_id, id, alvo] });
+      key = String((r.rows[0] as P || {}).comprov_key || "");
+    } else {
+      const r = await sqlite.execute({ sql: "SELECT cv_key FROM pessoa_ficha WHERE tenant_id = ? AND slug = ? LIMIT 1", args: [u.tenant_id, alvo] });
+      key = String((r.rows[0] as P || {}).cv_key || "");
+    }
+    if (!key) return c.text("Arquivo não encontrado.", 404);
+    const o = ENV.BLOB ? await ENV.BLOB.get(key) : null;
+    if (!o) return c.text("Arquivo não encontrado.", 404);
+    await audit("pessoa_arquivo", u.slug, alvo + "/" + tipo, c.req.header("cf-connecting-ip") || "");
+    return new Response(o.body, { headers: { "content-type": "application/pdf", "cache-control": "private, max-age=60" } });
   } catch (e: any) {
     return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);
   }
