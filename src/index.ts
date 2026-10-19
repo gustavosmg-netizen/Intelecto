@@ -2088,7 +2088,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const banks: Record<string, number> = {};
     for (const r of bk.rows as P[]) banks[String(r.bank)] = Number(r.n) || 0;
     const bacias = (bc.rows as P[]).map((r) => String(r.bacia));
-    return { ok: true, banks, bacias };
+    const tr = await sqlite.execute({ sql: "SELECT COUNT(DISTINCT lead_id) n FROM lead_instrumento WHERE tenant_id = ?", args: [u.tenant_id] });
+    const tacLeads = Number((tr.rows[0] as P).n) || 0;
+    return { ok: true, banks, bacias, tacLeads };
   }
   if (action === "ambList") {
     const u = await auth(p);
@@ -2163,6 +2165,29 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       return (r.rows as P[]).map((x) => ({ chave: String(x.chave), valor: Number(x.v) || 0 }));
     };
     return { ok: true, bank, total: Number((totR.rows[0] as P).v) || 0, mun: await mkDim("mun", 20), tipo: await mkDim("tipo", 20) };
+  }
+  /* Promove um lead ambiental (empreendimento) a LEAD CANDIDATO no CRM (fila de homologação) —
+     decisão humana (gate comercial.gerir). Preserva atribuição (origem/canal/fonte). PF é
+     protegido (LGPD) e não entra. Idempotente: id determinístico LA-<amb_id> (não duplica).
+     A promoção a Lead/negócio continua sendo o botão "Aprovar → negócio" (crmLeadAprovar). */
+  if (action === "ambToCrm") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.gerir")) throw new Error("Sem permissão para promover ao CRM.");
+    const id = String(p.id || "").slice(0, 200);
+    const r = await sqlite.execute({ sql: "SELECT props, municipio, bacia FROM amb_registro WHERE tenant_id = ? AND bank = 'empreendimentos' AND id = ?", args: [u.tenant_id, id] });
+    if (!r.rows.length) throw new Error("Lead não encontrado.");
+    const row0 = r.rows[0] as P; let pr: P = {}; try { pr = JSON.parse(String(row0.props || "{}")); } catch (_) { /* */ }
+    if (String(pr.tp || "") === "PF") throw new Error("Lead de pessoa física é protegido (LGPD); promova apenas PJ.");
+    const lid = "LA-" + id;
+    const ex = await sqlite.execute({ sql: "SELECT id, status, dealid FROM crm_lead WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, lid] });
+    if (ex.rows.length) { const e0 = ex.rows[0] as P; return { ok: true, id: lid, jaExiste: true, status: String(e0.status || ""), dealid: String(e0.dealid || "") }; }
+    const g = (k: string, n = 200) => String(pr[k] == null ? "" : pr[k]).slice(0, n);
+    const hoje = new Date().toISOString().slice(0, 10);
+    const bacia = String(row0.bacia || "").replace(/_/g, " ");
+    const msg = "Lead promovido da tela de Leads Ambientais (bacia " + bacia + "). Cód. DN217 " + g("cd") + " · atividade: " + g("a", 280) + (g("sv") ? " · serviço sugerido: " + g("sv", 200) : "");
+    await sqlite.execute({ sql: "INSERT INTO crm_lead (tenant_id, id, empresa, segmento, cidade, produto, sinal, fonte, status, descoberto, origem, mensagem, canal) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", args: [u.tenant_id, lid, g("n"), g("s"), String(row0.municipio || ""), g("sv"), g("pq", 400), "Prospecção · base ambiental MG", "candidato", hoje, "base-ambiental-mg", msg, "prospeccao-amb"] });
+    await audit("amb_to_crm", u.slug, id + " -> " + lid, ip);
+    return { ok: true, id: lid, jaExiste: false };
   }
   if (action === "ambFicha") {
     const u = await auth(p);

@@ -632,7 +632,7 @@ function viewHub(){
 function render(){
   const el=$("#ap-view");
   if(state.view==="hub") el.innerHTML=viewHub();
-  else if(state.view==="inicio") el.innerHTML=viewInicio();
+  else if(state.view==="inicio"){el.innerHTML=viewInicio();if(typeof _ambHomeKpi==="function")_ambHomeKpi();}
   else if(state.view==="lancar"){el.innerHTML=viewLancar();ligaLancar()}
   else if(state.view==="apont") el.innerHTML=viewApont();
   else if(state.view==="pend") el.innerHTML=viewPend();
@@ -3646,14 +3646,26 @@ function _ambFicha(id){
       +'<label class="muted" style="font-size:12px">Status</label><br><select id="amb-fn-st" class="input sm"'+(pode?"":" disabled")+'>'+sts.map(function(s){return '<option'+(s===funil.status?" selected":"")+'>'+esc(s)+'</option>';}).join("")+'</select><br>'
       +'<label class="muted" style="font-size:12px;display:block;margin-top:8px">Notas</label><textarea id="amb-fn-nt" class="input sm" style="width:100%;min-height:68px"'+(pode?"":" disabled")+'>'+esc(funil.notas||"")+'</textarea>'
       +(pode?'<br><button class="btn sm" id="amb-fn-save" style="margin-top:8px">Salvar no funil</button><span id="amb-fn-ok" class="muted" style="font-size:12px;margin-left:8px"></span>':'<p class="muted" style="font-size:12px">Somente leitura (sem permissão para gerir o funil).</p>');
+    // Promover a Lead Candidato no CRM (só empreendimentos PJ, com permissão de gerir).
+    var crmH="";
+    if(AMB.bank==="empreendimentos"&&pode&&String(r.tp||"")!=="PF"){
+      crmH='<div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px"><button class="btn sm" id="amb-crm-btn">➕ Promover a Lead Candidato (CRM)</button> <span id="amb-crm-ok" class="muted" style="font-size:12px;margin-left:6px"></span>'
+        +'<div class="muted" style="font-size:11px;margin-top:4px">Cria um candidato na fila de homologação do CRM (origem rastreável). A promoção a negócio é feita no CRM, por decisão humana.</div></div>';
+    }
     m.innerHTML='<div class="card" style="max-width:720px;margin:0 auto;padding:18px">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
       +'<div><h3 style="margin:0">'+titulo+'</h3><p class="muted" style="margin:2px 0;font-size:13px">'+esc(_ambFmtBacia(r._bacia))+(r._m?' · '+esc(r._m):"")+' '+coord+'</p></div>'
       +'<button class="btn sec sm" id="amb-fecha">Fechar</button></div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">'+campos+'</div>'
-      +extra+instH+funilH+'</div>';
+      +extra+instH+crmH+funilH+'</div>';
     var fx=document.getElementById("amb-fecha"); if(fx)fx.onclick=function(){m.style.display="none";m.innerHTML="";};
     m.onclick=function(ev){if(ev.target===m){m.style.display="none";m.innerHTML="";}};
+    var cb=document.getElementById("amb-crm-btn");
+    if(cb)cb.onclick=function(){cb.disabled=true;var ok=document.getElementById("amb-crm-ok");if(ok)ok.textContent="enviando…";
+      api("ambToCrm",{id:r._id}).then(function(res){var ok2=document.getElementById("amb-crm-ok");
+        if(res.jaExiste){if(ok2)ok2.textContent="já no CRM (status: "+(res.status||"candidato")+")";cb.textContent="já no CRM";}
+        else{if(ok2)ok2.textContent="✓ candidato criado na fila do CRM";cb.textContent="✓ no CRM";}
+      }).catch(function(e){cb.disabled=false;var ok2=document.getElementById("amb-crm-ok");if(ok2)ok2.textContent="erro: "+(e.message||e);});};
     var sv=document.getElementById("amb-fn-save");
     if(sv)sv.onclick=function(){sv.disabled=true;var ok=document.getElementById("amb-fn-ok");if(ok)ok.textContent="salvando…";
       api("funnel_push",{key:funil.key,status:document.getElementById("amb-fn-st").value,notas:document.getElementById("amb-fn-nt").value}).then(function(){sv.disabled=false;if(ok)ok.textContent="salvo ✓";}).catch(function(e){sv.disabled=false;if(ok)ok.textContent="erro: "+(e.message||e);});};
@@ -4139,9 +4151,26 @@ function viewInicioExec(){
       '<button class="subnav-btn" data-tab="area-fin">Financeiro</button>'+
     '</div>'+
     '<div class="tabpanel" id="area-eng">'+resumo+'</div>'+
-    '<div class="tabpanel hidden" id="area-com">'+com+'</div>'+
+    '<div class="tabpanel hidden" id="area-com">'
+      +'<div class="card" id="exec-leads-card" title="Abrir Leads Ambientais" style="margin-bottom:12px;cursor:pointer"><div style="display:flex;gap:22px;flex-wrap:wrap;align-items:center">'
+      +'<div class="kpi"><div class="v" id="exec-leads-emp" style="color:var(--brand)">…</div><div class="l">Leads ambientais (MG)</div></div>'
+      +'<div class="kpi"><div class="v" id="exec-leads-tot">…</div><div class="l">Registros no D1 (14 bancos)</div></div>'
+      +'<div class="kpi"><div class="v" id="exec-leads-tac">…</div><div class="l">Leads com TAC</div></div>'
+      +'<span class="muted" style="font-size:.8rem">base de prospecção na nuvem · clique para abrir →</span></div></div>'
+      +com+'</div>'+
     '<div class="tabpanel hidden" id="area-fin">'+fin+'</div>'+
   '</div></div>';
+}
+/* KPI de leads na home (Resumo Executivo): preenche os contadores do card via ambMeta (leve). */
+function _ambHomeKpi(){
+  var e=document.getElementById("exec-leads-emp"); if(!e)return;
+  var card=document.getElementById("exec-leads-card"); if(card)card.onclick=function(){if(typeof irPara==="function")irPara("comercial");};
+  api("ambMeta").then(function(j){
+    var b=(j&&j.banks)||{}; var tot=0; for(var k in b)tot+=Number(b[k])||0;
+    e.textContent=(Number(b.empreendimentos)||0).toLocaleString("pt-BR");
+    var t=document.getElementById("exec-leads-tot"); if(t)t.textContent=tot.toLocaleString("pt-BR");
+    var tac=document.getElementById("exec-leads-tac"); if(tac)tac.textContent=(Number(j.tacLeads)||0).toLocaleString("pt-BR");
+  }).catch(function(){e.textContent="—";});
 }
 
 /* ---- Lançar ---- */
