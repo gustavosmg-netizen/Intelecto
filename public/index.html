@@ -1078,11 +1078,12 @@ function _finBloco(j){
     linha("Consumíveis",fmtBRL(f.consumiveis||0))+
     linha("Terceiros / contratações",fmtBRL(f.terceiros||0))+
     linha("Outros",fmtBRL(f.outros))+
+    (f.rateioFix?linha("Rateio de fixos (overhead, por horas)",fmtBRL(f.rateioFix)):"")+
     linha("Custo total",fmtBRL(f.custoTotal),true)+
     linha("Valor contratado",temContrato?fmtBRL(f.contratado):"— não informado")+
     '<div style="display:flex;justify-content:space-between;gap:10px;font-size:.9rem;padding:6px 0 0;margin-top:4px;border-top:2px solid '+cor+';font-weight:700"><span>Margem (lucro real)</span><span style="color:'+cor+';font-variant-numeric:tabular-nums">'+(temContrato?fmtBRL(f.margem):"—")+'</span></div>'+
     (temContrato&&f.lucroAlvo?'<div class="muted" style="font-size:.72rem;margin-top:4px">Lucro-alvo ('+f.pct_lucro+'% do contratado): '+fmtBRL(f.lucroAlvo)+'</div>':'')+
-    '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora já embute impostos, rateio e encargos de mão de obra. Consumíveis e terceiros entram à parte.</div>'+
+    '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora embute encargos da mão de obra. Consumíveis, terceiros e o rateio dos custos fixos (overhead, por horas apontadas) entram à parte, antes da margem.</div>'+
     '</div>';
 }
 function _funcLabel(code){var c=(state.data&&state.data.catFuncoes)||[];for(var i=0;i<c.length;i++){if(c[i][0]===code)return c[i][1];}return code;}
@@ -2227,14 +2228,16 @@ function viewFinanceiro(el){
       '<button class="subnav-btn is-active" data-tab="fin-tab-res" type="button">Resumo executivo</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cart" type="button">Carteira financeira</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-ch" type="button">Custo/hora por colaborador</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-cf" type="button">Custos fixos &amp; overhead</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-fx" type="button">Fluxo de caixa</button>'+
     '</nav>'+
     '<section class="tabpanel" id="fin-tab-res"><div id="fin-res"><p class="muted" style="padding:8px 0">Carregando resumo…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cart"><div id="fin-cart"><p class="muted" style="padding:8px 0">Carregando carteira…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-ch"><div id="fin-ch"><p class="muted" style="padding:8px 0">Carregando custos…</p></div></section>'+
+    '<section class="tabpanel hidden" id="fin-tab-cf"><div id="fin-cf"><p class="muted" style="padding:8px 0">Carregando custos fixos…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-fx"><div id="fin-fx"><p class="muted" style="padding:8px 0">Carregando fluxo de caixa…</p></div></section>'+
     '</div>';
-  _finResumo();_finCarteira();_finCustoHora();_finFluxo();
+  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finFluxo();
 }
 /* RESUMO EXECUTIVO — consolidado ao vivo + materialização (snapshot datado). Tudo derivado do
    D1 (sem número inventado): financeiro da carteira, pipeline do CRM, horas e fluxo de caixa. */
@@ -2249,6 +2252,7 @@ function _finResumo(){
         kpi("Contratado",fmtBRL(f.contratado))+kpi("Custo real",fmtBRL(f.custoTotal))+
         kpi("Margem",fmtBRL(f.margem),mCor)+kpi("Margem %",(f.margemPct==null?"—":f.margemPct+"%"),mCor)+
         kpi("Projetos",(f.nProj||0)+"")+kpi("Em prejuízo",(f.nPrej||0)+"",(f.nPrej||0)>0?"var(--crit)":"")+
+        (f.overhead?kpi("Overhead rateado",fmtBRL(f.overhead)):"")+
       '</div></div>';
     var fases=pl.funil||{};var ordem=["Prospecção & Qualificação","Diagnóstico Técnico","Proposta","Negociação & Contrato","Execução","Pós-venda & Expansão"];
     var linhasFunil=ordem.filter(function(k){return fases[k];}).map(function(k){var g=fases[k];return '<tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px;font-size:.82rem">'+esc(k)+'</td><td style="padding:5px 10px;text-align:right;font-size:.82rem">'+g.n+'</td><td style="padding:5px 10px;text-align:right;font-size:.82rem">'+fmtBRL(g.val)+'</td></tr>';}).join("");
@@ -2276,6 +2280,41 @@ function _finResumo(){
     jt("res-go-fx",function(){var b=document.querySelector('[data-tab="fin-tab-fx"]');if(b)b.click();});
     jt("res-go-pipe",function(){if(typeof irPara==="function")irPara("comercial");});
   }).catch(function(e){var box=$("#fin-res");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+/* CUSTOS FIXOS / OVERHEAD — pool editável, rateado por horas sobre a carteira (Onda 2). */
+function _finCustoFixo(){
+  api("custoFixoList").then(function(j){
+    var box=$("#fin-cf");if(!box)return;var xs=j.fixos||[];
+    var CAT={comercial:"Comercial",financeiro:"Financeiro",administrativo:"Administrativo",rh:"RH",aluguel:"Aluguel",juridico:"Jurídico",relacoes_institucionais:"Relações institucionais",outros:"Outros"};
+    var opts=Object.keys(CAT).map(function(k){return '<option value="'+k+'">'+esc(CAT[k])+'</option>';}).join("");
+    var form='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.9rem;margin-bottom:8px">Novo custo fixo (overhead)</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
+        '<div class="field" style="margin:0;min-width:180px"><label style="font-size:.7rem">Categoria</label><select class="sm" id="cf-cat">'+opts+'</select></div>'+
+        '<div class="field" style="margin:0;flex:1;min-width:180px"><label style="font-size:.7rem">Descrição</label><input class="sm" id="cf-desc" maxlength="200" placeholder="ex.: salários do comercial, aluguel da sede"></div>'+
+        '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.7rem">Valor R$ (pool)</label><input class="sm" id="cf-val" type="number" min="0" step="0.01" style="text-align:right" placeholder="0,00"></div>'+
+        '<button class="btn sm" type="button" id="cf-add">Adicionar</button>'+
+      '</div><div id="cf-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div></div>';
+    var td='padding:6px 10px;font-size:.84rem';
+    var linhas=xs.map(function(x){
+      return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'">'+esc(CAT[x.categoria]||x.categoria)+'</td>'+
+        '<td style="'+td+'">'+esc(x.descricao||'')+'</td>'+
+        '<td style="'+td+';text-align:right;font-variant-numeric:tabular-nums">'+fmtBRL(x.valor)+'</td>'+
+        '<td style="'+td+';text-align:right"><button class="linkbtn cf-del" data-id="'+esc(x.id)+'">excluir</button></td></tr>';
+    }).join("");
+    var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Categoria</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor (pool)</th><th></th></tr></thead><tbody>'+linhas+'<tr style="border-top:2px solid var(--line);font-weight:700"><td style="'+td+'" colspan="2">Total do overhead</td><td style="'+td+';text-align:right">'+fmtBRL(j.total)+'</td><td></td></tr></tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum custo fixo cadastrado. Enquanto estiver vazio, a margem usa só mão de obra + consumíveis — nenhum overhead é inventado.</p></div>';
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). O portal rateia este total sobre os projetos contratados <b>por horas apontadas</b> — cada projeto absorve <code>total × (horas do projeto ÷ horas da carteira)</code> — somando ao custo real antes da margem. Base de horas da carteira: <b>'+fmtH(j.horasBase||0)+'</b>. Comece por onde tiver número real.</p>'+form+tabela;
+    var m=$("#cf-msg");var msg=function(t,err){if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
+    var add=$("#cf-add");if(add)add.onclick=function(){
+      var val=Number($("#cf-val").value)||0;
+      if(!(val>0)){msg("Informe um valor maior que zero.",true);return;}
+      msg("Salvando…");
+      api("custoFixoSet",{categoria:$("#cf-cat").value,descricao:$("#cf-desc").value,valor:val}).then(function(){_finCustoFixo();_finResumo();_finCarteira();}).catch(function(e){msg(e.message||"Erro",true);});
+    };
+    box.querySelectorAll(".cf-del").forEach(function(b){b.onclick=function(){
+      if(!confirm("Excluir este custo fixo? O rateio dos projetos será recalculado."))return;
+      api("custoFixoDel",{id:b.getAttribute("data-id")}).then(function(){_finCustoFixo();_finResumo();_finCarteira();}).catch(function(e){alert(e.message||"Erro");});
+    };});
+  }).catch(function(e){var box=$("#fin-cf");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 /* FLUXO DE CAIXA — base de lançamentos (entrada/saída, previsto × realizado), editável e
    auditada. Nasce vazia; a casa lança o que é real. */
@@ -2351,12 +2390,13 @@ function _finCarteira(){
         '<td style="'+mut+'">'+fmtBRL(p.moCusto)+'</td>'+
         '<td style="'+mut+'">'+((p.consumiveis||0)?fmtBRL(p.consumiveis):'—')+'</td>'+
         '<td style="'+mut+'">'+((p.terceiros||0)?fmtBRL(p.terceiros):'—')+'</td>'+
+        '<td style="'+mut+'">'+((p.rateioFix||0)?fmtBRL(p.rateioFix):'—')+'</td>'+
         '<td style="'+td+'">'+fmtBRL(p.custoTotal)+'</td>'+
         '<td style="'+td+';color:'+cor+';font-weight:600">'+fmtBRL(p.margem)+'</td>'+
         '<td style="'+td+';color:'+cor+'">'+(p.margemPct==null?'—':(p.margemPct+'%'))+'</td></tr>';
     }).join("");
     box.innerHTML=topo+'<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse">'+
-      '<thead><tr style="background:var(--surface2)"><th style="'+th0+'">Projeto</th><th style="'+th+'">Contratado</th><th style="'+th+'">MO</th><th style="'+th+'">Consum.</th><th style="'+th+'">Terceiros</th><th style="'+th+'">Custo</th><th style="'+th+'">Margem</th><th style="'+th+'">%</th></tr></thead>'+
+      '<thead><tr style="background:var(--surface2)"><th style="'+th0+'">Projeto</th><th style="'+th+'">Contratado</th><th style="'+th+'">MO</th><th style="'+th+'">Consum.</th><th style="'+th+'">Terceiros</th><th style="'+th+'">Overhead</th><th style="'+th+'">Custo</th><th style="'+th+'">Margem</th><th style="'+th+'">%</th></tr></thead>'+
       '<tbody>'+linhas+'</tbody></table></div>'+
       '<p class="muted" style="font-size:.74rem;margin-top:8px">Clique num projeto para ver a decomposição e editar o contrato. Ordenado da menor margem (prejuízo) para a maior.</p>';
     box.querySelectorAll("tr[data-cc]").forEach(function(tr){tr.onclick=function(){openProjDetail(tr.getAttribute("data-cc"));};});

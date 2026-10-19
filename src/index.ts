@@ -275,7 +275,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-18a";
+const SCHEMA_VER = "2026-10-18b";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -608,6 +608,34 @@ function ensureSchema(): Promise<void> {
         valor REAL DEFAULT 0, data_prev TEXT DEFAULT '', data_real TEXT DEFAULT '',
         status TEXT NOT NULL DEFAULT 'previsto' CHECK (status IN ('previsto','realizado','cancelado')),
         origem TEXT DEFAULT 'manual', u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '')`,
+      /* FINANCEIRO — CUSTOS FIXOS / OVERHEAD (item Onda 2). Pool editável de custos fixos da casa
+         (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais,
+         outros) que NÃO são mão de obra técnica de projeto. O rollup rateia este pool sobre a
+         carteira bilhável POR HORAS APONTADAS (decisão do dono), antes de impostos e margem.
+         Nasce VAZIO — nada inventado. Confidencial (R$): só dono / coord. financeira. */
+      `CREATE TABLE IF NOT EXISTS custo_fixo (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto',
+        categoria TEXT NOT NULL DEFAULT 'outros', descricao TEXT DEFAULT '',
+        valor REAL DEFAULT 0, u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '')`,
+      /* ESTRUTURA POR CENTRO DE CUSTO (item Onda 2 — preparação do backend futuro). Cada CC
+         contratado poderá ter seus contratos, propostas, produtos e histórico próprios no portal.
+         Tabelas-base criadas agora (vazias); CRUD/UI ficam para a próxima rodada. tenant_id inline. */
+      `CREATE TABLE IF NOT EXISTS cc_contrato (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', cc TEXT NOT NULL,
+        titulo TEXT DEFAULT '', valor REAL DEFAULT 0, assinado TEXT DEFAULT '', obs TEXT DEFAULT '',
+        u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '')`,
+      `CREATE TABLE IF NOT EXISTS cc_proposta (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', cc TEXT NOT NULL,
+        titulo TEXT DEFAULT '', valor REAL DEFAULT 0, status TEXT DEFAULT '', enviada TEXT DEFAULT '',
+        obs TEXT DEFAULT '', u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '')`,
+      `CREATE TABLE IF NOT EXISTS cc_produto (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', cc TEXT NOT NULL,
+        titulo TEXT DEFAULT '', tipo TEXT DEFAULT '', status TEXT DEFAULT '', obs TEXT DEFAULT '',
+        u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '')`,
+      `CREATE TABLE IF NOT EXISTS cc_hist (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', cc TEXT NOT NULL,
+        d TEXT DEFAULT '', tipo TEXT DEFAULT '', detalhe TEXT DEFAULT '',
+        u TEXT DEFAULT '', criado TEXT DEFAULT '')`,
     ].map((sql) => ({ sql, args: [] })));
     // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute impostos,
     // rateio e encargos de mão de obra; o custo real do projeto = MO + consumíveis + terceiros + outros.
@@ -1189,27 +1217,47 @@ async function horasCustoPorColab(cc: string, tenant: string): Promise<{ slug: s
   });
   return (r.rows as P[]).map((x) => ({ slug: String(x.slug), h: arred2(Number(x.h) || 0), custo: arred2(Number(x.custo) || 0) }));
 }
-/** Dado px (linha projx com campos fin) + custo de mão de obra (R$), devolve a decomposição. */
-function decompoeFin(px: P, moCustoIn: number): P {
+/** Dado px (linha projx com campos fin) + custo de mão de obra (R$) + rateio de fixos (R$),
+ * devolve a decomposição. `rateioFixIn` = parcela do pool de custos fixos (overhead) alocada a
+ * este CC por participação de horas (ver rateioFixosCarteira); entra no custo real. */
+function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0): P {
   const moCusto = arred2(Number(moCustoIn) || 0);
   const contratado = arred2(Number(px.contratado) || 0);
   const imposto = arred2(((Number(px.pct_imposto) || 0) / 100) * contratado);
-  const rateio = arred2(((Number(px.pct_rateio) || 0) / 100) * moCusto);
+  const rateio = arred2(((Number(px.pct_rateio) || 0) / 100) * moCusto); // legado: pct — não entra no custo
+  const rateioFix = arred2(Number(rateioFixIn) || 0); // overhead rateado por horas (Onda 2)
   const outros = arred2(Number(px.outros) || 0);
   const consumiveis = arred2(Number(px.consumiveis) || 0);
   const terceiros = arred2(Number(px.terceiros) || 0);
-  // Custo real = mão de obra (o custo/hora JÁ inclui impostos/rateio/encargos) + consumíveis +
-  // terceiros + outros. Os percentuais imposto/rateio ficam fora da soma (não dobrar).
-  const custoTotal = arred2(moCusto + consumiveis + terceiros + outros);
+  // Custo real = mão de obra (o custo/hora JÁ inclui encargos da MO) + consumíveis + terceiros +
+  // outros + rateio dos fixos (overhead). O pct_rateio legado fica fora da soma (não dobrar).
+  const custoTotal = arred2(moCusto + consumiveis + terceiros + outros + rateioFix);
   const margem = arred2(contratado - custoTotal);
   const margemPct = contratado > 0 ? Math.round((margem / contratado) * 1000) / 10 : null;
   const lucroAlvo = arred2(((Number(px.pct_lucro) || 0) / 100) * contratado);
-  const configurado = contratado > 0 || moCusto > 0 || outros > 0 || consumiveis > 0 || terceiros > 0;
+  const configurado = contratado > 0 || moCusto > 0 || outros > 0 || consumiveis > 0 || terceiros > 0 || rateioFix > 0;
   return {
-    contratado, moCusto, imposto, rateio, outros, consumiveis, terceiros, custoTotal, margem, margemPct, lucroAlvo,
+    contratado, moCusto, imposto, rateio, rateioFix, outros, consumiveis, terceiros, custoTotal, margem, margemPct, lucroAlvo,
     pct_imposto: Number(px.pct_imposto) || 0, pct_rateio: Number(px.pct_rateio) || 0, pct_lucro: Number(px.pct_lucro) || 0,
     configurado, prejuizo: configurado && contratado > 0 && margem < 0,
   };
+}
+/** RATEIO DOS CUSTOS FIXOS (overhead) sobre a carteira bilhável, POR HORAS APONTADAS (decisão do
+ * dono — pool total editável). O pool = soma de custo_fixo; a base = horas (APROVADO/LANÇADO) dos
+ * projetos ATIVOS com contratado>0. Cada CC absorve fixos × (horas_do_CC / horas_da_base). Assim o
+ * overhead é coberto pela receita dos projetos proporcional ao esforço que cada um consumiu. */
+async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number; byCc: Record<string, number>; horasBase: number }> {
+  const fx = await sqlite.execute({ sql: "SELECT COALESCE(SUM(valor),0) t FROM custo_fixo WHERE tenant_id = ?", args: [tenant] });
+  const fixosTotal = arred2(Number((fx.rows[0] as P)?.t) || 0);
+  const r = await sqlite.execute({
+    sql: "SELECT l.cc AS cc, COALESCE(SUM(l.h),0) AS h FROM lanc l WHERE l.tenant_id = ? AND l.s IN ('APROVADO','LANÇADO') AND l.cc IN (SELECT p.cc FROM proj p JOIN projx x ON x.cc = p.cc AND x.tenant_id = p.tenant_id WHERE p.tenant_id = ? AND p.registro = 'ATIVO' AND COALESCE(x.contratado,0) > 0) GROUP BY l.cc",
+    args: [tenant, tenant],
+  });
+  const hByCc: Record<string, number> = {}; let horasBase = 0;
+  for (const x of r.rows as P[]) { const h = Number(x.h) || 0; hByCc[String(x.cc)] = h; horasBase += h; }
+  const byCc: Record<string, number> = {};
+  if (fixosTotal > 0 && horasBase > 0) for (const cc in hByCc) byCc[cc] = arred2(fixosTotal * (hByCc[cc] / horasBase));
+  return { fixosTotal, byCc, horasBase };
 }
 /* RESUMO EXECUTIVO — consolida, SEM inventar número (tudo derivado do D1): (1) Financeiro:
  * contratado × custo real × margem da carteira ativa; (2) Pipeline CRM: deals por macro-fase,
@@ -1223,9 +1271,10 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   const pxr = await sqlite.execute({ sql: "SELECT cc, contratado, pct_imposto, pct_rateio, pct_lucro, outros, consumiveis, terceiros FROM projx WHERE tenant_id = ?", args: [tenant] });
   const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
   const prr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [tenant] });
+  const rf = await rateioFixosCarteira(tenant);
   let contratado = 0, custoTotal = 0, margem = 0, nProj = 0, nPrej = 0;
   for (const pr of prr.rows as P[]) {
-    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0);
+    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0);
     if (d.contratado <= 0) continue;
     contratado += d.contratado; custoTotal += d.custoTotal; margem += d.margem; nProj++;
     if (d.margem < 0) nPrej++;
@@ -1245,7 +1294,7 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   let fxEP = 0, fxSP = 0, fxER = 0, fxSR = 0, fxN = 0;
   for (const r of fx.rows as P[]) { const v = Number(r.v) || 0; fxN += Number(r.n) || 0; const st = String(r.status); const entrada = String(r.tipo) === "entrada"; if (st === "realizado") { entrada ? (fxER += v) : (fxSR += v); } else if (st === "previsto") { entrada ? (fxEP += v) : (fxSP += v); } }
   return {
-    fin: { contratado: arred2(contratado), custoTotal: arred2(custoTotal), margem: arred2(margem), margemPct, nProj, nPrej },
+    fin: { contratado: arred2(contratado), custoTotal: arred2(custoTotal), margem: arred2(margem), margemPct, nProj, nPrej, overhead: rf.fixosTotal },
     pipeline: { dealsN, funil, assinN, assinVal: arred2(assinVal), pipeAberto: arred2(pipeAberto) },
     horas: { horasTotais: arred2(horasTotais), moTotal: arred2(moTotal) },
     fluxo: { n: fxN, entradaPrev: arred2(fxEP), saidaPrev: arred2(fxSP), entradaReal: arred2(fxER), saidaReal: arred2(fxSR), saldoPrev: arred2(fxEP - fxSP), saldoReal: arred2(fxER - fxSR) },
@@ -1341,6 +1390,7 @@ const MIN: Record<string, Papel> = {
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao",
+  custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
   // Mesmo piso da busca (equipe) + grant de acervo checado dentro do branch (isOwner||acgrant).
   acervo_list: "equipe",
@@ -2374,7 +2424,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const colab = podeFin
       ? (await horasCustoPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h, custoHora: chMap[c.slug] || 0, custo: c.custo }))
       : (await horasPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h }));
-    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0)) : null;
+    const rfp = podeFin ? await rateioFixosCarteira(u.tenant_id) : { fixosTotal: 0, byCc: {} as Record<string, number>, horasBase: 0 };
+    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0) : null;
     // HISTÓRICO DE HORAS do projeto: cada apontamento efetivo (aprovado/lançado) com o que foi
     // feito (lanc.t). Em importados o `t` costuma vir vazio — o front exibe "—" quando não houver.
     const lcr = await sqlite.execute({ sql: "SELECT d, slug, h, t FROM lanc WHERE cc = ? AND tenant_id = ? AND s IN ('APROVADO','LANÇADO') ORDER BY d DESC LIMIT 300", args: [cc, u.tenant_id] });
@@ -2496,16 +2547,48 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const pxr = await sqlite.execute({ sql: "SELECT cc, contratado, pct_imposto, pct_rateio, pct_lucro, outros, consumiveis, terceiros FROM projx WHERE tenant_id = ?", args: [u.tenant_id] });
     const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
     const prr = await sqlite.execute({ sql: "SELECT cc, projeto, cliente, status FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [u.tenant_id] });
+    const rf = await rateioFixosCarteira(u.tenant_id);
     const rows: P[] = [];
     for (const pr of prr.rows as P[]) {
       const cc = String(pr.cc); const px = pxByCc[cc] || {};
-      const d = decompoeFin(px, moByCc[cc] || 0);
+      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0);
       if (d.contratado <= 0) continue; // carteira = só projetos com valor contratado informado
       rows.push({ cc, projeto: pr.projeto, cliente: pr.cliente || "", status: pr.status || "", ...d });
     }
     rows.sort((a: any, b: any) => (a.margem - b.margem)); // prejuízo/menor margem primeiro
     const tot = rows.reduce((s: any, r: any) => ({ contratado: s.contratado + r.contratado, custoTotal: s.custoTotal + r.custoTotal, margem: s.margem + r.margem }), { contratado: 0, custoTotal: 0, margem: 0 });
-    return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) } };
+    return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) }, overhead: { total: rf.fixosTotal, horasBase: rf.horasBase } };
+  }
+  /* CUSTOS FIXOS / OVERHEAD — pool editável rateado por horas (Onda 2). Leitura restrita. */
+  if (action === "custoFixoList") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const r = await sqlite.execute({ sql: "SELECT id, categoria, descricao, valor, u, criado, atualizado FROM custo_fixo WHERE tenant_id = ? ORDER BY categoria, criado", args: [u.tenant_id] });
+    const total = (r.rows as P[]).reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    const rf = await rateioFixosCarteira(u.tenant_id);
+    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase };
+  }
+  if (action === "custoFixoSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    let id = String(p.id || "").trim(); const isNew = !id;
+    if (isNew) id = "CF-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const cats = ["comercial", "financeiro", "administrativo", "rh", "aluguel", "juridico", "relacoes_institucionais", "outros"];
+    let categoria = String(p.categoria || "outros").trim().toLowerCase(); if (!cats.includes(categoria)) categoria = "outros";
+    const valor = Math.max(0, Number(p.valor) || 0);
+    const descricao = String(p.descricao || "").slice(0, 200);
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO custo_fixo (id,tenant_id,categoria,descricao,valor,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET categoria=excluded.categoria,descricao=excluded.descricao,valor=excluded.valor,u=excluded.u,atualizado=excluded.atualizado",
+      args: [id, u.tenant_id, categoria, descricao, valor, u.slug, now, now],
+    });
+    await audit("custo_fixo", u.slug, (isNew ? "novo " : "edit ") + id + " " + categoria + " " + valor, ip);
+    return { ok: true, id, isNew };
+  }
+  if (action === "custoFixoDel") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const id = String(p.id || "").trim(); if (!id) throw new Error("ID do custo fixo ausente.");
+    await sqlite.execute({ sql: "DELETE FROM custo_fixo WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] });
+    await audit("custo_fixo", u.slug, "excluiu " + id, ip);
+    return { ok: true };
   }
   /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
      restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */
