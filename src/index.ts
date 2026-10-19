@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19d";
+const SCHEMA_VER = "2026-10-19e";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -946,6 +946,42 @@ function ensureSchema(): Promise<void> {
       await sqlite.execute(`CREATE TABLE IF NOT EXISTS portfolio_skill (
         tenant_id TEXT NOT NULL DEFAULT 'intelecto', sid TEXT NOT NULL, skill TEXT NOT NULL,
         PRIMARY KEY (tenant_id, sid, skill))`);
+    } catch (_) { /* ja existe */ }
+
+    /* ===== Onda 3 / LEADS AMBIENTAIS — explorador multi-banco (tela única) =====
+     * Projeção CONSULTÁVEL da base de prospecção ambiental de MG (7 bacias). Uma tabela
+     * ÚNICA genérica: cada linha = 1 registro de um "banco" (empreendimentos/leads, outorgas,
+     * minerários, embargos, contaminadas, ETEs, IQA, saneamento, RSU, cobertura, barragens...).
+     * Campos COMUNS indexados (bank, bacia, municipio, setor, ord) + `props` (JSON, a linha
+     * completa do painel) + `busca` (texto minúsculo p/ LIKE). A tela única consulta server-side:
+     * paginação (LIMIT/OFFSET) + filtros + busca. Os painéis HTML por bacia (R2) seguem como
+     * projeção/mapa (nada removido). Nasce VAZIA — a carga (~150k linhas, gerada dos 7
+     * _painel_data.json) entra por wrangler (import em lote; escrita em massa pelo MCP é bloqueada).
+     * PII já vem MASCARADA na fonte (PF = "dado protegido"); o gate de acesso é perm:comercial. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS amb_registro (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', bank TEXT NOT NULL, id TEXT NOT NULL,
+        bacia TEXT DEFAULT '', municipio TEXT DEFAULT '', uf TEXT DEFAULT 'MG',
+        lat REAL, lon REAL, rotulo TEXT DEFAULT '', setor TEXT DEFAULT '',
+        classe TEXT DEFAULT '', situacao TEXT DEFAULT '', ord REAL DEFAULT 0,
+        dt TEXT DEFAULT '', props TEXT DEFAULT '{}', busca TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, bank, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS amb_reg_bank_bacia ON amb_registro (tenant_id, bank, bacia)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS amb_reg_bank_mun ON amb_registro (tenant_id, bank, municipio)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS amb_reg_bank_ord ON amb_registro (tenant_id, bank, ord)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS amb_reg_bank_setor ON amb_registro (tenant_id, bank, setor)"); } catch (_) {}
+      /* Instrumentos legais ligados a um lead (TAC/TCRA/PRAD/condicionante/PAEBM/compromisso) —
+       * fase F3. lead_id = id do registro em amb_registro (bank='empreendimentos'). `problema` e
+       * `servico` vêm do mapa problema→instrumento→serviço. Nasce VAZIA. */
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS lead_instrumento (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, lead_id TEXT DEFAULT '',
+        municipio TEXT DEFAULT '', instrumento TEXT DEFAULT '', orgao TEXT DEFAULT '',
+        numero TEXT DEFAULT '', situacao TEXT DEFAULT '', prazo TEXT DEFAULT '',
+        obrigacoes TEXT DEFAULT '', problema TEXT DEFAULT '', servico TEXT DEFAULT '',
+        fonte TEXT DEFAULT '', url_fonte TEXT DEFAULT '', data_consulta TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS lead_instr_lead ON lead_instrumento (tenant_id, lead_id)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS lead_instr_mun ON lead_instrumento (tenant_id, municipio)"); } catch (_) {}
     } catch (_) { /* ja existe */ }
 
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
@@ -2027,6 +2063,59 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "INSERT INTO lead_funnel (tenant_id, lead_key, status, notas, dono, atualizado_em) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id, lead_key) DO UPDATE SET status=excluded.status, notas=excluded.notas, dono=excluded.dono, atualizado_em=excluded.atualizado_em", args: [u.tenant_id, key, status, notas, u.slug, now] });
     await audit("funnel_push", u.slug, key + ": " + status, ip);
     return { ok: true };
+  }
+  /* ===== LEADS AMBIENTAIS — explorador multi-banco (tela única, SERVER-SIDE) =====
+     Mesma allowlist perm:comercial da aba. Três ações: ambMeta (bancos + bacias p/ montar os
+     filtros), ambList (página filtrada de 1 banco) e ambFicha (1 registro + instrumentos/TACs).
+     Nunca carrega tudo: a tela pede só a página corrente (LIMIT/OFFSET) do banco escolhido. */
+  if (action === "ambMeta") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const bk = await sqlite.execute({ sql: "SELECT bank, COUNT(*) n FROM amb_registro WHERE tenant_id = ? GROUP BY bank", args: [u.tenant_id] });
+    const bc = await sqlite.execute({ sql: "SELECT DISTINCT bacia FROM amb_registro WHERE tenant_id = ? AND bacia <> '' ORDER BY bacia", args: [u.tenant_id] });
+    const banks: Record<string, number> = {};
+    for (const r of bk.rows as P[]) banks[String(r.bank)] = Number(r.n) || 0;
+    const bacias = (bc.rows as P[]).map((r) => String(r.bacia));
+    return { ok: true, banks, bacias };
+  }
+  if (action === "ambList") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const bank = String(p.bank || "empreendimentos").replace(/[^a-z_]/gi, "").slice(0, 40);
+    const where: string[] = ["tenant_id = ?", "bank = ?"];
+    const args: P[] = [u.tenant_id, bank];
+    const eq = (col: string, val: string, n: number) => { const v = String(val || "").slice(0, n); if (v) { where.push(col + " = ?"); args.push(v); } };
+    eq("bacia", String(p.bacia || ""), 60);
+    eq("setor", String(p.setor || ""), 80);
+    eq("classe", String(p.classe || ""), 20);
+    eq("municipio", String(p.municipio || ""), 90);
+    eq("situacao", String(p.situacao || ""), 80);
+    const q = String(p.q || "").trim().toLowerCase().slice(0, 90);
+    if (q) { for (const term of q.split(/\s+/).filter(Boolean).slice(0, 6)) { where.push("busca LIKE ?"); args.push("%" + term + "%"); } }
+    const w = where.join(" AND ");
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(p.limit) || 50)));
+    const offset = Math.max(0, Math.floor(Number(p.offset) || 0));
+    const dir = String(p.dir || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+    const cnt = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM amb_registro WHERE " + w, args });
+    const total = Number((cnt.rows[0] as P).n) || 0;
+    const rs = await sqlite.execute({ sql: "SELECT id, bacia, municipio, lat, lon, ord, props FROM amb_registro WHERE " + w + " ORDER BY ord " + dir + ", id ASC LIMIT ? OFFSET ?", args: [...args, limit, offset] });
+    const rows = (rs.rows as P[]).map((r) => { let pr: P = {}; try { pr = JSON.parse(String(r.props || "{}")); } catch (_) { /* props corrompido: devolve só o comum */ } return { ...pr, _id: r.id, _bacia: r.bacia, _m: r.municipio, _ord: r.ord, _lat: r.lat, _lon: r.lon }; });
+    return { ok: true, bank, rows, total, limit, offset };
+  }
+  if (action === "ambFicha") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const bank = String(p.bank || "empreendimentos").replace(/[^a-z_]/gi, "").slice(0, 40);
+    const id = String(p.id || "").slice(0, 200);
+    const r = await sqlite.execute({ sql: "SELECT id, bacia, municipio, lat, lon, props FROM amb_registro WHERE tenant_id = ? AND bank = ? AND id = ?", args: [u.tenant_id, bank, id] });
+    if (!r.rows.length) throw new Error("Registro não encontrado.");
+    const row0 = r.rows[0] as P; let props: P = {}; try { props = JSON.parse(String(row0.props || "{}")); } catch (_) { /* props corrompido */ }
+    let instrumentos: P[] = [];
+    if (bank === "empreendimentos" && id) {
+      const ir = await sqlite.execute({ sql: "SELECT id, instrumento, orgao, numero, situacao, prazo, obrigacoes, problema, servico, fonte, url_fonte FROM lead_instrumento WHERE tenant_id = ? AND lead_id = ? ORDER BY instrumento", args: [u.tenant_id, id] });
+      instrumentos = ir.rows as P[];
+    }
+    return { ok: true, bank, registro: { ...props, _id: row0.id, _bacia: row0.bacia, _m: row0.municipio, _lat: row0.lat, _lon: row0.lon }, instrumentos };
   }
   // ===== CRM COMERCIAL (frente E) — leitura do pipeline/leads/horas (gate comercial) =====
   if (action === "crm") {

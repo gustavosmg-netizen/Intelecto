@@ -3215,12 +3215,14 @@ function viewComercial(el){
     +'<button class="subnav-btn" data-tab="com-crm" type="button">CRM · Pipeline</button>'
     +'<button class="subnav-btn" data-tab="com-leads" type="button">Leads inbound</button>'
     +'<button class="subnav-btn" data-tab="com-horas" type="button">Horas comerciais</button>'
-    +'<button class="subnav-btn" data-tab="com-lamg" type="button">Leads Ambientais · MG</button>'
+    +'<button class="subnav-btn" data-tab="com-amb" id="com-amb-btn" type="button">Leads Ambientais · MG</button>'
+    +'<button class="subnav-btn" data-tab="com-lamg" type="button">Painéis por bacia (mapa)</button>'
     +'</nav>'
     +'<section class="tabpanel" id="com-painel"><div id="crm-painel-box"><p class="muted" style="padding:14px">Carregando painel…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-crm"><div id="crm-box"><p class="muted" style="padding:14px">Carregando CRM…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-leads"><div id="crm-leads-box"><p class="muted" style="padding:14px">Carregando…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-horas"><div id="crm-horas-box"><p class="muted" style="padding:14px">Carregando…</p></div></section>'
+    +'<section class="tabpanel hidden" id="com-amb"><div id="amb-wrap"><p class="muted" style="padding:14px">Abra esta aba para carregar o explorador de leads…</p></div></section>'
     +'<section class="tabpanel hidden" id="com-lamg">'
     +'<div id="lamg-cards" class="hub-grid"><p class="muted" style="padding:14px">Carregando…</p></div>'
     +'<div id="lamg-view" style="display:none">'
@@ -3230,6 +3232,10 @@ function viewComercial(el){
     +'</div></section></div>'
     +'<div id="crm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;padding:20px;overflow:auto"></div>';
   _crmLoad();
+  /* Explorador de leads ambientais (tela única): lazy — só inicializa ao abrir a aba, p/ não
+     atrasar o landing do Comercial. _ambInit é idempotente (guarda interna). */
+  var _ambBtn=document.getElementById("com-amb-btn");
+  if(_ambBtn)_ambBtn.addEventListener("click",function(){_ambInit();});
   /* Ponte do funil: ouve o painel (iframe) e grava/lê no D1 via /api. Registra o listener 1x. */
   if(!window.__lamgBridge){
     window.__lamgBridge=true;
@@ -3279,6 +3285,185 @@ function abrirBacia(slug,regs){
     .then(function(resp){if(!resp.ok)throw new Error("HTTP "+resp.status);return resp.text();})
     .then(function(html){fr.srcdoc=html;})
     .catch(function(e){fr.srcdoc="<p style='font-family:sans-serif;padding:20px;color:#b00'>Não foi possível abrir: "+String(e.message||e)+"</p>";});
+}
+
+/* ===================== LEADS AMBIENTAIS — explorador multi-banco (tela única) =====================
+   Uma só tela consulta o D1 SERVER-SIDE: nunca baixa os ~150k registros de uma vez — pede só a
+   página corrente do banco escolhido (ambList: WHERE + LIMIT/OFFSET). Filtros (bacia/município/
+   setor/classe) e busca vão ao servidor; a busca tem debounce. O render é lazy (só a página).
+   Mapa de colunas por banco = os mesmos `cols` do painel-fonte, garantindo fidelidade de campos. */
+var AMB_BANKS=[
+  ["empreendimentos","Leads (empreendimentos)","🏭"],["outorgas","Outorgas de água","💧"],
+  ["minerarios","Minerários","⛏️"],["embargos","Embargos / autuações","🚫"],
+  ["contaminadas","Áreas contaminadas","☣️"],["etes","ETEs municipais","🚰"],
+  ["iqa","Qualidade da água (IQA)","🧪"],["saneamento_municipal","Saneamento municipal","🧷"],
+  ["rsu_municipal","Resíduos (RSU)","🗑️"],["cobertura","Cobertura de esgoto","📈"],
+  ["barragens","Barragens","🏞️"],["recomp_ambiental","Recomposição ambiental","🌳"],
+  ["aterros","Aterros","🧱"],["lixoes","Lixões","🧯"]
+];
+var AMB_COLS={
+  empreendimentos:[["lead","Score","num"],["m","Município","txt"],["n","Empreendimento","txt"],["s","Setor","txt"],["cl","Classe","int"],["md","Modalidade","txt"],["vl","Validade","date"],["dv","Dias p/ vencer","num"],["sv","Serviço sugerido","txt"]],
+  outorgas:[["m","Município","txt"],["out","Outorgado","txt"],["fin","Finalidade","txt"],["mod","Modalidade","txt"],["corpo","Corpo hídrico","txt"],["vl","Vencimento","date"],["dv","Dias p/ vencer","num"],["st","Status","txt"]],
+  minerarios:[["m","Município","txt"],["n","Titular","txt"],["sub","Substância","txt"],["fase","Fase","txt"],["area","Área (ha)","num"],["ano","Ano","int"],["proc","Processo","txt"]],
+  embargos:[["m","Local","txt"],["aut","Autuado","txt"],["at","Atividade","txt"],["dt","Data","date"],["pen","Penalidade","txt"],["ai","Nº AI","txt"]],
+  contaminadas:[["m","Município","txt"],["r","Responsável","txt"],["ga","Grupo de atividade","txt"],["clf","Classificação","txt"],["et","Etapa","txt"],["cont","Contaminantes","txt"],["meio","Meio impactado","txt"]],
+  etes:[["m","Município","txt"],["ang","Ângulo comercial","txt"],["fase","Fase","txt"],["situ","Situação da licença","txt"],["vl","Validade","date"],["dv","Dias p/ vencer","num"],["supram","SUPRAM/URA","txt"]],
+  iqa:[["m","Município","txt"],["est","Estação","txt"],["corpo","Corpo hídrico","txt"],["iqa","IQA","num"],["ano","Ano","int"],["classe","Classe de qualidade","txt"],["enq","Enquadramento","txt"]],
+  saneamento_municipal:[["m","Município","txt"],["opp","Oportunidade","txt"],["agua","Abast. água (%)","num"],["col","Coleta esgoto (%)","num"],["tra","Trat. esgoto (%)","num"],["pres","Prestador","txt"]],
+  rsu_municipal:[["m","Município","txt"],["sit","Situação","txt"],["tip","Destinação final","txt"],["cons","Consórcio RSU","txt"]],
+  cobertura:[["m","Município","txt"],["col","Coleta (%)","num"],["tra","Tratamento (%)","num"],["pres","Prestador","txt"]],
+  barragens:[["m","Município","txt"],["emp","Empreendedor","txt"],["est","Estrutura","txt"],["pda","Dano potencial","txt"],["cl","Classe","txt"],["met","Método construtivo","txt"],["fin","Finalidade","txt"]],
+  recomp_ambiental:[["m","Município","txt"],["tot","Total a recompor (ha)","num"],["app","APP (ha)","num"],["rl","Reserva legal (ha)","num"],["n","Imóveis","int"]],
+  aterros:[["m","Município","txt"],["reg","Regularização","txt"],["comp","Compartilhado","txt"]],
+  lixoes:[["m","Município","txt"],["sit","Situação","txt"]]
+};
+var AMB={bank:"empreendimentos",bacia:"",municipio:"",setor:"",classe:"",q:"",page:0,limit:50,total:0,inited:false,meta:null,busy:false,seq:0,_tmr:null};
+function _ambFmtBacia(s){return String(s||"").replace(/_/g," ").replace(/\b\w/g,function(c){return c.toUpperCase();});}
+function _ambCell(v,type){
+  if(v==null||v==="")return "";
+  if((type==="num"||type==="int")){var n=Number(v);if(isFinite(n))return n.toLocaleString("pt-BR");}
+  return esc(String(v));
+}
+function _ambInit(){
+  if(AMB.inited)return; AMB.inited=true;
+  var wrap=document.getElementById("amb-wrap"); if(!wrap)return;
+  wrap.innerHTML=
+    '<div id="amb-chips" class="hub-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:12px"><p class="muted">Carregando bancos…</p></div>'
+    +'<div id="amb-filtros" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:10px"></div>'
+    +'<div id="amb-info" class="muted" style="font-size:13px;margin-bottom:6px"></div>'
+    +'<div id="amb-tbl" style="overflow:auto;border:1px solid var(--line);border-radius:var(--r-lg)"><p class="muted" style="padding:14px">Carregando…</p></div>'
+    +'<div id="amb-pager" style="display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0"></div>'
+    +'<p class="muted" style="font-size:12px">Dados de prospecção (fontes públicas: IDE-Sisema/SLA-MG, ANM, ANA, SNIS…). PF protegida por LGPD. Para o mapa georreferenciado por bacia, use a aba “Painéis por bacia (mapa)”.</p>';
+  api("ambMeta").then(function(j){
+    AMB.meta=j; _ambRenderChips(); _ambRenderFiltros();
+    // escolhe o 1º banco presente (prefere empreendimentos)
+    if(!(j.banks&&j.banks[AMB.bank]>0)){for(var i=0;i<AMB_BANKS.length;i++){var b=AMB_BANKS[i][0];if(j.banks&&j.banks[b]>0){AMB.bank=b;break;}}}
+    _ambFetch();
+  }).catch(function(e){
+    wrap.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar: '+esc(e.message||e)+'</p>';
+  });
+}
+function _ambRenderChips(){
+  var g=document.getElementById("amb-chips"); if(!g)return;
+  var banks=(AMB.meta&&AMB.meta.banks)||{};
+  var presentes=AMB_BANKS.filter(function(b){return (banks[b[0]]||0)>0;});
+  if(!presentes.length){g.innerHTML='<p class="muted" style="padding:6px">A base ainda não foi carregada no portal (import para o D1 pendente). Assim que a carga rodar, os bancos aparecem aqui.</p>';return;}
+  g.innerHTML=presentes.map(function(b){
+    var n=(banks[b[0]]||0).toLocaleString("pt-BR");
+    var on=b[0]===AMB.bank;
+    return '<button class="hub-card'+(on?" is-active":"")+'" data-bank="'+esc(b[0])+'" style="text-align:left;'+(on?"outline:2px solid var(--brand)":"")+'">'
+      +'<span class="hub-card-top"><span class="hub-ic">'+b[2]+'</span><span class="hub-badge">'+n+'</span></span>'
+      +'<span class="hub-ct" style="font-size:14px">'+esc(b[1])+'</span></button>';
+  }).join("");
+  g.querySelectorAll("[data-bank]").forEach(function(btn){btn.onclick=function(){
+    if(AMB.busy)return; AMB.bank=btn.getAttribute("data-bank"); AMB.page=0; AMB.municipio=""; AMB.setor=""; AMB.classe=""; AMB.q="";
+    _ambRenderChips(); _ambRenderFiltros(); _ambFetch();
+  };});
+}
+function _ambRenderFiltros(){
+  var f=document.getElementById("amb-filtros"); if(!f)return;
+  var bacias=(AMB.meta&&AMB.meta.bacias)||[];
+  var opt='<option value="">Todas as bacias</option>'+bacias.map(function(b){return '<option value="'+esc(b)+'"'+(b===AMB.bacia?" selected":"")+'>'+esc(_ambFmtBacia(b))+'</option>';}).join("");
+  var isLead=AMB.bank==="empreendimentos";
+  var h='<label style="font-size:12px">Bacia<br><select id="amb-f-bacia" class="input sm">'+opt+'</select></label>'
+    +'<label style="font-size:12px">Município<br><input id="amb-f-mun" class="input sm" placeholder="exato" value="'+esc(AMB.municipio)+'" style="width:160px"></label>';
+  if(isLead){
+    h+='<label style="font-size:12px">Setor<br><input id="amb-f-setor" class="input sm" placeholder="ex.: 4 — Agro" value="'+esc(AMB.setor)+'" style="width:150px"></label>'
+      +'<label style="font-size:12px">Classe<br><input id="amb-f-classe" class="input sm" placeholder="2…6" value="'+esc(AMB.classe)+'" style="width:70px"></label>';
+  }
+  h+='<label style="font-size:12px;flex:1;min-width:180px">Busca<br><input id="amb-f-q" class="input sm" placeholder="nome, atividade, titular…" value="'+esc(AMB.q)+'" style="width:100%"></label>';
+  f.innerHTML=h;
+  var bs=document.getElementById("amb-f-bacia"); if(bs)bs.onchange=function(){AMB.bacia=bs.value;AMB.page=0;_ambFetch();};
+  var mn=document.getElementById("amb-f-mun"); if(mn)mn.onchange=function(){AMB.municipio=mn.value.trim();AMB.page=0;_ambFetch();};
+  var st=document.getElementById("amb-f-setor"); if(st)st.onchange=function(){AMB.setor=st.value.trim();AMB.page=0;_ambFetch();};
+  var cl=document.getElementById("amb-f-classe"); if(cl)cl.onchange=function(){AMB.classe=cl.value.trim();AMB.page=0;_ambFetch();};
+  var q=document.getElementById("amb-f-q"); if(q)q.oninput=function(){ if(AMB._tmr)clearTimeout(AMB._tmr); AMB._tmr=setTimeout(function(){AMB.q=q.value.trim();AMB.page=0;_ambFetch();},350); };
+}
+function _ambFetch(){
+  var tbl=document.getElementById("amb-tbl"); var info=document.getElementById("amb-info"); var pg=document.getElementById("amb-pager");
+  if(!tbl)return;
+  AMB.busy=true; var mySeq=++AMB.seq;
+  tbl.style.opacity="0.55";
+  api("ambList",{bank:AMB.bank,bacia:AMB.bacia,municipio:AMB.municipio,setor:AMB.setor,classe:AMB.classe,q:AMB.q,limit:AMB.limit,offset:AMB.page*AMB.limit}).then(function(j){
+    if(mySeq!==AMB.seq)return; // resposta obsoleta (o usuário já mudou o filtro): descarta
+    AMB.busy=false; AMB.total=j.total||0;
+    _ambRenderTable(j);
+    var ini=AMB.total?(AMB.page*AMB.limit+1):0, fim=Math.min(AMB.total,(AMB.page+1)*AMB.limit);
+    if(info)info.textContent=AMB.total.toLocaleString("pt-BR")+" registros · mostrando "+ini.toLocaleString("pt-BR")+"–"+fim.toLocaleString("pt-BR");
+    _ambRenderPager();
+  }).catch(function(e){
+    if(mySeq!==AMB.seq)return; AMB.busy=false; tbl.style.opacity="1";
+    tbl.innerHTML='<p class="err" style="padding:14px">Erro: '+esc(e.message||e)+'</p>';
+    if(info)info.textContent=""; if(pg)pg.innerHTML="";
+  });
+}
+function _ambRenderTable(j){
+  var tbl=document.getElementById("amb-tbl"); if(!tbl)return; tbl.style.opacity="1";
+  var cols=AMB_COLS[AMB.bank]||[["m","Município","txt"]];
+  var rows=j.rows||[];
+  if(!rows.length){tbl.innerHTML='<p class="muted" style="padding:14px">Nenhum registro com os filtros atuais.</p>';return;}
+  var th='<tr>'+cols.map(function(c){return '<th style="text-align:'+((c[2]==="num"||c[2]==="int")?"right":"left")+';padding:8px 10px;position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap">'+esc(c[1])+'</th>';}).join("")+'</tr>';
+  var tb=rows.map(function(r,ix){
+    var tds=cols.map(function(c){
+      var v=_ambCell(r[c[0]],c[2]);
+      var isLeadScore=(AMB.bank==="empreendimentos"&&c[0]==="lead");
+      return '<td style="padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;text-align:'+((c[2]==="num"||c[2]==="int")?"right":"left")+';'+(isLeadScore?"font-weight:700;color:var(--brand)":"")+'">'+v+'</td>';
+    }).join("");
+    return '<tr class="amb-row" data-id="'+esc(r._id)+'" style="cursor:pointer">'+tds+'</tr>';
+  }).join("");
+  tbl.innerHTML='<table style="width:100%;border-collapse:collapse;min-width:640px"><thead>'+th+'</thead><tbody>'+tb+'</tbody></table>';
+  tbl.querySelectorAll(".amb-row").forEach(function(tr){tr.onclick=function(){_ambFicha(tr.getAttribute("data-id"));};
+    tr.onmouseenter=function(){tr.style.background="var(--surface-2,rgba(0,0,0,.03))";}; tr.onmouseleave=function(){tr.style.background="";};});
+}
+function _ambRenderPager(){
+  var pg=document.getElementById("amb-pager"); if(!pg)return;
+  var pages=Math.max(1,Math.ceil(AMB.total/AMB.limit)), cur=AMB.page+1;
+  var prevOff=AMB.page<=0, nextOff=(AMB.page+1)*AMB.limit>=AMB.total;
+  pg.innerHTML='<button class="btn sec sm" id="amb-prev"'+(prevOff?" disabled":"")+'>← Anterior</button>'
+    +'<span class="muted" style="font-size:13px">Página '+cur.toLocaleString("pt-BR")+' de '+pages.toLocaleString("pt-BR")+'</span>'
+    +'<button class="btn sec sm" id="amb-next"'+(nextOff?" disabled":"")+'>Próxima →</button>';
+  var pv=document.getElementById("amb-prev"), nx=document.getElementById("amb-next");
+  if(pv)pv.onclick=function(){if(AMB.page>0){AMB.page--;_ambFetch();window.scrollTo({top:0,behavior:"smooth"});}};
+  if(nx)nx.onclick=function(){if((AMB.page+1)*AMB.limit<AMB.total){AMB.page++;_ambFetch();window.scrollTo({top:0,behavior:"smooth"});}};
+}
+function _ambFicha(id){
+  var m=document.getElementById("crm-modal"); if(!m)return;
+  m.innerHTML='<div class="card" style="max-width:720px;margin:0 auto;padding:18px"><p class="muted">Carregando ficha…</p></div>'; m.style.display="block";
+  api("ambFicha",{bank:AMB.bank,id:id}).then(function(j){
+    var r=j.registro||{}, cols=AMB_COLS[AMB.bank]||[], inst=j.instrumentos||[];
+    var titulo=esc(r.n||r.out||r.aut||r.emp||r.r||r._m||"Registro");
+    var campos=cols.map(function(c){var v=_ambCell(r[c[0]],c[2]);if(v==="")return "";return '<div style="margin-bottom:6px"><span class="muted" style="font-size:12px">'+esc(c[1])+'</span><br><b style="font-size:14px">'+v+'</b></div>';}).filter(Boolean).join("");
+    var extra="";
+    if(AMB.bank==="empreendimentos"){
+      if(r.pq)extra+='<div style="margin:8px 0;padding:10px;background:var(--surface-2,rgba(0,0,0,.03));border-radius:8px"><span class="muted" style="font-size:12px">Por quê (lead)</span><br>'+esc(r.pq)+'</div>';
+      if(r.a)extra+='<div style="margin-bottom:6px"><span class="muted" style="font-size:12px">Atividade</span><br>'+esc(r.a)+'</div>';
+    }
+    var instH="";
+    if(AMB.bank==="empreendimentos"){
+      if(inst.length){
+        instH='<h4 style="margin:14px 0 6px">Instrumentos legais (TAC/TCRA/PRAD/condicionantes)</h4>'
+          +inst.map(function(i){return '<div style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px">'
+            +'<b>'+esc(i.instrumento||"Instrumento")+'</b> '+(i.orgao?'<span class="muted">· '+esc(i.orgao)+'</span>':"")+(i.numero?' · nº '+esc(i.numero):"")
+            +(i.situacao?'<br><span class="muted" style="font-size:12px">Situação:</span> '+esc(i.situacao):"")
+            +(i.servico?'<br><span class="muted" style="font-size:12px">Serviço Intelecto:</span> '+esc(i.servico):"")
+            +(i.url_fonte?'<br><a href="'+esc(i.url_fonte)+'" target="_blank" rel="noopener" class="muted" style="font-size:12px">fonte ↗</a>':"")
+            +'</div>';}).join("");
+      } else {
+        instH='<p class="muted" style="font-size:12px;margin-top:12px">Nenhum instrumento legal (TAC/TCRA/PRAD/condicionante) catalogado para este lead ainda.</p>';
+      }
+    }
+    var coord=(r._lat&&r._lon)?'<a class="muted" style="font-size:12px" target="_blank" rel="noopener" href="https://www.google.com/maps?q='+encodeURIComponent(r._lat+","+r._lon)+'">ver no mapa ↗</a>':"";
+    m.innerHTML='<div class="card" style="max-width:720px;margin:0 auto;padding:18px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
+      +'<div><h3 style="margin:0">'+titulo+'</h3><p class="muted" style="margin:2px 0;font-size:13px">'+esc(_ambFmtBacia(r._bacia))+(r._m?' · '+esc(r._m):"")+' '+coord+'</p></div>'
+      +'<button class="btn sec sm" id="amb-fecha">Fechar</button></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">'+campos+'</div>'
+      +extra+instH+'</div>';
+    var fx=document.getElementById("amb-fecha"); if(fx)fx.onclick=function(){m.style.display="none";m.innerHTML="";};
+    m.onclick=function(ev){if(ev.target===m){m.style.display="none";m.innerHTML="";}};
+  }).catch(function(e){
+    m.innerHTML='<div class="card" style="max-width:520px;margin:0 auto;padding:18px"><p class="err">Erro: '+esc(e.message||e)+'</p><button class="btn sec sm" onclick="document.getElementById(\'crm-modal\').style.display=\'none\'">Fechar</button></div>';
+  });
 }
 /* ---- CRM: carrega deals+leads+horas numa chamada e rende as 3 abas ---- */
 function _crmLoad(){
