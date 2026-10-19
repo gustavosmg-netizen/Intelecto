@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19c";
+const SCHEMA_VER = "2026-10-19d";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -926,6 +926,28 @@ function ensureSchema(): Promise<void> {
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS pessoa_treino_slug ON pessoa_treino (tenant_id, slug)"); } catch (_) {}
     } catch (_) { /* ja existe */ }
 
+    /* ===== Onda 3 / INC 3 — PORTFÓLIO DE SERVIÇOS da empresa (artefato de empresa, VERSIONADO).
+     * Aba própria. Cada serviço tem histórico de versões (portfolio_versao) e pode ligar-se a
+     * habilidades (portfolio_skill, por NOME) — "o que a casa entrega com as habilidades atuais".
+     * Editado pela Coordenação; leitura interna (piso equipe). Sem valor monetário. Nasce VAZIO. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS portfolio_servico (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', sid TEXT NOT NULL,
+        nome TEXT DEFAULT '', categoria TEXT DEFAULT '', resumo TEXT DEFAULT '', descricao TEXT DEFAULT '',
+        publico INTEGER DEFAULT 0, ordem INTEGER DEFAULT 0, ativo INTEGER DEFAULT 1,
+        ver_atual TEXT DEFAULT '', atualizado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, sid))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS portfolio_versao (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, sid TEXT NOT NULL,
+        versao TEXT DEFAULT '', descricao TEXT DEFAULT '', mudancas TEXT DEFAULT '', data TEXT DEFAULT '',
+        autor TEXT DEFAULT '', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS portfolio_versao_sid ON portfolio_versao (tenant_id, sid)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS portfolio_skill (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', sid TEXT NOT NULL, skill TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, sid, skill))`);
+    } catch (_) { /* ja existe */ }
+
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
      * os cold starts seguintes deste D1 (nova instancia = `ready` resetado) leem
      * schema_ver == SCHEMA_VER e pulam todo o setup. Em D1 EXISTENTE sem sentinela
@@ -1509,6 +1531,10 @@ const MIN: Record<string, Papel> = {
   pessoaficha: "equipe", pessoafichaset: "equipe", pessoafichacv: "equipe",
   pessoaskillset: "equipe", pessoaskilldel: "equipe", pessoametaset: "equipe", pessoametadel: "equipe",
   pessoatreinoset: "equipe", pessoatreinodel: "equipe", pessoatreinocomprov: "equipe",
+  // Onda 3 / INC 3 — portfólio de serviços (artefato de empresa): leitura interna (piso equipe),
+  // edição pela Coordenação (piso coordenacao).
+  portf: "equipe", portfservset: "coordenacao", portfservdel: "coordenacao",
+  portfvernew: "coordenacao", portfverdel: "coordenacao", portfskilladd: "coordenacao", portfskilldel: "coordenacao",
   // G3 — gestão de colaboradores (quadro `membro`): piso coordenacao; gate fino por capability no branch.
   rhmembros: "coordenacao", rhmembroadd: "coordenacao", rhmembroset: "coordenacao", rhmembrodel: "coordenacao",
   // "Meu cargo": todo logado vê o DETALHE do PRÓPRIO cargo (piso cliente). Só leitura.
@@ -1553,6 +1579,7 @@ const MODULOS: Modulo[] = [
   { id: "comercial",  view: "comercial",  acao: "comercial",    label: "Comercial · CRM",  titulo: "Comercial · CRM & Leads",resumo: "Pipeline comercial (CRM), leads inbound, horas da equipe e prospecção georreferenciada por bacia.", icon: "📍", grupo: "COMERCIAL" },
   { id: "rh",         view: "rh",         acao: "rh",           label: "RH & Cargos",      titulo: "RH, Cargos e Rotinas", resumo: "Cargos, responsabilidades, rotinas e onboarding por função. Área de gestão.", icon: "👥", grupo: "PESSOAS" },
   { id: "ficha",      view: "ficha",      acao: "pessoaficha",  label: "Minha ficha",      titulo: "Ficha da Pessoa",      resumo: "Seu currículo, Lattes, habilidades, metas, treinamentos e evolução pelas horas.", icon: "🧑‍🎓", grupo: "PESSOAS" },
+  { id: "servicos",   view: "servicos",   acao: "portf",        label: "Portfólio de Serviços", titulo: "Portfólio de Serviços", resumo: "Serviços da casa com histórico de versões e as habilidades que cada um exige.", icon: "🧰", grupo: "CONHECIMENTO" },
   { id: "dna",        view: "dna",        acao: "dna",          label: "DNA & Ativos",     titulo: "DNA & Ativos da Marca",resumo: "Kit de marca, logos e documentos institucionais da casa.", icon: "🎨", grupo: "CONHECIMENTO" },
   { id: "financeiro", view: "financeiro", acao: "financeiro",   label: "Financeiro",       titulo: "Financeiro — Lucro × Prejuízo", resumo: "Custo real × valor contratado por projeto, em tempo real. Área do dono.", icon: "💰", grupo: "FINANCEIRO" },
   { id: "permissoes", view: "permissoes", acao: "perms",        label: "Permissões",       titulo: "Permissões & Acessos", resumo: "Áreas confidenciais e concessão de acervo.",           icon: "🔒", grupo: "ADMINISTRAÇÃO" },
@@ -1743,6 +1770,8 @@ const EVENTOS_SENSIVEIS: string[] = [
   // Onda 3 — ficha da pessoa (dados pessoais/LGPD): CV, skills, metas, treinamentos.
   "pessoa_ficha", "pessoa_cv", "pessoa_skill", "pessoa_skill_del", "pessoa_meta", "pessoa_meta_del",
   "pessoa_treino", "pessoa_treino_del", "pessoa_arquivo",
+  // Onda 3 — portfólio de serviços (artefato de empresa, versionado).
+  "portfolio_serv", "portfolio_serv_del", "portfolio_ver", "portfolio_ver_del", "portfolio_skill",
   // M4 — falha de entrega de e-mail (retida para rastreio operacional).
   "email_falha",
 ];
@@ -3919,6 +3948,86 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (ck && ENV.BLOB) { try { await ENV.BLOB.delete(ck); } catch (_) {} }
     await sqlite.execute({ sql: "DELETE FROM pessoa_treino WHERE tenant_id = ? AND id = ? AND slug = ?", args: [T, id, alvo] });
     await audit("pessoa_treino_del", u.slug, alvo + "/" + id, ip);
+    return { ok: true };
+  }
+
+  /* ===== Onda 3 / INC 3 — PORTFÓLIO DE SERVIÇOS (artefato de empresa, versionado) =====
+   * Leitura: piso equipe (guard MIN). Edição: coordenação/dono (piso coordenacao no guard). */
+  if (action === "portf") {
+    const u = await auth(p);
+    const podeEditar = temPapelMinimo(u.papel, "coordenacao");
+    const sv = await sqlite.execute({ sql: "SELECT sid, nome, categoria, resumo, descricao, publico, ordem, ativo, ver_atual, atualizado FROM portfolio_servico WHERE tenant_id = ? ORDER BY ordem, nome", args: [u.tenant_id] });
+    const vs = await sqlite.execute({ sql: "SELECT id, sid, versao, descricao, mudancas, data, autor FROM portfolio_versao WHERE tenant_id = ? ORDER BY data DESC, criado DESC", args: [u.tenant_id] });
+    const sk = await sqlite.execute({ sql: "SELECT sid, skill FROM portfolio_skill WHERE tenant_id = ?", args: [u.tenant_id] });
+    // Quantas PESSOAS têm cada habilidade (por nome, case-insensitive) — liga portfólio ↔ skills.
+    const pc = await sqlite.execute({ sql: "SELECT lower(nome) k, COUNT(DISTINCT slug) n FROM pessoa_skill WHERE tenant_id = ? GROUP BY lower(nome)", args: [u.tenant_id] });
+    const cnt: Record<string, number> = {}; for (const x of pc.rows as P[]) cnt[String(x.k)] = Number(x.n) || 0;
+    const versByS: Record<string, P[]> = {}; for (const v of vs.rows as P[]) (versByS[String(v.sid)] = versByS[String(v.sid)] || []).push(v);
+    const skByS: Record<string, P[]> = {}; for (const s of sk.rows as P[]) (skByS[String(s.sid)] = skByS[String(s.sid)] || []).push({ skill: String(s.skill), pessoas: cnt[String(s.skill).toLowerCase()] || 0 });
+    const servicos = (sv.rows as P[]).map((x) => ({ ...x, versoes: versByS[String(x.sid)] || [], skills: skByS[String(x.sid)] || [] }));
+    const allSk = await sqlite.execute({ sql: "SELECT DISTINCT nome FROM pessoa_skill WHERE tenant_id = ? AND nome <> '' ORDER BY nome", args: [u.tenant_id] });
+    return { ok: true, servicos, podeEditar, skillsCatalogo: (allSk.rows as P[]).map((x) => x.nome) };
+  }
+  if (action === "portfservset" || action === "portfservdel" || action === "portfvernew" ||
+      action === "portfverdel" || action === "portfskilladd" || action === "portfskilldel") {
+    const u = await auth(p);
+    if (!temPapelMinimo(u.papel, "coordenacao")) throw new Error("Apenas a Coordenação edita o portfólio.");
+    const T = u.tenant_id; const nowIso = new Date().toISOString();
+    const g = (k: string, n: number) => String(p[k] == null ? "" : p[k]).slice(0, n);
+
+    if (action === "portfservset") {
+      const nome = g("nome", 160).trim(); if (!nome) throw new Error("Informe o nome do serviço.");
+      let sid = String(p.sid || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
+      if (!sid) { // novo: deriva do nome e garante unicidade
+        let base = (slugColab(nome) || crypto.randomUUID().slice(0, 8)).slice(0, 36); sid = base; let n = 1;
+        while ((await sqlite.execute({ sql: "SELECT sid FROM portfolio_servico WHERE tenant_id = ? AND sid = ? LIMIT 1", args: [T, sid] })).rows.length) { n += 1; sid = base + n; if (n > 50) { sid = crypto.randomUUID().slice(0, 8); break; } }
+      }
+      await sqlite.execute({ sql: "INSERT INTO portfolio_servico (tenant_id, sid, nome, categoria, resumo, descricao, publico, ordem, ativo, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id, sid) DO UPDATE SET nome=excluded.nome, categoria=excluded.categoria, resumo=excluded.resumo, descricao=excluded.descricao, publico=excluded.publico, ordem=excluded.ordem, ativo=excluded.ativo, atualizado=excluded.atualizado, u=excluded.u", args: [T, sid, nome, g("categoria", 80), g("resumo", 600), g("descricao", 8000), p.publico ? 1 : 0, Math.max(0, Math.min(999, Number(p.ordem) || 0)), (p.ativo == null ? 1 : (p.ativo ? 1 : 0)), nowIso, u.slug] });
+      await audit("portfolio_serv", u.slug, sid, ip);
+      return { ok: true, sid };
+    }
+    if (action === "portfservdel") {
+      const sid = String(p.sid || "").trim(); if (!sid) throw new Error("Serviço inválido.");
+      await sqlite.execute({ sql: "DELETE FROM portfolio_servico WHERE tenant_id = ? AND sid = ?", args: [T, sid] });
+      await sqlite.execute({ sql: "DELETE FROM portfolio_versao WHERE tenant_id = ? AND sid = ?", args: [T, sid] });
+      await sqlite.execute({ sql: "DELETE FROM portfolio_skill WHERE tenant_id = ? AND sid = ?", args: [T, sid] });
+      await audit("portfolio_serv_del", u.slug, sid, ip);
+      return { ok: true };
+    }
+    if (action === "portfvernew") {
+      const sid = String(p.sid || "").trim(); if (!sid) throw new Error("Serviço inválido.");
+      const ex = await sqlite.execute({ sql: "SELECT sid FROM portfolio_servico WHERE tenant_id = ? AND sid = ? LIMIT 1", args: [T, sid] });
+      if (!ex.rows.length) throw new Error("Serviço inexistente.");
+      const versao = g("versao", 40).trim() || "s/ nº";
+      const data = g("data", 20).trim() || nowIso.slice(0, 10);
+      const id = crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO portfolio_versao (tenant_id, id, sid, versao, descricao, mudancas, data, autor, criado) VALUES (?,?,?,?,?,?,?,?,?)", args: [T, id, sid, versao, g("descricao", 4000), g("mudancas", 4000), data, u.slug, nowIso] });
+      await sqlite.execute({ sql: "UPDATE portfolio_servico SET ver_atual = ?, atualizado = ?, u = ? WHERE tenant_id = ? AND sid = ?", args: [versao, nowIso, u.slug, T, sid] });
+      await audit("portfolio_ver", u.slug, sid + " " + versao, ip);
+      return { ok: true, id, versao };
+    }
+    if (action === "portfverdel") {
+      const id = String(p.id || "").trim(); if (!id) throw new Error("Versão inválida.");
+      const cur = await sqlite.execute({ sql: "SELECT sid FROM portfolio_versao WHERE tenant_id = ? AND id = ? LIMIT 1", args: [T, id] });
+      const sid = String((cur.rows[0] as P || {}).sid || "");
+      await sqlite.execute({ sql: "DELETE FROM portfolio_versao WHERE tenant_id = ? AND id = ?", args: [T, id] });
+      if (sid) { // recomputa ver_atual = versão mais recente restante
+        const last = await sqlite.execute({ sql: "SELECT versao FROM portfolio_versao WHERE tenant_id = ? AND sid = ? ORDER BY data DESC, criado DESC LIMIT 1", args: [T, sid] });
+        await sqlite.execute({ sql: "UPDATE portfolio_servico SET ver_atual = ?, atualizado = ? WHERE tenant_id = ? AND sid = ?", args: [String((last.rows[0] as P || {}).versao || ""), nowIso, T, sid] });
+      }
+      await audit("portfolio_ver_del", u.slug, id, ip);
+      return { ok: true };
+    }
+    // portfskilladd / portfskilldel
+    const sid = String(p.sid || "").trim(); if (!sid) throw new Error("Serviço inválido.");
+    const skill = g("skill", 120).trim(); if (!skill) throw new Error("Informe a habilidade.");
+    if (action === "portfskilladd") {
+      await sqlite.execute({ sql: "INSERT OR IGNORE INTO portfolio_skill (tenant_id, sid, skill) VALUES (?,?,?)", args: [T, sid, skill] });
+      await audit("portfolio_skill", u.slug, sid + " + " + skill, ip);
+      return { ok: true };
+    }
+    await sqlite.execute({ sql: "DELETE FROM portfolio_skill WHERE tenant_id = ? AND sid = ? AND skill = ?", args: [T, sid, skill] });
+    await audit("portfolio_skill", u.slug, sid + " - " + skill, ip);
     return { ok: true };
   }
 

@@ -551,7 +551,7 @@ function montarNav(){
   });
   $("#ap-nav").innerHTML=html;
   $("#ap-nav").querySelectorAll(".sidebar-item").forEach(function(b){b.onclick=function(){irPara(b.dataset.v)}});
-  var titles={hub:"Início",inicio:"Painel do Dia",lancar:"Lançar Horas",apont:"Apontamentos",pend:"Pendentes",projetos:"Projetos",showcase:"Vitrine de Projetos",agenda:"Agenda",cadastro:"Cadastro",escritorio:"Escritório de IA",comercial:"Comercial · CRM",brief:"Daily Brief",acervo:"Acervo Técnico",trilhas:"Trilhas",dna:"DNA & Ativos",permissoes:"Permissões",conhecimento:"Conhecimento",portfolio:"Portfólio",perfil:"Minha Conta",financeiro:"Financeiro"};
+  var titles={hub:"Início",inicio:"Painel do Dia",lancar:"Lançar Horas",apont:"Apontamentos",pend:"Pendentes",projetos:"Projetos",showcase:"Vitrine de Projetos",agenda:"Agenda",cadastro:"Cadastro",escritorio:"Escritório de IA",comercial:"Comercial · CRM",brief:"Daily Brief",acervo:"Acervo Técnico",trilhas:"Trilhas",dna:"DNA & Ativos",permissoes:"Permissões",conhecimento:"Conhecimento",portfolio:"Portfólio",servicos:"Portfólio de Serviços",ficha:"Minha ficha",perfil:"Minha Conta",financeiro:"Financeiro"};
   /* Título por papel (roteado pelo servidor via state.coord): Coordenação/Admin veem o
      Resumo Executivo no Início; Equipe mantém o Painel do Dia. Só apresentação. */
   var _tit=titles[state.view]||state.view;
@@ -652,6 +652,7 @@ function render(){
   else if(state.view==="dna"){viewDna(el);return;}
   else if(state.view==="rh"){viewRh(el);return;}
   else if(state.view==="ficha"){viewFicha(el);return;}
+  else if(state.view==="servicos"){viewServicos(el);return;}
   else if(state.view==="perfil"){viewPerfil(el);return;}
   liga();
 }
@@ -2585,6 +2586,70 @@ function _finCustoHora(){
    onboarding por função. Leitura para todo interno (piso equipe); edição só Coordenação
    (o servidor nega 'rhset'/'rhdel' fora de coord). O vínculo pessoa→cargo vem de config
    cargo:<slug> (ação setcargo). Sem valor monetário. */
+/* ===== Onda 3 / INC 3 — Portfólio de Serviços (aba própria, versionado, liga skills↔serviço) ===== */
+function viewServicos(el){
+  el.innerHTML=viewHead("Conhecimento","Portfólio de Serviços","Os serviços que a casa entrega, com histórico de versões e as habilidades que cada um exige. Sem valores.")+
+    '<div id="serv-box"><p class="muted" style="padding:8px 0">Carregando…</p></div>';
+  _servLoad();
+}
+function _servLoad(){api("portf").then(_servRender).catch(function(e){var b=$("#serv-box");if(b)b.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});}
+function _servRender(j){
+  var box=$("#serv-box");if(!box)return;
+  var sv=j.servicos||[],pode=!!j.podeEditar,cat=j.skillsCatalogo||[];
+  var dl='<datalist id="serv-skills-dl">'+cat.map(function(s){return '<option value="'+esc(s)+'">';}).join("")+'</datalist>';
+  var kpis='<div class="kpis"><div class="kpi"><div class="v" style="color:var(--brand)">'+sv.length+'</div><div class="l">Serviços</div></div>'+
+    '<div class="kpi"><div class="v">'+sv.filter(function(s){return (s.versoes||[]).length;}).length+'</div><div class="l">Com versões</div></div></div>';
+  var novo=pode?'<div style="margin:10px 0"><button class="btn sm" id="serv-novo" type="button">+ Novo serviço</button></div>':'';
+  var cards=sv.map(function(s){
+    var badges=(s.categoria?_rhChip(s.categoria):'')+(s.publico?_rhChip('público'):'')+(!s.ativo?_rhChip('inativo'):'');
+    var skills=(s.skills||[]).map(function(k){
+      return '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.76rem;margin:0 5px 5px 0">'+esc(k.skill)+' <span class="muted" style="font-size:.68rem">'+k.pessoas+' pessoa'+(k.pessoas===1?'':'s')+'</span>'+(pode?'<button class="serv-sk-del" data-sid="'+esc(s.sid)+'" data-skill="'+esc(k.skill)+'" title="Desvincular" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:0 1px">×</button>':'')+'</span>';
+    }).join('')||'<span class="muted" style="font-size:.76rem">Sem habilidades vinculadas</span>';
+    var addSk=pode?'<div class="row" style="gap:6px;margin-top:6px;max-width:360px"><input class="serv-sk-in" data-sid="'+esc(s.sid)+'" list="serv-skills-dl" placeholder="vincular habilidade…" style="font-size:.78rem;flex:1"><button class="btn sm sec serv-sk-add" data-sid="'+esc(s.sid)+'" type="button">+</button></div>':'';
+    var vers=(s.versoes||[]).map(function(v){
+      return '<div style="padding:5px 0;border-bottom:1px dashed var(--line)"><div class="row" style="gap:8px;align-items:baseline;flex-wrap:wrap"><span class="tag tag-brand" style="font-size:.68rem">'+esc(v.versao)+'</span><span class="muted" style="font-size:.74rem">'+esc(v.data||'')+'</span>'+(v.descricao?'<span style="font-size:.82rem">'+esc(v.descricao)+'</span>':'')+'<span style="flex:1"></span>'+(pode?'<button class="btn sm danger serv-ver-del" data-id="'+esc(v.id)+'" type="button">×</button>':'')+'</div>'+(v.mudancas?'<div class="muted" style="font-size:.76rem;margin-top:2px">'+esc(v.mudancas)+'</div>':'')+'</div>';
+    }).join('')||'<p class="muted" style="font-size:.8rem;margin:4px 0">Nenhuma versão registrada.</p>';
+    var novaVer=pode?'<div class="card" style="padding:10px 12px;margin-top:8px;background:var(--surface2)"><div style="font-size:.8rem;font-weight:600;margin-bottom:6px">Nova versão</div><div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
+      '<div class="field" style="margin:0;max-width:120px"><label style="font-size:.72rem">Versão</label><input class="serv-nv-versao" data-sid="'+esc(s.sid)+'" placeholder="REV01"></div>'+
+      '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.72rem">Data</label><input class="serv-nv-data" data-sid="'+esc(s.sid)+'" type="date"></div>'+
+      '<div class="field" style="margin:0;flex:1;min-width:150px"><label style="font-size:.72rem">Descrição</label><input class="serv-nv-desc" data-sid="'+esc(s.sid)+'"></div>'+
+      '<button class="btn sm serv-nv-add" data-sid="'+esc(s.sid)+'" type="button">Registrar</button></div>'+
+      '<div class="field" style="margin:8px 0 0"><input class="serv-nv-mud" data-sid="'+esc(s.sid)+'" placeholder="o que mudou (opcional)" style="width:100%"></div></div>':'';
+    var acoes=pode?'<div class="row" style="gap:8px;margin-top:10px"><button class="btn sm sec serv-ed" data-sid="'+esc(s.sid)+'" type="button">Editar</button><button class="btn sm danger serv-del" data-sid="'+esc(s.sid)+'" type="button">Remover</button></div>':'';
+    return '<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-weight:700;font-size:1.02rem">'+esc(s.nome)+'</div>'+badges+(s.ver_atual?'<span class="muted" style="font-size:.76rem">versão atual: '+esc(s.ver_atual)+'</span>':'')+'</div>'+
+      (s.resumo?'<p style="margin:6px 0 0;font-size:.9rem">'+esc(s.resumo)+'</p>':'')+
+      (s.descricao?'<p class="muted" style="margin:4px 0 0;font-size:.84rem;white-space:pre-wrap">'+esc(s.descricao)+'</p>':'')+
+      '<div style="margin-top:10px"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Habilidades que exige</div>'+skills+addSk+'</div>'+
+      '<div style="margin-top:10px"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Histórico de versões</div>'+vers+novaVer+'</div>'+
+      acoes+'</div>';
+  }).join('')||'<div class="card"><p class="muted" style="margin:0">Nenhum serviço cadastrado'+(pode?'. Clique em “Novo serviço”.':' ainda.')+'</p></div>';
+  box.innerHTML=dl+kpis+novo+cards;
+  if(pode){
+    var nb=$("#serv-novo");if(nb)nb.onclick=function(){_servForm(null);};
+    box.querySelectorAll(".serv-ed").forEach(function(b){b.onclick=function(){var s=sv.filter(function(x){return x.sid===b.dataset.sid;})[0];_servForm(s||null);};});
+    box.querySelectorAll(".serv-del").forEach(function(b){b.onclick=function(){if(!confirm("Remover este serviço e todo o seu histórico de versões?"))return;api("portfservdel",{sid:b.dataset.sid}).then(_servLoad).catch(function(e){alert(e.message||e);});};});
+    box.querySelectorAll(".serv-sk-add").forEach(function(b){b.onclick=function(){var inp=box.querySelector('.serv-sk-in[data-sid="'+b.dataset.sid+'"]');var v=inp?inp.value.trim():'';if(!v)return;api("portfskilladd",{sid:b.dataset.sid,skill:v}).then(_servLoad).catch(function(e){alert(e.message||e);});};});
+    box.querySelectorAll(".serv-sk-del").forEach(function(b){b.onclick=function(){api("portfskilldel",{sid:b.dataset.sid,skill:b.dataset.skill}).then(_servLoad).catch(function(e){alert(e.message||e);});};});
+    box.querySelectorAll(".serv-nv-add").forEach(function(b){b.onclick=function(){var sid=b.dataset.sid;var gv=function(c){var e=box.querySelector('.'+c+'[data-sid="'+sid+'"]');return e?e.value:'';};var versao=gv('serv-nv-versao').trim();if(!versao){alert("Informe a versão.");return;}api("portfvernew",{sid:sid,versao:versao,data:gv('serv-nv-data'),descricao:gv('serv-nv-desc'),mudancas:gv('serv-nv-mud')}).then(_servLoad).catch(function(e){alert(e.message||e);});};});
+    box.querySelectorAll(".serv-ver-del").forEach(function(b){b.onclick=function(){if(!confirm("Remover esta versão do histórico?"))return;api("portfverdel",{id:b.dataset.id}).then(_servLoad).catch(function(e){alert(e.message||e);});};});
+  }
+}
+function _servForm(s){
+  var ed=!!s;
+  var h='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:8px">'+(ed?'Editar serviço':'Novo serviço')+'</div>'+
+    '<div class="field"><label style="font-size:.74rem">Nome</label><input id="sf-nome" value="'+esc(ed?s.nome:'')+'"></div>'+
+    '<div class="row" style="gap:8px;flex-wrap:wrap"><div class="field" style="flex:1;min-width:160px"><label style="font-size:.74rem">Categoria</label><input id="sf-cat" value="'+esc(ed?(s.categoria||''):'')+'"></div>'+
+      '<div class="field" style="max-width:110px"><label style="font-size:.74rem">Ordem</label><input id="sf-ordem" type="number" value="'+(ed?(s.ordem||0):0)+'"></div></div>'+
+    '<div class="field"><label style="font-size:.74rem">Resumo</label><input id="sf-resumo" value="'+esc(ed?(s.resumo||''):'')+'"></div>'+
+    '<div class="field"><label style="font-size:.74rem">Descrição</label><textarea id="sf-desc" rows="4" style="width:100%">'+esc(ed?(s.descricao||''):'')+'</textarea></div>'+
+    '<label style="font-size:.84rem;display:block;margin-bottom:6px"><input type="checkbox" id="sf-pub" '+(ed&&s.publico?'checked':'')+'> Público (pode aparecer em vitrine futura)</label>'+
+    '<label style="font-size:.84rem;display:block;margin-bottom:8px"><input type="checkbox" id="sf-ativo" '+((!ed||s.ativo)?'checked':'')+'> Ativo</label>'+
+    '<div class="row" style="gap:8px"><button class="btn sm" id="sf-save" type="button">Salvar</button><button class="btn sm sec" id="sf-cancel" type="button">Cancelar</button><span id="sf-msg" class="muted" style="font-size:.78rem"></span></div></div>';
+  var box=$("#serv-box");box.insertAdjacentHTML("afterbegin",h);
+  $("#sf-cancel").onclick=function(){_servLoad();};
+  $("#sf-save").onclick=function(){var nome=$("#sf-nome").value.trim();if(!nome){alert("Informe o nome.");return;}
+    api("portfservset",{sid:ed?s.sid:undefined,nome:nome,categoria:$("#sf-cat").value,ordem:$("#sf-ordem").value,resumo:$("#sf-resumo").value,descricao:$("#sf-desc").value,publico:$("#sf-pub").checked?1:0,ativo:$("#sf-ativo").checked?1:0}).then(_servLoad).catch(function(e){var m=$("#sf-msg");if(m){m.textContent=e.message||e;m.classList.add("err");}});};
+}
 /* ===== Onda 3 / INC 2 — Ficha da pessoa (CV/Lattes, habilidades, metas, treinamentos, evolução) ===== */
 var _fichaAlvo=null; /* null = minha própria ficha; RH pode abrir a de outra pessoa */
 function viewFicha(el){
