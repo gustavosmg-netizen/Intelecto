@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19f";
+const SCHEMA_VER = "2026-10-19g";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -990,6 +990,52 @@ function ensureSchema(): Promise<void> {
         PRIMARY KEY (tenant_id, bank, bacia, dim, chave))`);
     } catch (_) { /* ja existe */ }
 
+    /* ===== Onda 3 / VITRINE — show-run de cases (galeria dos trabalhos entregues) =====
+     * Vitrine EDITORIAL e demonstravel: cada `vitrine_case` tem apresentacao em HTML (corpo) e
+     * uma galeria de PRODUTOS FINAIS (vitrine_produto: prancha/relatorio/modelo 3D/apresentacao/
+     * imagem/link) que apontam para arquivos do bucket ACERVO (reaproveita o storage, sem bucket
+     * novo) ou para URLs. E DISTINTA da aba `showcase` ("Vitrine de Projetos"), que projeta os
+     * registros operacionais proj/prod por cliente; aqui o conteudo e curado pela gestao e
+     * publicavel. cliente SEMPRE por centro de custo (nunca nome real) e ZERO valor monetario.
+     * Edicao = coordenacao/admin; leitura = piso 'equipe' (abertura externa/cliente = TODO, ver
+     * nota no route()). Nasce com 1-2 cases EXEMPLO ("(exemplo — edite)") so para a tela nascer
+     * com conteudo — sem dado de cliente real nem numero. INSERT OR IGNORE: nao duplica nem
+     * sobrescreve edicoes da casa (segue o padrao de seed das demais tabelas). */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS vitrine_case (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', cid TEXT NOT NULL,
+        titulo TEXT DEFAULT '', cliente_cc TEXT DEFAULT '', area TEXT DEFAULT '',
+        resumo TEXT DEFAULT '', corpo TEXT DEFAULT '', capa TEXT DEFAULT '', capa_fonte TEXT DEFAULT '',
+        publicado INTEGER DEFAULT 0, ordem INTEGER DEFAULT 0, ativo INTEGER DEFAULT 1,
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, cid))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS vitrine_case_pub ON vitrine_case (tenant_id, publicado, ordem)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS vitrine_produto (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, cid TEXT NOT NULL DEFAULT '',
+        tipo TEXT DEFAULT 'prancha', titulo TEXT DEFAULT '', legenda TEXT DEFAULT '',
+        fonte TEXT DEFAULT 'acervo', ref TEXT DEFAULT '', ordem INTEGER DEFAULT 0, criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS vitrine_prod_cid ON vitrine_produto (tenant_id, cid, ordem)"); } catch (_) {}
+      // Seed: 2 cases EXEMPLO (idempotente). Sem cliente real, sem valor. Nascem PUBLICADOS p/ a
+      // tela nascer com conteudo; a gestao edita/despublica/remove. Produtos nascem como link de
+      // exemplo (fonte='url') — a gestao troca por arquivos reais do acervo depois.
+      const _vxNow = new Date().toISOString();
+      const _vxCases: [string, string, string, string, string, string, number][] = [
+        ["vexemplo-ete", "(exemplo — edite) Projeto executivo de ETE compacta", "E.00.00.00", "Água e efluentes · ETE",
+          "Case de demonstração da Vitrine. Substitua por um trabalho real entregue pela casa: concepção, memorial de cálculo, pranchas executivas e modelo 3D georreferenciado de uma estação de tratamento de esgoto.",
+          "<p><em>Este é um case de exemplo — edite ou remova.</em></p><h3>Desafio</h3><p>Descreva aqui o problema do cliente (por centro de custo, nunca o nome real) e a demanda ambiental atendida.</p><h3>O que a casa entregou</h3><ul><li>Concepção e seleção de rota de tratamento.</li><li>Memorial de cálculo e descritivo (Crivo A-F).</li><li>Pranchas executivas no padrão do cliente.</li><li>Modelo 3D georreferenciado para compatibilização.</li></ul><h3>Resultado</h3><p>Resuma o ganho técnico/ambiental — sem qualquer valor monetário.</p>", 1],
+        ["vexemplo-tratabilidade", "(exemplo — edite) Estudo de tratabilidade (Jar-Test) de efluente industrial", "E.00.00.01", "Tratabilidade · Industrial",
+          "Case de demonstração da Vitrine. Substitua por um estudo real: ensaios de bancada, seleção de coagulante/polímero, curvas de dosagem e tradução do resultado em rota tecnológica.",
+          "<p><em>Este é um case de exemplo — edite ou remova.</em></p><h3>Escopo</h3><p>Caracterização do efluente e plano de ensaios (Jar-Test).</p><h3>Entregáveis demonstráveis</h3><ul><li>Relatório de tratabilidade com curvas de dosagem ótima.</li><li>Apresentação executiva dos resultados.</li></ul><p>Anexe os produtos finais na galeria abaixo (pranchas, relatórios, modelos 3D, apresentações).</p>", 2],
+      ];
+      for (const [cid, titulo, cc, area, resumo, corpo, ordem] of _vxCases) {
+        await sqlite.execute({
+          sql: "INSERT OR IGNORE INTO vitrine_case (tenant_id, cid, titulo, cliente_cc, area, resumo, corpo, capa, capa_fonte, publicado, ordem, ativo, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, cid, titulo, cc, area, resumo, corpo, "", "", 1, ordem, 1, _vxNow, "seed"],
+        });
+      }
+    } catch (_) { /* ja existe */ }
+
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
      * os cold starts seguintes deste D1 (nova instancia = `ready` resetado) leem
      * schema_ver == SCHEMA_VER e pulam todo o setup. Em D1 EXISTENTE sem sentinela
@@ -1565,6 +1611,12 @@ const MIN: Record<string, Papel> = {
   // SHOWCASE/PORTAL DO CLIENTE: a vitrine (piso 'cliente' — todo logado vê a PROPRIA projeção).
   // A negação de ver cliente de outrem/projeto não-liberado é feita DENTRO da ação, no servidor.
   showcase: "cliente",
+  // VITRINE (show-run de cases): LEITURA piso 'equipe' (interna). CRUD (criar/editar/publicar/
+  // remover case e produtos) = gestao, piso 'coordenacao' (o handler ainda exige u.coord).
+  // TODO abertura externa: para expor a vitrine a 'cliente'/publico, baixar o piso de 'vitrine'/
+  // 'vitrineFicha' e servir SOMENTE publicado=1 (ja filtrado no handler) — decisao explicita.
+  vitrine: "equipe", vitrineFicha: "equipe",
+  vitrineSet: "coordenacao", vitrineDel: "coordenacao", vitrineProdSet: "coordenacao", vitrineProdDel: "coordenacao",
   // TRILHAS (manual vivo): piso 'cliente' — todo logado vê o manual dos modulos que ACESSA.
   // A lista de capitulos deriva de modulosLiberados (mesma fonte do Hub), ja filtrada por
   // papel/tenant no servidor. So-leitura; nenhuma escrita. Fornecedor (lateral) fica de fora
@@ -1658,6 +1710,7 @@ const MODULOS: Modulo[] = [
   { id: "pend",       view: "pend",       acao: "pinpend",      label: "Pendentes",        titulo: "Aprovações & Trilha",  resumo: "Liberações, pedidos de acesso e trilha de auditoria.", icon: "⏳", grupo: "PROJETOS" },
   { id: "projetos",   view: "projetos",   acao: "produtos",     label: "Projetos",         titulo: "Carteira de Projetos", resumo: "Projetos da casa, responsáveis e andamento.",          icon: "📁", grupo: "PROJETOS" },
   { id: "showcase",   view: "showcase",   acao: "showcase",     label: "Vitrine",          titulo: "Vitrine de Projetos",  resumo: "Galeria executiva de projetos e entregas por cliente e status.", icon: "🖼️", grupo: "PROJETOS" },
+  { id: "vitrine",    view: "vitrine",    acao: "vitrine",      label: "Vitrine · Cases",  titulo: "Vitrine · Show-run de Cases", resumo: "Galeria navegável dos cases entregues pela casa, com apresentação e produtos finais demonstráveis (pranchas, relatórios, modelos 3D, apresentações). Edição pela gestão.", icon: "✨", grupo: "PROJETOS" },
   { id: "agenda",     view: "agenda",     acao: "eventos",      label: "Agenda",           titulo: "Agenda & Ritos",       resumo: "Eventos, reuniões e ritos da equipe.",                 icon: "📅", grupo: "PROJETOS" },
   { id: "brief",      view: "brief",      acao: "brief",        label: "Daily Brief",      titulo: "Daily Brief",          resumo: "Radar de editais e notícias com triagem por IA.",      icon: "📰", grupo: "CONHECIMENTO" },
   { id: "acervo",     view: "acervo",     acao: "acervo_busca", label: "Acervo Técnico",   titulo: "Acervo Técnico",       resumo: "Biblioteca de normas, fichas e precedentes da casa.",  icon: "📚", grupo: "CONHECIMENTO" },
@@ -2179,15 +2232,51 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const row0 = r.rows[0] as P; let pr: P = {}; try { pr = JSON.parse(String(row0.props || "{}")); } catch (_) { /* */ }
     if (String(pr.tp || "") === "PF") throw new Error("Lead de pessoa física é protegido (LGPD); promova apenas PJ.");
     const lid = "LA-" + id;
+    // Contato enriquecido (opcional, vindo do cnpjLookup): e-mail/telefone/contato/CNPJ.
+    const email = String(p.email || "").slice(0, 160);
+    const telefone = String(p.telefone || "").slice(0, 60);
+    const contato = String(p.contato || "").slice(0, 160);
+    const cnpj = String(p.cnpj || "").replace(/\D/g, "").slice(0, 14);
+    const temContato = !!(email || telefone || contato || cnpj);
     const ex = await sqlite.execute({ sql: "SELECT id, status, dealid FROM crm_lead WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, lid] });
-    if (ex.rows.length) { const e0 = ex.rows[0] as P; return { ok: true, id: lid, jaExiste: true, status: String(e0.status || ""), dealid: String(e0.dealid || "") }; }
+    if (ex.rows.length) {
+      const e0 = ex.rows[0] as P;
+      if (temContato) { await sqlite.execute({ sql: "UPDATE crm_lead SET email = COALESCE(NULLIF(?,''), email), telefone = COALESCE(NULLIF(?,''), telefone), contato = COALESCE(NULLIF(?,''), contato) WHERE tenant_id = ? AND id = ?", args: [email, telefone, contato, u.tenant_id, lid] }); await audit("amb_to_crm_enriq", u.slug, lid + (cnpj ? " cnpj " + cnpj : ""), ip); }
+      return { ok: true, id: lid, jaExiste: true, atualizado: temContato, status: String(e0.status || ""), dealid: String(e0.dealid || "") };
+    }
     const g = (k: string, n = 200) => String(pr[k] == null ? "" : pr[k]).slice(0, n);
     const hoje = new Date().toISOString().slice(0, 10);
     const bacia = String(row0.bacia || "").replace(/_/g, " ");
-    const msg = "Lead promovido da tela de Leads Ambientais (bacia " + bacia + "). Cód. DN217 " + g("cd") + " · atividade: " + g("a", 280) + (g("sv") ? " · serviço sugerido: " + g("sv", 200) : "");
-    await sqlite.execute({ sql: "INSERT INTO crm_lead (tenant_id, id, empresa, segmento, cidade, produto, sinal, fonte, status, descoberto, origem, mensagem, canal) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", args: [u.tenant_id, lid, g("n"), g("s"), String(row0.municipio || ""), g("sv"), g("pq", 400), "Prospecção · base ambiental MG", "candidato", hoje, "base-ambiental-mg", msg, "prospeccao-amb"] });
-    await audit("amb_to_crm", u.slug, id + " -> " + lid, ip);
+    const msg = "Lead promovido da tela de Leads Ambientais (bacia " + bacia + "). Cód. DN217 " + g("cd") + " · atividade: " + g("a", 280) + (g("sv") ? " · serviço sugerido: " + g("sv", 200) : "") + (cnpj ? " · CNPJ " + cnpj : "");
+    await sqlite.execute({ sql: "INSERT INTO crm_lead (tenant_id, id, empresa, segmento, cidade, produto, sinal, fonte, status, descoberto, origem, mensagem, canal, email, telefone, contato) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", args: [u.tenant_id, lid, g("n"), g("s"), String(row0.municipio || ""), g("sv"), g("pq", 400), "Prospecção · base ambiental MG", "candidato", hoje, "base-ambiental-mg", msg, "prospeccao-amb", email, telefone, contato] });
+    await audit("amb_to_crm", u.slug, id + " -> " + lid + (cnpj ? " cnpj " + cnpj : ""), ip);
     return { ok: true, id: lid, jaExiste: false };
+  }
+  /* Enriquecimento de contato por CNPJ (proxy server-side → BrasilAPI, pública, sem chave).
+     O Worker faz o fetch (sem restrição de CSP); devolve e-mail/telefone/endereço/sócios da
+     Receita p/ o usuário validar e salvar no CRM. Gate comercial.ver. */
+  if (action === "cnpjLookup") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const cnpj = String(p.cnpj || "").replace(/\D/g, "");
+    if (cnpj.length !== 14) throw new Error("CNPJ inválido — informe os 14 dígitos.");
+    let d: P = {};
+    try {
+      const resp = await fetch("https://brasilapi.com.br/api/cnpj/v1/" + cnpj, { headers: { accept: "application/json", "user-agent": "portal-intelecto" } });
+      if (resp.status === 404) throw new Error("CNPJ não encontrado na base da Receita.");
+      if (!resp.ok) throw new Error("Consulta indisponível (HTTP " + resp.status + ").");
+      d = await resp.json();
+    } catch (e: any) { throw new Error(e && e.message ? e.message : "Falha ao consultar o CNPJ."); }
+    const tel = String(d.ddd_telefone_1 || d.ddd_telefone_2 || "").trim();
+    const socios = Array.isArray(d.qsa) ? (d.qsa as P[]).slice(0, 6).map((s) => String(s.nome_socio || s.nome || "")).filter(Boolean) : [];
+    const contato = {
+      cnpj, razao: String(d.razao_social || ""), fantasia: String(d.nome_fantasia || ""),
+      email: String(d.email || "").toLowerCase(), telefone: tel,
+      endereco: [d.logradouro, d.numero, d.bairro, d.municipio, d.uf, d.cep].map((x) => String(x || "").trim()).filter(Boolean).join(", "),
+      cnae: String(d.cnae_fiscal_descricao || ""), situacao: String(d.descricao_situacao_cadastral || ""), socios,
+    };
+    await audit("cnpj_lookup", u.slug, cnpj, ip);
+    return { ok: true, contato };
   }
   if (action === "ambFicha") {
     const u = await auth(p);
@@ -4896,6 +4985,121 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, documentos: cont.rows };
   }
 
+  /* ===== VITRINE — show-run de cases (galeria dos trabalhos entregues) =====
+     Leitura (vitrine/vitrineFicha): piso 'equipe' (guard MIN). Equipe vê só PUBLICADOS; a gestao
+     (u.coord) vê tambem rascunhos e recebe podeGerir=true. CRUD so u.coord. Produtos apontam p/
+     o bucket ACERVO (reaproveitado) via a rota POST /vitrine/arquivo, ou p/ URL externa. Sem
+     valor monetario; cliente por centro de custo. ABERTURA EXTERNA = TODO (ver nota no MIN). */
+  if (action === "vitrine") {
+    const u = await auth(p);
+    const gerir = !!u.coord;
+    const r = await sqlite.execute({
+      sql: "SELECT cid, titulo, cliente_cc, area, resumo, capa, capa_fonte, publicado, ordem, atualizado FROM vitrine_case WHERE tenant_id = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo",
+      args: [u.tenant_id],
+    });
+    // Contagem de produtos por case (p/ o badge do card), em 1 consulta.
+    const pc = await sqlite.execute({ sql: "SELECT cid, COUNT(*) n FROM vitrine_produto WHERE tenant_id = ? GROUP BY cid", args: [u.tenant_id] });
+    const nprod: Record<string, number> = {};
+    for (const x of pc.rows as P[]) nprod[String(x.cid)] = Number(x.n) || 0;
+    const cases = (r.rows as P[]).map((x) => ({
+      cid: x.cid, titulo: x.titulo, cliente_cc: x.cliente_cc, area: x.area, resumo: x.resumo,
+      capa: x.capa, capa_fonte: x.capa_fonte, publicado: Number(x.publicado) ? 1 : 0, ordem: Number(x.ordem) || 0,
+      atualizado: x.atualizado, produtos: nprod[String(x.cid)] || 0,
+    }));
+    return { ok: true, cases, podeGerir: gerir };
+  }
+
+  if (action === "vitrineFicha") {
+    const u = await auth(p);
+    const gerir = !!u.coord;
+    const cid = String(p.cid || "").trim();
+    if (!cid) throw new Error("Case não informado.");
+    const r = await sqlite.execute({
+      sql: "SELECT cid, titulo, cliente_cc, area, resumo, corpo, capa, capa_fonte, publicado, ordem, atualizado, u FROM vitrine_case WHERE tenant_id = ? AND cid = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " LIMIT 1",
+      args: [u.tenant_id, cid],
+    });
+    if (!r.rows.length) throw new Error("Case não encontrado.");
+    const c = r.rows[0] as P;
+    const pr = await sqlite.execute({
+      sql: "SELECT id, tipo, titulo, legenda, fonte, ref, ordem FROM vitrine_produto WHERE tenant_id = ? AND cid = ? ORDER BY ordem, id",
+      args: [u.tenant_id, cid],
+    });
+    return { ok: true, caso: { ...c, publicado: Number(c.publicado) ? 1 : 0 }, produtos: pr.rows, podeGerir: gerir };
+  }
+
+  if (action === "vitrineSet") {
+    const u = await auth(p);
+    if (!u.coord) throw new Error("Apenas a Coordenação edita a Vitrine.");
+    let cid = String(p.cid || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 48);
+    if (!cid) cid = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const titulo = (String(p.titulo || "").trim() || "(sem título)").slice(0, 200);
+    const cc = String(p.cliente_cc || "").slice(0, 60);
+    const area = String(p.area || "").slice(0, 120);
+    const resumo = String(p.resumo || "").slice(0, 2000);
+    const corpo = String(p.corpo || "").slice(0, 60000);
+    const capa = String(p.capa || "").slice(0, 600);
+    const capaFonte = String(p.capa_fonte || "").trim() === "acervo" ? "acervo" : "url";
+    const publicado = Number(p.publicado) ? 1 : 0;
+    const ordem = Math.max(0, Math.min(9999, Number(p.ordem) || 0));
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO vitrine_case (tenant_id, cid, titulo, cliente_cc, area, resumo, corpo, capa, capa_fonte, publicado, ordem, ativo, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?) ON CONFLICT(tenant_id, cid) DO UPDATE SET titulo=excluded.titulo, cliente_cc=excluded.cliente_cc, area=excluded.area, resumo=excluded.resumo, corpo=excluded.corpo, capa=excluded.capa, capa_fonte=excluded.capa_fonte, publicado=excluded.publicado, ordem=excluded.ordem, ativo=1, atualizado=excluded.atualizado, u=excluded.u",
+      args: [u.tenant_id, cid, titulo, cc, area, resumo, corpo, capa, capaFonte, publicado, ordem, now, u.slug],
+    });
+    await audit("vitrine_case", u.slug, cid + (publicado ? " [pub]" : " [rascunho]"), ip);
+    return { ok: true, cid };
+  }
+
+  if (action === "vitrineDel") {
+    const u = await auth(p);
+    if (!u.coord) throw new Error("Apenas a Coordenação remove da Vitrine.");
+    const cid = String(p.cid || "").trim();
+    if (!cid) throw new Error("Case não informado.");
+    // Remove o case e seus produtos (metadados; os arquivos do acervo NÃO são tocados).
+    await sqlite.execute({ sql: "DELETE FROM vitrine_produto WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+    await sqlite.execute({ sql: "DELETE FROM vitrine_case WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+    await audit("vitrine_case_del", u.slug, cid, ip);
+    return { ok: true, cid };
+  }
+
+  if (action === "vitrineProdSet") {
+    const u = await auth(p);
+    if (!u.coord) throw new Error("Apenas a Coordenação edita os produtos da Vitrine.");
+    const cid = String(p.cid || "").trim();
+    if (!cid) throw new Error("Case não informado.");
+    const exists = await sqlite.execute({ sql: "SELECT 1 FROM vitrine_case WHERE tenant_id = ? AND cid = ? LIMIT 1", args: [u.tenant_id, cid] });
+    if (!exists.rows.length) throw new Error("Case não encontrado.");
+    let id = String(p.id || "").trim();
+    if (!id) id = "vp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const TIPOS = ["prancha", "relatorio", "modelo3d", "apresentacao", "imagem", "link"];
+    const tipo = TIPOS.includes(String(p.tipo || "")) ? String(p.tipo) : "prancha";
+    const titulo = (String(p.titulo || "").trim() || "Produto").slice(0, 200);
+    const legenda = String(p.legenda || "").slice(0, 1000);
+    const fonte = String(p.fonte || "").trim() === "url" ? "url" : "acervo";
+    const ref = String(p.ref || "").trim().replace(/^\/+/, "").slice(0, 600);
+    if (!ref) throw new Error("Informe o caminho no acervo ou a URL do produto.");
+    if (fonte === "acervo" && ref.includes("..")) throw new Error("Caminho de acervo inválido.");
+    if (fonte === "url" && !/^https?:\/\//i.test(ref)) throw new Error("A URL deve começar com http:// ou https://.");
+    const ordem = Math.max(0, Math.min(9999, Number(p.ordem) || 0));
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO vitrine_produto (tenant_id, id, cid, tipo, titulo, legenda, fonte, ref, ordem, criado) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id, id) DO UPDATE SET cid=excluded.cid, tipo=excluded.tipo, titulo=excluded.titulo, legenda=excluded.legenda, fonte=excluded.fonte, ref=excluded.ref, ordem=excluded.ordem",
+      args: [u.tenant_id, id, cid, tipo, titulo, legenda, fonte, ref, ordem, now],
+    });
+    await audit("vitrine_prod", u.slug, cid + "/" + id + " " + tipo, ip);
+    return { ok: true, id, cid };
+  }
+
+  if (action === "vitrineProdDel") {
+    const u = await auth(p);
+    if (!u.coord) throw new Error("Apenas a Coordenação remove produtos da Vitrine.");
+    const id = String(p.id || "").trim();
+    if (!id) throw new Error("Produto não informado.");
+    await sqlite.execute({ sql: "DELETE FROM vitrine_produto WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] });
+    await audit("vitrine_prod_del", u.slug, id, ip);
+    return { ok: true, id };
+  }
+
   throw new Error("Ação desconhecida: " + action);
 }
 
@@ -5218,6 +5422,50 @@ app.post("/acervo/arquivo", async (c) => {
       : low.endsWith(".jpg") || low.endsWith(".jpeg") ? "image/jpeg"
       : "application/octet-stream";
     await audit("acervo_arquivo", u.slug, key.slice(0, 80), c.req.header("cf-connecting-ip") || "");
+    return new Response(o.body, { headers: { "content-type": tipo, "cache-control": "private, max-age=120" } });
+  } catch (e: any) {
+    return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);
+  }
+});
+
+/* VITRINE — serve um PRODUTO FINAL de um case a partir do bucket ACERVO (reaproveitado, sem
+ * storage novo). A CHAVE vem do banco (vitrine_produto.ref), nunca do cliente → sem path
+ * injection. Gate = leitura da Vitrine (piso 'equipe'); independe do grant de acervo (quem vê a
+ * vitrine pode abrir os produtos dela). Produtos fonte='url' nao passam por aqui (link direto no
+ * front). .html/.htm servem inline p/ modelos 3D navegaveis (conteudo curado pela gestao). */
+app.post("/vitrine/arquivo", async (c) => {
+  try {
+    await ensureSchema();
+    const b: P = await c.req.json().catch(() => ({} as P));
+    const u = await auth({ token: String(b.token || "") || cookieVal(c.req.header("cookie") || "", "ce_t") } as P);
+    if (!temPapelMinimo(u.papel, "equipe")) return c.text("Sem acesso à Vitrine.", 403);
+    const cid = String(b.cid || "").trim();
+    const id = String(b.id || "").trim();
+    if (!cid || !id) return c.text("Produto inválido.", 400);
+    const r = await sqlite.execute({ sql: "SELECT fonte, ref FROM vitrine_produto WHERE tenant_id = ? AND cid = ? AND id = ? LIMIT 1", args: [u.tenant_id, cid, id] });
+    if (!r.rows.length) return c.text("Produto não encontrado.", 404);
+    const prod = r.rows[0] as P;
+    if (String(prod.fonte) !== "acervo") return c.text("Este produto é um link externo.", 400);
+    const key = String(prod.ref || "").replace(/^\/+/, "");
+    if (!key || key.includes("..")) return c.text("Caminho inválido.", 400);
+    const o = ENV.ACERVO ? await ENV.ACERVO.get(key) : null;
+    if (!o) return c.text("Arquivo não encontrado.", 404);
+    const low = key.toLowerCase();
+    const tipo = low.endsWith(".pdf") ? "application/pdf"
+      : low.endsWith(".html") || low.endsWith(".htm") ? "text/html; charset=utf-8"
+      : low.endsWith(".md") || low.endsWith(".txt") ? "text/plain; charset=utf-8"
+      : low.endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : low.endsWith(".doc") ? "application/msword"
+      : low.endsWith(".xlsx") ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : low.endsWith(".pptx") ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      : low.endsWith(".ppt") ? "application/vnd.ms-powerpoint"
+      : low.endsWith(".csv") ? "text/csv; charset=utf-8"
+      : low.endsWith(".png") ? "image/png"
+      : low.endsWith(".jpg") || low.endsWith(".jpeg") ? "image/jpeg"
+      : low.endsWith(".svg") ? "image/svg+xml"
+      : low.endsWith(".glb") ? "model/gltf-binary"
+      : "application/octet-stream";
+    await audit("vitrine_arquivo", u.slug, (cid + "/" + id).slice(0, 80), c.req.header("cf-connecting-ip") || "");
     return new Response(o.body, { headers: { "content-type": tipo, "cache-control": "private, max-age=120" } });
   } catch (e: any) {
     return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);

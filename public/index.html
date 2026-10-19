@@ -3803,6 +3803,12 @@ function _ambFicha(id){
         +'<a class="btn sec sm" target="_blank" rel="noopener" href="https://www.linkedin.com/search/results/companies/?keywords='+enc(cnome)+'">LinkedIn ↗</a>'
         +'<a class="btn sec sm" target="_blank" rel="noopener" href="https://casadosdados.com.br/solucao/cnpj?q='+enc(cnome)+'">Consulta CNPJ ↗</a>'
         +'</div>';
+      if(AMB.bank==="empreendimentos"){
+        contatoH+='<div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+          +'<input id="amb-cnpj" class="input sm" placeholder="cole o CNPJ (14 dígitos)" style="width:200px">'
+          +'<button class="btn sm" id="amb-enriq">Enriquecer (Receita)</button><span id="amb-enriq-ok" class="muted" style="font-size:12px"></span></div>'
+          +'<div id="amb-enriq-res" style="margin-top:6px"></div>';
+      }
     }
     var instH="";
     if(AMB.bank==="empreendimentos"){
@@ -3855,6 +3861,26 @@ function _ambFicha(id){
     if(dmun)dmun.onclick=function(){m.style.display="none";m.innerHTML="";AMB.bank="empreendimentos";_ambResetFilters();AMB.municipio=muni;_ambRenderChips();_ambRenderFiltros();_ambLoadFacets();_ambFetch();};
     var dnom=document.getElementById("amb-drill-nome");
     if(dnom)dnom.onclick=function(){m.style.display="none";m.innerHTML="";AMB.bank="empreendimentos";_ambResetFilters();AMB.q=emphint;_ambRenderChips();_ambRenderFiltros();_ambLoadFacets();_ambFetch();};
+    var eb=document.getElementById("amb-enriq");
+    if(eb)eb.onclick=function(){
+      var cn=(document.getElementById("amb-cnpj")||{}).value||"";
+      var ok=document.getElementById("amb-enriq-ok"), res=document.getElementById("amb-enriq-res");
+      eb.disabled=true; if(ok)ok.textContent="consultando…";
+      api("cnpjLookup",{cnpj:cn}).then(function(j){
+        eb.disabled=false; if(ok)ok.textContent=""; var c=j.contato||{};
+        res.innerHTML='<div style="border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px">'
+          +'<b>'+esc(c.razao||"")+'</b>'+(c.fantasia?' <span class="muted">('+esc(c.fantasia)+')</span>':'')+(c.situacao?' <span class="muted" style="font-size:11px">· '+esc(c.situacao)+'</span>':'')
+          +(c.email?'<br>✉ <a href="mailto:'+esc(c.email)+'">'+esc(c.email)+'</a>':'<br><span class="muted">sem e-mail na Receita</span>')
+          +(c.telefone?'<br>☎ '+esc(c.telefone):'')
+          +(c.endereco?'<br><span class="muted" style="font-size:12px">'+esc(c.endereco)+'</span>':'')
+          +(c.cnae?'<br><span class="muted" style="font-size:11px">CNAE: '+esc(c.cnae)+'</span>':'')
+          +(c.socios&&c.socios.length?'<br><span class="muted" style="font-size:11px">Sócios: '+esc(c.socios.join(", "))+'</span>':'')
+          +'<br><button class="btn sm" id="amb-enriq-save" style="margin-top:8px">Salvar contato no CRM</button> <span id="amb-enriq-save-ok" class="muted" style="font-size:12px"></span></div>';
+        var sb=document.getElementById("amb-enriq-save");
+        if(sb)sb.onclick=function(){sb.disabled=true;var sok=document.getElementById("amb-enriq-save-ok");if(sok)sok.textContent="salvando…";
+          api("ambToCrm",{id:r._id,cnpj:c.cnpj,email:c.email,telefone:c.telefone,contato:(c.socios&&c.socios[0])||""}).then(function(rr){if(sok)sok.textContent=rr.jaExiste?(rr.atualizado?"✓ contato atualizado no CRM":"já no CRM (sem novo contato)"):"✓ criado no CRM com contato";}).catch(function(e){sb.disabled=false;if(sok)sok.textContent="erro: "+(e.message||e);});};
+      }).catch(function(e){eb.disabled=false;if(ok)ok.textContent="erro: "+(e.message||e);});
+    };
     var cb=document.getElementById("amb-crm-btn");
     if(cb)cb.onclick=function(){cb.disabled=true;var ok=document.getElementById("amb-crm-ok");if(ok)ok.textContent="enviando…";
       api("ambToCrm",{id:r._id}).then(function(res){var ok2=document.getElementById("amb-crm-ok");
