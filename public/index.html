@@ -3776,6 +3776,7 @@ function _ambFicha(id){
   api("ambFicha",{bank:AMB.bank,id:id}).then(function(j){
     var r=j.registro||{}, inst=j.instrumentos||[];
     var titulo=esc(r.n||r.out||r.aut||r.emp||r.r||r._m||"Registro");
+    var muni=String(r._m||r.m||"");
     // DETALHE COMPLETO: todos os campos da base (como no painel por bacia), rotulados. A ordem
     // segue as colunas configuradas e depois os demais campos presentes no registro.
     var hide=Object.assign({pq:1},AMB_FIELD_HIDE);
@@ -3792,7 +3793,6 @@ function _ambFicha(id){
     var ehPF=(String(r.tp||"")==="PF")||/dado protegido/i.test(cnome);
     var contatoH="";
     if(cnome&&!ehPF){
-      var muni=String(r._m||r.m||"");
       var enc=function(s){return encodeURIComponent(s);};
       var qc=enc(cnome+(muni?(" "+muni):"")+" MG");
       contatoH='<h4 style="margin:16px 0 6px">Localizar contato</h4>'
@@ -3826,6 +3826,17 @@ function _ambFicha(id){
       +'<label class="muted" style="font-size:12px">Status</label><br><select id="amb-fn-st" class="input sm"'+(pode?"":" disabled")+'>'+sts.map(function(s){return '<option'+(s===funil.status?" selected":"")+'>'+esc(s)+'</option>';}).join("")+'</select><br>'
       +'<label class="muted" style="font-size:12px;display:block;margin-top:8px">Notas</label><textarea id="amb-fn-nt" class="input sm" style="width:100%;min-height:68px"'+(pode?"":" disabled")+'>'+esc(funil.notas||"")+'</textarea>'
       +(pode?'<br><button class="btn sm" id="amb-fn-save" style="margin-top:8px">Salvar no funil</button><span id="amb-fn-ok" class="muted" style="font-size:12px;margin-left:8px"></span>':'<p class="muted" style="font-size:12px">Somente leitura (sem permissão para gerir o funil).</p>');
+    // Drill universal: de QUALQUER registro, chegar ao lead contactável. "Leads do município"
+    // (vale p/ todo banco) e, p/ bancos com empresa (outorga/embargo/minerário/barragem/contam.),
+    // "buscar empreendimento pelo nome" do outorgado/autuado.
+    var emphint=(AMB.bank!=="empreendimentos")?String(r.aut||r.out||r.emp||r.n||r.r||"").trim():"";
+    var drillH="";
+    if(muni||emphint){
+      drillH='<h4 style="margin:16px 0 6px">Explorar relacionados</h4><div style="display:flex;flex-wrap:wrap;gap:6px">';
+      if(muni)drillH+='<button class="btn sec sm" id="amb-drill-mun">'+(AMB.bank==="empreendimentos"?"Outros leads de ":"Leads (empreendimentos) de ")+esc(muni)+' →</button>';
+      if(emphint&&!/dado protegido/i.test(emphint))drillH+='<button class="btn sec sm" id="amb-drill-nome">Buscar empreendimento: "'+esc(emphint.slice(0,26))+(emphint.length>26?"…":"")+'" →</button>';
+      drillH+='</div>';
+    }
     // Promover a Lead Candidato no CRM (só empreendimentos PJ, com permissão de gerir).
     var crmH="";
     if(AMB.bank==="empreendimentos"&&pode&&String(r.tp||"")!=="PF"){
@@ -3837,9 +3848,13 @@ function _ambFicha(id){
       +'<div><h3 style="margin:0">'+titulo+'</h3><p class="muted" style="margin:2px 0;font-size:13px">'+esc(_ambFmtBacia(r._bacia))+(r._m?' · '+esc(r._m):"")+' '+coord+'</p></div>'
       +'<button class="btn sec sm" id="amb-fecha">Fechar</button></div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">'+campos+'</div>'
-      +extra+instH+contatoH+crmH+funilH+'</div>';
+      +extra+drillH+instH+contatoH+crmH+funilH+'</div>';
     var fx=document.getElementById("amb-fecha"); if(fx)fx.onclick=function(){m.style.display="none";m.innerHTML="";};
     m.onclick=function(ev){if(ev.target===m){m.style.display="none";m.innerHTML="";}};
+    var dmun=document.getElementById("amb-drill-mun");
+    if(dmun)dmun.onclick=function(){m.style.display="none";m.innerHTML="";AMB.bank="empreendimentos";_ambResetFilters();AMB.municipio=muni;_ambRenderChips();_ambRenderFiltros();_ambLoadFacets();_ambFetch();};
+    var dnom=document.getElementById("amb-drill-nome");
+    if(dnom)dnom.onclick=function(){m.style.display="none";m.innerHTML="";AMB.bank="empreendimentos";_ambResetFilters();AMB.q=emphint;_ambRenderChips();_ambRenderFiltros();_ambLoadFacets();_ambFetch();};
     var cb=document.getElementById("amb-crm-btn");
     if(cb)cb.onclick=function(){cb.disabled=true;var ok=document.getElementById("amb-crm-ok");if(ok)ok.textContent="enviando…";
       api("ambToCrm",{id:r._id}).then(function(res){var ok2=document.getElementById("amb-crm-ok");
