@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19a";
+const SCHEMA_VER = "2026-10-19b";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -864,6 +864,32 @@ function ensureSchema(): Promise<void> {
         sql: "INSERT OR IGNORE INTO conteudo (id, area, titulo, descricao, url, tag, destaque, autor, criado, u, tenant_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         args: [x.id, x.area, x.titulo, x.descricao, "", x.tag, 0, "", "", "", TENANT_INTELECTO],
       })));
+    } catch (_) { /* ja existe */ }
+
+    /* ===== Onda 3 / INC 1 — MULTI-CARGO (associacao N:N pessoa<->cargo) =====
+     * Numa startup a pessoa reune as funcoes/capabilities de VARIOS cargos. Esta tabela
+     * substitui o vinculo unico `cargocid:<slug>` (config). Capabilities efetivas = UNIAO
+     * dos cargos (ver capsDe/capsAtribuidas). `principal` (1 cargo), `prioridade` (ordem de
+     * foco) e `foco` (texto) sao definidos pela Coordenacao e sao INFORMATIVOS (planejamento/
+     * capacidade), nunca restringem acesso. Sem valor monetario. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS membro_cargo (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, cid TEXT NOT NULL,
+        principal INTEGER DEFAULT 0, prioridade INTEGER DEFAULT 0, foco TEXT DEFAULT '',
+        criado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, slug, cid))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS membro_cargo_slug ON membro_cargo (tenant_id, slug)"); } catch (_) {}
+      // Backfill idempotente do vinculo legado (`cargocid:<slug>`): cada atribuicao unica vira
+      // a linha PRINCIPAL da pessoa. INSERT OR IGNORE preserva edicoes ja feitas na nova tabela.
+      try {
+        const leg = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE tenant_id = ? AND k LIKE 'cargocid:%'", args: [TENANT_INTELECTO] });
+        const hoje = new Date().toISOString().slice(0, 10);
+        const ins = (leg.rows as P[])
+          .map((c) => ({ slug: String(c.k).slice(9), cid: String(c.v || "").trim().toLowerCase() }))
+          .filter((x) => x.slug && x.cid)
+          .map((x) => ({ sql: "INSERT OR IGNORE INTO membro_cargo (tenant_id, slug, cid, principal, prioridade, foco, criado, u) VALUES (?,?,?,1,0,'',?, 'backfill')", args: [TENANT_INTELECTO, x.slug, x.cid, hoje] }));
+        if (ins.length) await sqlite.batch(ins);
+      } catch (_) { /* backfill best-effort */ }
     } catch (_) { /* ja existe */ }
 
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
@@ -1442,6 +1468,8 @@ const MIN: Record<string, Papel> = {
   // equipe/cliente nao veem a aba, negados na borda pelo guard). Decisao do dono 2026-10-13:
   // RH e aba de gestao restrita. O vinculo pessoa->cargo ja e feito por `setcargo` (coordenacao).
   rh: "coordenacao", rhset: "coordenacao", rhdel: "coordenacao", rhatribuir: "coordenacao",
+  // Onda 3 / INC 1 — multi-cargo (piso coordenacao; cap fina pessoas.cargo_atribuir no branch).
+  rhcargoadd: "coordenacao", rhcargodel: "coordenacao", rhcargoprincipal: "coordenacao", rhcargofoco: "coordenacao",
   // G3 — gestão de colaboradores (quadro `membro`): piso coordenacao; gate fino por capability no branch.
   rhmembros: "coordenacao", rhmembroadd: "coordenacao", rhmembroset: "coordenacao", rhmembrodel: "coordenacao",
   // "Meu cargo": todo logado vê o DETALHE do PRÓPRIO cargo (piso cliente). Só leitura.
@@ -1575,34 +1603,57 @@ function expandeCaps(lista: string[]): Set<string> {
   }
   return out;
 }
-/** Capabilities efetivas do usuario: dono => tudo; senao cargo (config, se cid conhecido/override)
- *  senao fallback por papel (preserva o comportamento atual). So-leitura; nao grava nada. */
+/** Onda 3 / INC 1 — MULTI-CARGO. Cids de cargo atribuidos a uma pessoa. Fonte = tabela
+ *  `membro_cargo` (N cargos por pessoa); fallback ao vinculo legado `cargocid:<slug>` (1 so)
+ *  enquanto a linha da nova tabela nao existir. Ordem: principal primeiro, depois prioridade. */
+async function cargosDe(slug: string): Promise<{ cid: string; principal: number; prioridade: number; foco: string }[]> {
+  try {
+    const r = await sqlite.execute({ sql: "SELECT cid, principal, prioridade, foco FROM membro_cargo WHERE tenant_id = ? AND slug = ? ORDER BY principal DESC, prioridade, cid", args: [TENANT_INTELECTO, slug] });
+    if (r.rows.length) return (r.rows as P[]).map((x) => ({ cid: String(x.cid).trim().toLowerCase(), principal: Number(x.principal) ? 1 : 0, prioridade: Number(x.prioridade) || 0, foco: String(x.foco || "") }));
+  } catch (_) { /* tabela ainda nao existe (pre-migracao): cai no legado */ }
+  const cid = String((await cfgGet("cargocid:" + slug)) || "").trim().toLowerCase();
+  return cid ? [{ cid, principal: 1, prioridade: 0, foco: "" }] : [];
+}
+/** Base de capabilities de UM cargo: override D1 `cargocaps:<cid>` (JSON array, white-label)
+ *  senao o default do codigo. Cid desconhecido (sem override nem default) contribui vazio. */
+async function capsBaseDeCid(cid: string): Promise<string[]> {
+  const ov = await cfgGet("cargocaps:" + cid);
+  if (ov) { try { const j = JSON.parse(ov); if (Array.isArray(j)) return j.map(String); } catch { /* json invalido: ignora */ } }
+  return CARGO_CAPS_DEFAULT[cid] || [];
+}
+/** Mantem o vinculo legado `cargocid:<slug>` apontando para o cargo PRINCIPAL atual (ou o limpa),
+ *  para qualquer leitor legado seguir funcionando durante a transicao multi-cargo. Best-effort. */
+async function syncCargocidLegacy(slug: string): Promise<void> {
+  try {
+    const r = await sqlite.execute({ sql: "SELECT cid FROM membro_cargo WHERE tenant_id = ? AND slug = ? ORDER BY principal DESC, prioridade, cid LIMIT 1", args: [TENANT_INTELECTO, slug] });
+    if (r.rows.length) await cfgSet("cargocid:" + slug, String((r.rows[0] as P).cid));
+    else await cfgDel("cargocid:" + slug);
+  } catch (_) { /* best-effort */ }
+}
+/** Capabilities efetivas do usuario: dono => tudo; senao UNIAO das capabilities de TODOS os
+ *  cargos atribuidos (multi-cargo); senao (sem cargo conhecido) fallback por papel — preservando
+ *  o comportamento atual. So-leitura; nao grava nada. */
 async function capsDe(u: { slug: string; papel: Papel }): Promise<Set<string>> {
   if (isOwner(u.slug)) return new Set<string>(["*"]);
-  let base: string[] | null = null;
-  /* Atribuicao EXPLICITA de cargo (feita no RH): config `cargocid:<slug>` guarda o CID do cargo.
-   * O rotulo livre antigo (`cargo:<slug>`) fica intocado (usado so para exibir "quem ocupa"). */
-  const cid = String((await cfgGet("cargocid:" + u.slug)) || "").trim().toLowerCase();
-  if (cid) {
-    const ov = await cfgGet("cargocaps:" + cid);
-    if (ov) { try { const j = JSON.parse(ov); if (Array.isArray(j)) base = j.map(String); } catch { /* json invalido: ignora */ } }
-    if (!base && CARGO_CAPS_DEFAULT[cid]) base = CARGO_CAPS_DEFAULT[cid];
+  const cargos = await cargosDe(u.slug);
+  if (cargos.length) {
+    const base: string[] = [];
+    for (const c of cargos) for (const cap of await capsBaseDeCid(c.cid)) base.push(cap);
+    if (base.length) return expandeCaps(base); // algum cargo conhecido => UNIAO
+    // todos os cids desconhecidos (sem override/default): preserva o fallback por papel
   }
-  if (!base) base = PAPEL_CAPS[u.papel] || [];
-  return expandeCaps(base);
+  return expandeCaps(PAPEL_CAPS[u.papel] || []);
 }
-/** Capabilities vindas SOMENTE do cargo atribuido (sem fallback por papel). Vazio se a pessoa
- *  nao tem cargo atribuido. Usado em AREAS RESTRITAS (acervo, comercial, financeiro, permissoes)
- *  para que a migracao NAO afrouxe o acesso por padrao: quem nao tem cargo segue barrado pelo
- *  gate existente (acgrant/allowlist/isOwner); o cargo so ESTENDE o acesso, nunca abre sozinho. */
+/** Capabilities vindas SOMENTE dos cargos atribuidos (UNIAO, sem fallback por papel). Vazio se a
+ *  pessoa nao tem cargo. Usado em AREAS RESTRITAS (acervo, comercial, financeiro, permissoes) para
+ *  que a migracao NAO afrouxe o acesso por padrao: quem nao tem cargo segue barrado pelo gate
+ *  existente (acgrant/allowlist/isOwner); o cargo so ESTENDE o acesso, nunca abre sozinho. */
 async function capsAtribuidas(u: { slug: string; papel: Papel }): Promise<Set<string>> {
   if (isOwner(u.slug)) return new Set<string>(["*"]);
-  const cid = String((await cfgGet("cargocid:" + u.slug)) || "").trim().toLowerCase();
-  if (!cid) return new Set<string>();
-  let base: string[] = [];
-  const ov = await cfgGet("cargocaps:" + cid);
-  if (ov) { try { const j = JSON.parse(ov); if (Array.isArray(j)) base = j.map(String); } catch { /* ignora */ } }
-  if (!base.length && CARGO_CAPS_DEFAULT[cid]) base = CARGO_CAPS_DEFAULT[cid];
+  const cargos = await cargosDe(u.slug);
+  if (!cargos.length) return new Set<string>();
+  const base: string[] = [];
+  for (const c of cargos) for (const cap of await capsBaseDeCid(c.cid)) base.push(cap);
   return expandeCaps(base);
 }
 /** true se o conjunto concede a capability (considerando "*" e "area.*"). */
@@ -1647,6 +1698,8 @@ const EVENTOS_SENSIVEIS: string[] = [
   "brief_add", "brief_del", "brief_fonte_set", "brief_fonte_del", "brief_coleta",
   // G3 — gestão do quadro de colaboradores (adicionar/editar papel/inativar/remover):
   "membro_add", "membro_set", "membro_del",
+  // Onda 3 — atribuição de cargo (dirige o ACESSO da pessoa): multi-cargo e vínculo.
+  "rh_atribuir", "rh_cargo_add", "rh_cargo_del", "rh_cargo_princ", "rh_cargo_foco",
   // M4 — falha de entrega de e-mail (retida para rastreio operacional).
   "email_falha",
 ];
@@ -3450,38 +3503,47 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true };
   }
 
-  /* ===== RH (Fase 1): catalogo de cargos + rotinas (manual vivo) ===== */
+  /* ===== RH (Fase 1 + Onda 3 multi-cargo): catalogo de cargos + rotinas (manual vivo) ===== */
   if (action === "rh") {
     const u = await auth(p);
     const caps = await capsDe({ slug: u.slug, papel: u.papel });
     const r = await sqlite.execute({ sql: "SELECT cid, nome, ordem, area, missao, responsabilidades, entregaveis, rotinas, cadencia, onboarding, horas_dia, vinculo, metas, atualizado FROM rh_cargo WHERE tenant_id = ? ORDER BY ordem, nome", args: [u.tenant_id] });
-    // Rotulo livre (`cargo:<slug>`, p/ "quem ocupa") + atribuicao EXPLICITA (`cargocid:<slug>`).
-    const cfg = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE tenant_id = ? AND (k LIKE 'cargo:%' OR k LIKE 'cargocid:%')", args: [u.tenant_id] });
-    const pessoas: Record<string, string[]> = {};
-    const atrib: Record<string, string> = {};
-    for (const c of cfg.rows as P[]) {
-      const k = String(c.k);
-      if (k.startsWith("cargocid:")) { const v = String(c.v || "").trim(); if (v) atrib[k.slice(9)] = v; }
-      else if (k.startsWith("cargo:")) { const slug = k.slice(6); const cg = String(c.v || "").trim(); if (cg) (pessoas[cg] = pessoas[cg] || []).push(NOMES[slug] || slug); }
+    // Nome e horas/vinculo por cid (para "quem ocupa", headcount e capacidade).
+    const nomeCid: Record<string, string> = {}; const hdCid: Record<string, number> = {}; const vincCid: Record<string, string> = {};
+    for (const x of r.rows as P[]) { const cid = String(x.cid); nomeCid[cid] = String(x.nome || cid); hdCid[cid] = Number(x.horas_dia) || 0; vincCid[cid] = String(x.vinculo || "Contratado"); }
+    // Onda 3: atribuicoes multi-cargo (membro_cargo) + merge defensivo do legado `cargocid:<slug>`.
+    const porSlug: Record<string, { cid: string; principal: number; prioridade: number; foco: string }[]> = {};
+    try {
+      const mc = await sqlite.execute({ sql: "SELECT slug, cid, principal, prioridade, foco FROM membro_cargo WHERE tenant_id = ? ORDER BY principal DESC, prioridade, cid", args: [u.tenant_id] });
+      for (const x of mc.rows as P[]) { const s = String(x.slug); (porSlug[s] = porSlug[s] || []).push({ cid: String(x.cid), principal: Number(x.principal) ? 1 : 0, prioridade: Number(x.prioridade) || 0, foco: String(x.foco || "") }); }
+    } catch (_) { /* tabela ainda nao existe */ }
+    const cfgLeg = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE tenant_id = ? AND k LIKE 'cargocid:%'", args: [u.tenant_id] });
+    for (const c of cfgLeg.rows as P[]) { const s = String(c.k).slice(9); const cid = String(c.v || "").trim().toLowerCase(); if (cid && !porSlug[s]) porSlug[s] = [{ cid, principal: 1, prioridade: 0, foco: "" }]; }
+    // "Quem ocupa" por cargo + headcount (conta TODAS as atribuicoes de cada cargo).
+    const pessoas: Record<string, string[]> = {}; const headcount: Record<string, number> = {}; const atrib: Record<string, string> = {};
+    for (const s in porSlug) {
+      const lista = porSlug[s]; const princ = (lista.find((z) => z.principal) || lista[0]);
+      if (princ) atrib[s] = princ.cid; // compat: cid PRINCIPAL por pessoa
+      for (const z of lista) { headcount[z.cid] = (headcount[z.cid] || 0) + 1; const nm = nomeCid[z.cid]; if (nm) (pessoas[nm] = pessoas[nm] || []).push(NOMES[s] || s); }
     }
-    // Headcount por cargo e CAPACIDADE (pessoas x horas/dia) — casa cargo com a quantidade de gente.
-    const headcount: Record<string, number> = {};
-    for (const slug in atrib) { const cid = atrib[slug]; if (cid) headcount[cid] = (headcount[cid] || 0) + 1; }
-    let totPessoas = 0, totHoras = 0, totSoc = 0, totSocH = 0;
     const cargos = (r.rows as P[]).map((x) => {
       const cid = String(x.cid); const hd = Number(x.horas_dia) || 0; const n = headcount[cid] || 0;
-      const vinc = String(x.vinculo || "Contratado");
-      totPessoas += n; totHoras += n * hd;
-      if (vinc === "Sociedade") { totSoc += n; totSocH += n * hd; }
-      return { cid, nome: x.nome, area: x.area, missao: x.missao, responsabilidades: x.responsabilidades, entregaveis: x.entregaveis, rotinas: x.rotinas, cadencia: x.cadencia, onboarding: x.onboarding, metas: x.metas || "", atualizado: x.atualizado, horas_dia: hd, vinculo: vinc, pessoas_no_cargo: n, capacidade_dia: Math.round(n * hd * 10) / 10, caps: (CARGO_CAPS_DEFAULT[cid] || []) };
+      return { cid, nome: x.nome, area: x.area, missao: x.missao, responsabilidades: x.responsabilidades, entregaveis: x.entregaveis, rotinas: x.rotinas, cadencia: x.cadencia, onboarding: x.onboarding, metas: x.metas || "", atualizado: x.atualizado, horas_dia: hd, vinculo: String(x.vinculo || "Contratado"), pessoas_no_cargo: n, capacidade_dia: Math.round(n * hd * 10) / 10, caps: (CARGO_CAPS_DEFAULT[cid] || []) };
     });
     const podeAtribuir = temCapSet(caps, "pessoas.cargo_atribuir");
-    // Colaboradores ativos + cargo atribuido (para o painel de atribuicao da Coord. Adm/RH).
-    // Fonte = tabela `membro` (interno ativo); fallback ao COLABS so se a tabela vier vazia.
+    // Colaboradores ativos + cargos atribuidos (painel de atribuicao da Coord. Adm/RH).
     const mrh = await sqlite.execute({ sql: "SELECT slug, nome FROM membro WHERE tenant_id = ? AND ativo = 1 AND papel NOT IN ('cliente','fornecedor') ORDER BY nome", args: [u.tenant_id] });
-    const colabs = (mrh.rows as P[]).length
-      ? (mrh.rows as P[]).map((m) => ({ slug: String(m.slug), nome: String(m.nome || m.slug), cargocid: atrib[String(m.slug)] || "" }))
-      : COLABS.filter((s) => !INATIVOS.includes(s)).map((s) => ({ slug: s, nome: NOMES[s] || s, cargocid: atrib[s] || "" }));
+    const colabs = ((mrh.rows as P[]).length
+      ? (mrh.rows as P[]).map((m) => ({ slug: String(m.slug), nome: String(m.nome || m.slug) }))
+      : COLABS.filter((s) => !INATIVOS.includes(s)).map((s) => ({ slug: s, nome: NOMES[s] || s })))
+      .map((co) => ({ slug: co.slug, nome: co.nome, cargocid: atrib[co.slug] || "", cargos: porSlug[co.slug] || [] }));
+    // CAPACIDADE: conta cada PESSOA uma vez, pelo cargo PRINCIPAL (evita somar 8h+8h de 2 cargos).
+    let totPessoas = 0, totHoras = 0, totSoc = 0, totSocH = 0;
+    for (const s in porSlug) {
+      const lista = porSlug[s]; const princ = (lista.find((z) => z.principal) || lista[0]); if (!princ) continue;
+      const hd = hdCid[princ.cid] || 0; totPessoas += 1; totHoras += hd;
+      if (vincCid[princ.cid] === "Sociedade") { totSoc += 1; totSocH += hd; }
+    }
     const capacidade = {
       pessoas: totPessoas, horas_dia: Math.round(totHoras * 10) / 10,
       contratados: totPessoas - totSoc, horas_contratadas: Math.round((totHoras - totSocH) * 10) / 10,
@@ -3521,30 +3583,96 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true };
   }
   if (action === "meucargo") {
-    /* Detalhe do cargo do PRÓPRIO usuário (o que se espera dele). Só leitura. */
+    /* Detalhe dos cargos do PRÓPRIO usuário (o que se espera dele). Multi-cargo: devolve TODOS,
+     * com o principal primeiro. `cargo` = principal (compat com a UI atual). Só leitura. */
     const u = await auth(p);
-    const cid = String((await cfgGet("cargocid:" + u.slug)) || "").trim();
-    if (!cid) return { ok: true, cargo: null };
-    const r = await sqlite.execute({ sql: "SELECT cid, nome, area, missao, responsabilidades, entregaveis, rotinas, cadencia, onboarding, horas_dia, vinculo FROM rh_cargo WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
-    return { ok: true, cargo: (r.rows[0] as P) || null };
+    const lista = await cargosDe(u.slug);
+    if (!lista.length) return { ok: true, cargo: null, cargos: [] };
+    const detalhe: P[] = [];
+    for (const z of lista) {
+      const r = await sqlite.execute({ sql: "SELECT cid, nome, area, missao, responsabilidades, entregaveis, rotinas, cadencia, onboarding, horas_dia, vinculo FROM rh_cargo WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, z.cid] });
+      const row = (r.rows[0] as P) || null;
+      if (row) detalhe.push({ ...row, principal: z.principal, prioridade: z.prioridade, foco: z.foco });
+    }
+    return { ok: true, cargo: detalhe[0] || null, cargos: detalhe };
   }
-  if (action === "rhatribuir") {
-    /* Atribui (ou limpa) o CARGO de um colaborador — passa a dirigir o acesso dele (capsDe). */
+  /* ===== Onda 3 / INC 1 — atribuicao MULTI-CARGO (membro_cargo). Gate: pessoas.cargo_atribuir.
+   * Helpers inline reaproveitados pelas 5 acoes abaixo. Toda escrita e auditada e mantem o
+   * vinculo legado `cargocid:<slug>` sincronizado com o cargo principal. */
+  if (action === "rhatribuir" || action === "rhcargoadd" || action === "rhcargodel" || action === "rhcargoprincipal" || action === "rhcargofoco") {
     const u = await auth(p);
     const caps = await capsDe({ slug: u.slug, papel: u.papel });
     if (!temCapSet(caps, "pessoas.cargo_atribuir")) throw new Error("Você não tem permissão para atribuir cargos.");
     const alvo = String(p.alvo || "").trim();
     const alvoEx = await sqlite.execute({ sql: "SELECT slug FROM membro WHERE tenant_id = ? AND slug = ? LIMIT 1", args: [u.tenant_id, alvo] });
     if (!alvoEx.rows.length && !COLABS.includes(alvo)) throw new Error("Colaborador desconhecido.");
-    const cid = String(p.cid || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
-    if (cid) {
-      const ex = await sqlite.execute({ sql: "SELECT cid FROM rh_cargo WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
-      if (!ex.rows.length) throw new Error("Cargo inexistente no catálogo de RH.");
-      await cfgSet("cargocid:" + alvo, cid);
-    } else {
-      await cfgDel("cargocid:" + alvo);
+    const normCid = (v: unknown) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
+    const cargoExiste = async (cid: string) => (await sqlite.execute({ sql: "SELECT cid FROM rh_cargo WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] })).rows.length > 0;
+    const hoje = new Date().toISOString().slice(0, 10);
+
+    if (action === "rhatribuir") {
+      /* Compat: define o CONJUNTO de cargos da pessoa de uma vez. Aceita `cids` (array) ou `cid`
+       * (um só). O 1º vira principal. Vazio limpa todos. Substitui o estado anterior. */
+      let cids: string[] = Array.isArray(p.cids) ? (p.cids as unknown[]).map(normCid).filter(Boolean) : [];
+      if (!cids.length && p.cid != null) { const c = normCid(p.cid); if (c) cids = [c]; }
+      cids = [...new Set(cids)];
+      for (const c of cids) if (!(await cargoExiste(c))) throw new Error("Cargo inexistente no catálogo de RH: " + c);
+      await sqlite.execute({ sql: "DELETE FROM membro_cargo WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, alvo] });
+      if (cids.length) {
+        await sqlite.batch(cids.map((c, i) => ({ sql: "INSERT OR IGNORE INTO membro_cargo (tenant_id, slug, cid, principal, prioridade, foco, criado, u) VALUES (?,?,?,?,?,?,?,?)", args: [u.tenant_id, alvo, c, i === 0 ? 1 : 0, i, "", hoje, u.slug] })));
+      }
+      await syncCargocidLegacy(alvo);
+      await audit("rh_atribuir", u.slug, alvo + " -> " + (cids.join(",") || "(sem cargo)"), ip);
+      return { ok: true, alvo, cids };
     }
-    await audit("rh_atribuir", u.slug, alvo + " -> " + (cid || "(sem cargo)"), ip);
+    if (action === "rhcargoadd") {
+      const cid = normCid(p.cid);
+      if (!cid) throw new Error("Cargo inválido.");
+      if (!(await cargoExiste(cid))) throw new Error("Cargo inexistente no catálogo de RH.");
+      const cur = await sqlite.execute({ sql: "SELECT COUNT(*) AS n, MAX(prioridade) AS mp FROM membro_cargo WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, alvo] });
+      const n = Number((cur.rows[0] as P).n) || 0; const mp = Number((cur.rows[0] as P).mp) || 0;
+      await sqlite.execute({ sql: "INSERT OR IGNORE INTO membro_cargo (tenant_id, slug, cid, principal, prioridade, foco, criado, u) VALUES (?,?,?,?,?,?,?,?)", args: [u.tenant_id, alvo, cid, n === 0 ? 1 : 0, n === 0 ? 0 : mp + 1, "", hoje, u.slug] });
+      await syncCargocidLegacy(alvo);
+      await audit("rh_cargo_add", u.slug, alvo + " + " + cid, ip);
+      return { ok: true, alvo, cid };
+    }
+    if (action === "rhcargodel") {
+      const cid = normCid(p.cid);
+      if (!cid) throw new Error("Cargo inválido.");
+      const eraPrinc = (await sqlite.execute({ sql: "SELECT principal FROM membro_cargo WHERE tenant_id = ? AND slug = ? AND cid = ? LIMIT 1", args: [u.tenant_id, alvo, cid] })).rows;
+      await sqlite.execute({ sql: "DELETE FROM membro_cargo WHERE tenant_id = ? AND slug = ? AND cid = ?", args: [u.tenant_id, alvo, cid] });
+      // Se removeu o principal, promove o proximo (menor prioridade) a principal.
+      if (eraPrinc.length && Number((eraPrinc[0] as P).principal)) {
+        const prox = await sqlite.execute({ sql: "SELECT cid FROM membro_cargo WHERE tenant_id = ? AND slug = ? ORDER BY prioridade, cid LIMIT 1", args: [u.tenant_id, alvo] });
+        if (prox.rows.length) await sqlite.execute({ sql: "UPDATE membro_cargo SET principal = 1 WHERE tenant_id = ? AND slug = ? AND cid = ?", args: [u.tenant_id, alvo, String((prox.rows[0] as P).cid)] });
+      }
+      await syncCargocidLegacy(alvo);
+      await audit("rh_cargo_del", u.slug, alvo + " - " + cid, ip);
+      return { ok: true, alvo, cid };
+    }
+    if (action === "rhcargoprincipal") {
+      const cid = normCid(p.cid);
+      if (!cid) throw new Error("Cargo inválido.");
+      const ex = await sqlite.execute({ sql: "SELECT cid FROM membro_cargo WHERE tenant_id = ? AND slug = ? AND cid = ? LIMIT 1", args: [u.tenant_id, alvo, cid] });
+      if (!ex.rows.length) throw new Error("Este cargo não está atribuído à pessoa.");
+      await sqlite.execute({ sql: "UPDATE membro_cargo SET principal = 0 WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, alvo] });
+      await sqlite.execute({ sql: "UPDATE membro_cargo SET principal = 1 WHERE tenant_id = ? AND slug = ? AND cid = ?", args: [u.tenant_id, alvo, cid] });
+      await syncCargocidLegacy(alvo);
+      await audit("rh_cargo_princ", u.slug, alvo + " => " + cid, ip);
+      return { ok: true, alvo, cid };
+    }
+    // rhcargofoco — atualiza foco (texto) e/ou prioridade (ordem) de um cargo da pessoa.
+    const cid = normCid(p.cid);
+    if (!cid) throw new Error("Cargo inválido.");
+    const ex = await sqlite.execute({ sql: "SELECT cid FROM membro_cargo WHERE tenant_id = ? AND slug = ? AND cid = ? LIMIT 1", args: [u.tenant_id, alvo, cid] });
+    if (!ex.rows.length) throw new Error("Este cargo não está atribuído à pessoa.");
+    const sets: string[] = [], args: (string | number)[] = [];
+    if (p.foco != null) { sets.push("foco = ?"); args.push(String(p.foco).slice(0, 600)); }
+    if (p.prioridade != null) { sets.push("prioridade = ?"); args.push(Math.max(0, Math.min(999, Number(p.prioridade) || 0))); }
+    if (!sets.length) throw new Error("Nada para alterar.");
+    args.push(u.tenant_id, alvo, cid);
+    await sqlite.execute({ sql: "UPDATE membro_cargo SET " + sets.join(", ") + " WHERE tenant_id = ? AND slug = ? AND cid = ?", args });
+    await audit("rh_cargo_foco", u.slug, alvo + " / " + cid, ip);
     return { ok: true, alvo, cid };
   }
   if (action === "rhset") {
@@ -3588,13 +3716,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const hr = await sqlite.execute({ sql: "SELECT slug, COUNT(*) AS n FROM lanc WHERE tenant_id = ? GROUP BY slug", args: [u.tenant_id] });
     const hist: Record<string, number> = {};
     for (const x of hr.rows as P[]) hist[String(x.slug)] = Number(x.n) || 0;
+    // Onda 3: cargo PRINCIPAL + nº de cargos por pessoa (membro_cargo), com fallback ao legado.
+    const atrib: Record<string, string> = {}; const nCargos: Record<string, number> = {};
+    try {
+      const mc = await sqlite.execute({ sql: "SELECT slug, cid, principal FROM membro_cargo WHERE tenant_id = ? ORDER BY principal DESC, prioridade, cid", args: [u.tenant_id] });
+      for (const x of mc.rows as P[]) { const s = String(x.slug); nCargos[s] = (nCargos[s] || 0) + 1; if (!atrib[s]) atrib[s] = String(x.cid); }
+    } catch (_) { /* tabela ainda nao existe */ }
     const cfg = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE tenant_id = ? AND k LIKE 'cargocid:%'", args: [u.tenant_id] });
-    const atrib: Record<string, string> = {};
-    for (const c of cfg.rows as P[]) { const v = String(c.v || "").trim(); if (v) atrib[String(c.k).slice(9)] = v; }
+    for (const c of cfg.rows as P[]) { const s = String(c.k).slice(9); const v = String(c.v || "").trim(); if (v && !atrib[s]) { atrib[s] = v; nCargos[s] = nCargos[s] || 1; } }
     const membros = (r.rows as P[]).map((m) => ({
       slug: String(m.slug), nome: String(m.nome || m.slug), email: String(m.email || ""),
       papel: String(m.papel || "equipe"), ativo: Number(m.ativo) ? 1 : 0,
-      cargocid: atrib[String(m.slug)] || "", lancs: hist[String(m.slug)] || 0,
+      cargocid: atrib[String(m.slug)] || "", cargos_n: nCargos[String(m.slug)] || 0, lancs: hist[String(m.slug)] || 0,
       owner: isOwner(String(m.slug)),
     }));
     return { ok: true, membros, podeGerir: true, papeis: PAPEIS.filter((x) => x !== "admin") };
@@ -3672,6 +3805,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const h = await sqlite.execute({ sql: "SELECT COUNT(*) AS n FROM lanc WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, slug] });
     if (Number((h.rows[0] as P).n) > 0) throw new Error("Este colaborador tem horas lançadas; inative em vez de excluir (preserva o histórico).");
     await sqlite.execute({ sql: "DELETE FROM membro WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, slug] });
+    try { await sqlite.execute({ sql: "DELETE FROM membro_cargo WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, slug] }); } catch (_) {}
     try { await cfgDel("cargocid:" + slug); } catch (_) {}
     try { await cfgDel("cargo:" + slug); } catch (_) {}
     await audit("membro_del", u.slug, slug, ip);

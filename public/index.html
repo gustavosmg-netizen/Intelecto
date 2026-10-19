@@ -2622,15 +2622,27 @@ function _rhLoad(){
     }).join("");
     var pessoasPanel="";
     if(j.podeAtribuir){
-      var opts=function(sel){return '<option value="">— sem cargo —</option>'+cs.map(function(c){return '<option value="'+esc(c.cid)+'"'+(c.cid===sel?' selected':'')+'>'+esc(c.nome)+'</option>';}).join("");};
+      var cargoNome={};cs.forEach(function(c){cargoNome[c.cid]=c.nome;});
       var linhas=(j.colabs||[]).map(function(co){
-        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)">'+
-          '<div style="flex:1;font-size:.88rem">'+esc(co.nome)+'</div>'+
-          '<select class="rh-atrib" data-slug="'+esc(co.slug)+'" style="min-width:200px">'+opts(co.cargocid)+'</select>'+
+        var assigned=co.cargos||[];var acids=assigned.map(function(z){return z.cid;});
+        var chips=assigned.length?assigned.map(function(z){
+          var nm=cargoNome[z.cid]||z.cid;
+          var star='<button class="rh-mc-star" data-slug="'+esc(co.slug)+'" data-cid="'+esc(z.cid)+'" title="'+(z.principal?'Cargo principal':'Tornar principal')+'" style="border:none;background:none;cursor:pointer;font-size:.9rem;padding:0 1px;line-height:1">'+(z.principal?'★':'☆')+'</button>';
+          return '<span style="display:inline-flex;align-items:center;gap:2px;background:var(--surf2,var(--surf));border:1px solid '+(z.principal?'var(--brand,#1f7a3d)':'var(--line)')+';border-radius:999px;padding:2px 5px 2px 7px;font-size:.78rem;margin:0 5px 5px 0">'+star+esc(nm)+'<button class="rh-mc-del" data-slug="'+esc(co.slug)+'" data-cid="'+esc(z.cid)+'" title="Remover cargo" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:1rem;padding:0 2px;line-height:1">×</button></span>';
+        }).join(""):'<span class="muted" style="font-size:.76rem">Sem cargo</span>';
+        var addOpts='<option value="">+ cargo…</option>'+cs.filter(function(c){return acids.indexOf(c.cid)<0;}).map(function(c){return '<option value="'+esc(c.cid)+'">'+esc(c.nome)+'</option>';}).join("");
+        var princ=assigned.filter(function(z){return z.principal;})[0]||assigned[0];
+        var focoRow=princ?('<div style="display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:.72rem">Foco do principal:</span>'+
+          '<input class="rh-mc-foco" data-slug="'+esc(co.slug)+'" data-cid="'+esc(princ.cid)+'" value="'+esc(princ.foco||"")+'" placeholder="prioridade/foco definido pela Coordenação (opcional)" style="font-size:.78rem;min-width:240px;flex:1">'+
+          '<button class="btn sm sec rh-mc-focosave" data-slug="'+esc(co.slug)+'" data-cid="'+esc(princ.cid)+'" type="button">salvar</button></div>'):'';
+        return '<div style="padding:8px 0;border-bottom:1px dashed var(--line)">'+
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="min-width:140px;font-weight:600;font-size:.86rem">'+esc(co.nome)+'</div>'+
+          '<div style="flex:1;min-width:200px">'+chips+'</div>'+
+          '<select class="rh-mc-add" data-slug="'+esc(co.slug)+'" style="min-width:130px">'+addOpts+'</select></div>'+focoRow+
         '</div>';
       }).join("");
       pessoasPanel='<div class="card" style="margin-top:16px"><div style="font-weight:700;margin-bottom:6px">Pessoas & Cargos</div>'+
-        '<p class="muted" style="font-size:.8rem;margin:0 0 10px">Atribua o cargo de cada colaborador — o cargo define o acesso da pessoa no portal. Salva ao escolher.</p>'+
+        '<p class="muted" style="font-size:.8rem;margin:0 0 10px">Cada pessoa pode ter VÁRIOS cargos — o acesso é a UNIÃO de todos. ★ marca o cargo principal (dirige capacidade e foco). Use “+ cargo” para adicionar, × para remover. Salva na hora.</p>'+
         linhas+'<div id="rh-atrib-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:8px"></div></div>';
     }
     var cap=j.capacidade||{};
@@ -2643,12 +2655,11 @@ function _rhLoad(){
     var colabsPanel=j.podeAtribuir?'<div id="rh-colabs" class="card" style="margin-top:16px"><div class="muted" style="padding:6px 0">Carregando colaboradores…</div></div>':"";
     box.innerHTML=head+resumo+cards+colabsPanel+pessoasPanel;
     if(j.podeAtribuir)_rhColabsLoad();
-    box.querySelectorAll(".rh-atrib").forEach(function(sel){
-      sel.onchange=function(){
-        var m=$("#rh-atrib-msg");if(m){m.textContent="Salvando…";m.classList.remove("err");}
-        api("rhatribuir",{alvo:sel.getAttribute("data-slug"),cid:sel.value}).then(function(){if(m){m.textContent="Cargo atribuído.";setTimeout(function(){if(m&&m.textContent==="Cargo atribuído.")m.textContent="";},1500);}}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
-      };
-    });
+    var _rhMsg=function(t,err){var m=$("#rh-atrib-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);if(t&&!err)setTimeout(function(){if(m&&m.textContent===t)m.textContent="";},1500);}};
+    box.querySelectorAll(".rh-mc-add").forEach(function(sel){sel.onchange=function(){var cid=sel.value;if(!cid)return;_rhMsg("Salvando…");api("rhcargoadd",{alvo:sel.getAttribute("data-slug"),cid:cid}).then(_rhLoad).catch(function(e){_rhMsg(e.message||"Erro",1);});};});
+    box.querySelectorAll(".rh-mc-del").forEach(function(b){b.onclick=function(){_rhMsg("Salvando…");api("rhcargodel",{alvo:b.getAttribute("data-slug"),cid:b.getAttribute("data-cid")}).then(_rhLoad).catch(function(e){_rhMsg(e.message||"Erro",1);});};});
+    box.querySelectorAll(".rh-mc-star").forEach(function(b){b.onclick=function(){if(b.textContent==="★")return;_rhMsg("Salvando…");api("rhcargoprincipal",{alvo:b.getAttribute("data-slug"),cid:b.getAttribute("data-cid")}).then(_rhLoad).catch(function(e){_rhMsg(e.message||"Erro",1);});};});
+    box.querySelectorAll(".rh-mc-focosave").forEach(function(b){b.onclick=function(){var inp=box.querySelector('.rh-mc-foco[data-slug="'+b.getAttribute("data-slug")+'"][data-cid="'+b.getAttribute("data-cid")+'"]');_rhMsg("Salvando…");api("rhcargofoco",{alvo:b.getAttribute("data-slug"),cid:b.getAttribute("data-cid"),foco:inp?inp.value:""}).then(function(){_rhMsg("Foco salvo.");}).catch(function(e){_rhMsg(e.message||"Erro",1);});};});
     if(pode){
       $("#rh-novo").onclick=function(){_rhForm(null);};
       box.querySelectorAll("[data-ed]").forEach(function(b){b.onclick=function(){var cid=b.getAttribute("data-ed");_rhForm(cs.filter(function(x){return x.cid===cid;})[0]||null);};});
@@ -2674,7 +2685,7 @@ function _rhColabsLoad(){
         '<td><input class="cl-nome" data-slug="'+esc(m.slug)+'" value="'+esc(m.nome)+'" style="min-width:150px"></td>'+
         '<td><input class="cl-email" data-slug="'+esc(m.slug)+'" value="'+esc(m.email)+'" placeholder="e-mail" style="min-width:170px"></td>'+
         '<td>'+selPapel+'</td>'+
-        '<td class="muted" style="font-size:.8rem">'+esc(m.cargocid||'—')+'</td>'+
+        '<td class="muted" style="font-size:.8rem">'+esc(m.cargocid||'—')+(m.cargos_n>1?' <span title="'+m.cargos_n+' cargos (acesso = união)">+'+(m.cargos_n-1)+'</span>':'')+'</td>'+
         '<td>'+tagSit+' '+histNota+'</td>'+
         '<td class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-cl-save="'+esc(m.slug)+'">Salvar</button>'+btnSit+btnDel+'</td>'+
       '</tr>';
@@ -3210,9 +3221,13 @@ function _carregarMeuCargo(){
     var c=j.cargo;if(!c){box.innerHTML="";return;}
     function sec(t,v){var xs=String(v||"").split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean);if(!xs.length)return"";return '<div style="margin-top:8px"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em">'+esc(t)+'</div><ul style="margin:3px 0 0;padding-left:18px">'+xs.map(function(s){return '<li style="font-size:.86rem">'+esc(s)+'</li>';}).join("")+'</ul></div>';}
     var cap=(c.vinculo||'Contratado')+(c.horas_dia>0?' · '+c.horas_dia+' h/dia':'');
+    var extras=(j.cargos||[]).slice(1);
+    var titPrefix=extras.length?'Meu cargo principal: ':'Meu cargo: ';
+    var outros=extras.length?('<div style="margin-top:6px"><span class="muted" style="font-size:.72rem">Também atuo como: </span>'+extras.map(function(x){return '<span style="display:inline-block;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:.74rem;margin:0 4px 4px 0">'+esc(x.nome)+'</span>';}).join("")+'<div class="muted" style="font-size:.7rem;margin-top:2px">Seu acesso reúne as funções de todos os cargos.</div></div>'):'';
+    var foco=(c.foco&&String(c.foco).trim())?('<div style="margin-top:6px;font-size:.82rem"><span class="muted" style="font-size:.72rem">Foco (Coordenação): </span>'+esc(c.foco)+'</div>'):'';
     box.innerHTML='<div class="card" style="margin-bottom:14px;border-left:3px solid var(--brand)">'+
-      '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-weight:700;font-size:1.02rem">Meu cargo: '+esc(c.nome)+'</div>'+(c.area?'<span class="muted" style="font-size:.74rem">'+esc(c.area)+'</span>':'')+'</div>'+
-      '<div class="muted" style="font-size:.78rem;margin-top:2px">'+esc(cap)+'</div>'+
+      '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-weight:700;font-size:1.02rem">'+titPrefix+esc(c.nome)+'</div>'+(c.area?'<span class="muted" style="font-size:.74rem">'+esc(c.area)+'</span>':'')+'</div>'+
+      '<div class="muted" style="font-size:.78rem;margin-top:2px">'+esc(cap)+'</div>'+outros+foco+
       (c.missao?'<p style="margin:6px 0 0;font-size:.9rem">'+esc(c.missao)+'</p>':'')+
       sec("Minhas responsabilidades",c.responsabilidades)+
       sec("Meus entregáveis",c.entregaveis)+
