@@ -3317,12 +3317,36 @@ var AMB_COLS={
   aterros:[["m","Município","txt"],["reg","Regularização","txt"],["comp","Compartilhado","txt"]],
   lixoes:[["m","Município","txt"],["sit","Situação","txt"]]
 };
-var AMB={bank:"empreendimentos",bacia:"",municipio:"",setor:"",classe:"",q:"",page:0,limit:50,total:0,inited:false,meta:null,busy:false,seq:0,_tmr:null};
+/* Config de FILTROS por banco: extra=[propKey,Rótulo] viram seletores (valores via ambFacets);
+   dv=preset de vencimento; range=faixa numérica sobre uma chave de props. */
+var AMB_META_CFG={
+  empreendimentos:{extra:[["s","Setor"],["cl","Classe"],["md","Modalidade"],["st","Situação"],["tp","Tipo"],["ag","Pot. água"]],dv:true,range:{key:"lead",label:"Score",step:1}},
+  outorgas:{extra:[["fin","Finalidade"],["mod","Modalidade de uso"],["tipo","Tipo"],["st","Status"]],dv:true},
+  minerarios:{extra:[["sub","Substância"],["fase","Fase"]],range:{key:"area",label:"Área (ha)",step:"any"}},
+  embargos:{extra:[["pen","Penalidade"]]},
+  contaminadas:{extra:[["ga","Grupo de atividade"],["clf","Classificação"],["et","Etapa"]]},
+  etes:{extra:[["fase","Fase"],["situ","Situação"],["ang","Ângulo comercial"]],dv:true},
+  iqa:{extra:[["classe","Classe de qualidade"],["enq","Enquadramento"],["ano","Ano"]],range:{key:"iqa",label:"IQA",step:"any"}},
+  saneamento_municipal:{extra:[["pres","Prestador"]]},
+  rsu_municipal:{extra:[["sit","Situação"],["tip","Destinação"]]},
+  cobertura:{extra:[["pres","Prestador"]]},
+  barragens:{extra:[["pda","Dano potencial"],["cl","Classe"],["met","Método construtivo"]]}
+};
+var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null};
+function _ambResetFilters(){AMB.bacia=AMB.bacia;AMB.municipio="";AMB.q="";AMB.fx={};AMB.dv="";AMB.nmin="";AMB.nmax="";AMB.sortKey="";AMB.sortType="";AMB.sortDir="desc";AMB.page=0;}
 function _ambFmtBacia(s){return String(s||"").replace(/_/g," ").replace(/\b\w/g,function(c){return c.toUpperCase();});}
 function _ambCell(v,type){
   if(v==null||v==="")return "";
   if((type==="num"||type==="int")){var n=Number(v);if(isFinite(n))return n.toLocaleString("pt-BR");}
   return esc(String(v));
+}
+/* Monta os parâmetros de consulta a partir do estado de filtros/ordenação (lista e export). */
+function _ambParams(extra){
+  var cfg=AMB_META_CFG[AMB.bank]||{};
+  var o={bank:AMB.bank,bacia:AMB.bacia,municipio:AMB.municipio,q:AMB.q,fx:AMB.fx,dv:AMB.dv};
+  if(cfg.range){o.nkey=cfg.range.key;o.nmin=AMB.nmin;o.nmax=AMB.nmax;}
+  if(AMB.sortKey){o.sortKey=AMB.sortKey;o.sortType=AMB.sortType;o.dir=AMB.sortDir;}
+  return Object.assign(o,extra||{});
 }
 function _ambInit(){
   if(AMB.inited)return; AMB.inited=true;
@@ -3338,7 +3362,7 @@ function _ambInit(){
     AMB.meta=j; _ambRenderChips(); _ambRenderFiltros();
     // escolhe o 1º banco presente (prefere empreendimentos)
     if(!(j.banks&&j.banks[AMB.bank]>0)){for(var i=0;i<AMB_BANKS.length;i++){var b=AMB_BANKS[i][0];if(j.banks&&j.banks[b]>0){AMB.bank=b;break;}}}
-    _ambFetch();
+    _ambLoadFacets(); _ambFetch();
   }).catch(function(e){
     wrap.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar: '+esc(e.message||e)+'</p>';
   });
@@ -3356,35 +3380,62 @@ function _ambRenderChips(){
       +'<span class="hub-ct" style="font-size:14px">'+esc(b[1])+'</span></button>';
   }).join("");
   g.querySelectorAll("[data-bank]").forEach(function(btn){btn.onclick=function(){
-    if(AMB.busy)return; AMB.bank=btn.getAttribute("data-bank"); AMB.page=0; AMB.municipio=""; AMB.setor=""; AMB.classe=""; AMB.q="";
-    _ambRenderChips(); _ambRenderFiltros(); _ambFetch();
+    if(AMB.busy)return; AMB.bank=btn.getAttribute("data-bank"); _ambResetFilters();
+    _ambRenderChips(); _ambRenderFiltros(); _ambLoadFacets(); _ambFetch();
   };});
 }
 function _ambRenderFiltros(){
   var f=document.getElementById("amb-filtros"); if(!f)return;
+  var cfg=AMB_META_CFG[AMB.bank]||{};
   var bacias=(AMB.meta&&AMB.meta.bacias)||[];
-  var opt='<option value="">Todas as bacias</option>'+bacias.map(function(b){return '<option value="'+esc(b)+'"'+(b===AMB.bacia?" selected":"")+'>'+esc(_ambFmtBacia(b))+'</option>';}).join("");
-  var isLead=AMB.bank==="empreendimentos";
-  var h='<label style="font-size:12px">Bacia<br><select id="amb-f-bacia" class="input sm">'+opt+'</select></label>'
-    +'<label style="font-size:12px">Município<br><input id="amb-f-mun" class="input sm" placeholder="exato" value="'+esc(AMB.municipio)+'" style="width:160px"></label>';
-  if(isLead){
-    h+='<label style="font-size:12px">Setor<br><input id="amb-f-setor" class="input sm" placeholder="ex.: 4 — Agro" value="'+esc(AMB.setor)+'" style="width:150px"></label>'
-      +'<label style="font-size:12px">Classe<br><input id="amb-f-classe" class="input sm" placeholder="2…6" value="'+esc(AMB.classe)+'" style="width:70px"></label>';
-  }
-  h+='<label style="font-size:12px;flex:1;min-width:180px">Busca<br><input id="amb-f-q" class="input sm" placeholder="nome, atividade, titular…" value="'+esc(AMB.q)+'" style="width:100%"></label>';
+  var fac=AMB.facets||{};
+  function selOpts(list,sel){return '<option value="">todos</option>'+(list||[]).map(function(o){return '<option value="'+esc(o.v)+'"'+(o.v===sel?" selected":"")+'>'+esc(o.v)+(o.n?" ("+Number(o.n).toLocaleString("pt-BR")+")":"")+'</option>';}).join("");}
+  var h='<label style="font-size:12px">Bacia<br><select id="amb-f-bacia" class="input sm"><option value="">Todas as bacias</option>'
+     +bacias.map(function(b){return '<option value="'+esc(b)+'"'+(b===AMB.bacia?" selected":"")+'>'+esc(_ambFmtBacia(b))+'</option>';}).join("")+'</select></label>';
+  var muns=fac["municipio"]||[];
+  h+='<label style="font-size:12px">Município<br><input id="amb-f-mun" class="input sm" list="amb-muns" placeholder="todos" value="'+esc(AMB.municipio)+'" style="width:160px"><datalist id="amb-muns">'+muns.map(function(o){return '<option value="'+esc(o.v)+'">';}).join("")+'</datalist></label>';
+  (cfg.extra||[]).forEach(function(ex){h+='<label style="font-size:12px">'+esc(ex[1])+'<br><select class="input sm amb-fx" data-k="'+esc(ex[0])+'">'+selOpts(fac[ex[0]],AMB.fx[ex[0]]||"")+'</select></label>';});
+  if(cfg.dv){var dvl={"":"todos","venc":"vencidas","6":"≤ 6 meses","12":"≤ 12 meses","24":"≤ 24 meses","fut":"> 12 meses"};
+    h+='<label style="font-size:12px">Vencimento<br><select id="amb-f-dv" class="input sm">'+["","venc","6","12","24","fut"].map(function(v){return '<option value="'+v+'"'+(v===AMB.dv?" selected":"")+'>'+dvl[v]+'</option>';}).join("")+'</select></label>';}
+  if(cfg.range){h+='<label style="font-size:12px">'+esc(cfg.range.label)+' mín/máx<br><input id="amb-f-nmin" class="input sm" type="number" step="'+(cfg.range.step||"any")+'" placeholder="mín" value="'+esc(AMB.nmin)+'" style="width:70px"> <input id="amb-f-nmax" class="input sm" type="number" step="'+(cfg.range.step||"any")+'" placeholder="máx" value="'+esc(AMB.nmax)+'" style="width:70px"></label>';}
+  h+='<label style="font-size:12px;flex:1;min-width:160px">Busca<br><input id="amb-f-q" class="input sm" placeholder="nome, atividade, titular…" value="'+esc(AMB.q)+'" style="width:100%"></label>';
+  h+='<button class="btn sec sm" id="amb-clr" type="button">limpar</button>'
+    +'<span style="flex-basis:100%;height:0"></span>'
+    +'<span class="muted" style="font-size:11px;align-self:center">baixar recorte filtrado:</span>'
+    +'<button class="btn sec sm amb-dl" data-fmt="csv" type="button">⬇ CSV</button>'
+    +'<button class="btn sec sm amb-dl" data-fmt="geojson" type="button">⬇ GeoJSON</button>'
+    +'<button class="btn sec sm amb-dl" data-fmt="kml" type="button">⬇ KML</button>';
   f.innerHTML=h;
-  var bs=document.getElementById("amb-f-bacia"); if(bs)bs.onchange=function(){AMB.bacia=bs.value;AMB.page=0;_ambFetch();};
+  var bs=document.getElementById("amb-f-bacia"); if(bs)bs.onchange=function(){AMB.bacia=bs.value;AMB.municipio="";AMB.fx={};AMB.page=0;_ambLoadFacets();_ambFetch();};
   var mn=document.getElementById("amb-f-mun"); if(mn)mn.onchange=function(){AMB.municipio=mn.value.trim();AMB.page=0;_ambFetch();};
-  var st=document.getElementById("amb-f-setor"); if(st)st.onchange=function(){AMB.setor=st.value.trim();AMB.page=0;_ambFetch();};
-  var cl=document.getElementById("amb-f-classe"); if(cl)cl.onchange=function(){AMB.classe=cl.value.trim();AMB.page=0;_ambFetch();};
+  f.querySelectorAll(".amb-fx").forEach(function(s){s.onchange=function(){var k=s.getAttribute("data-k");if(s.value)AMB.fx[k]=s.value;else delete AMB.fx[k];AMB.page=0;_ambFetch();};});
+  var dv=document.getElementById("amb-f-dv"); if(dv)dv.onchange=function(){AMB.dv=dv.value;AMB.page=0;_ambFetch();};
+  var nmin=document.getElementById("amb-f-nmin"); if(nmin)nmin.oninput=function(){if(AMB._tmr)clearTimeout(AMB._tmr);AMB._tmr=setTimeout(function(){AMB.nmin=nmin.value;AMB.page=0;_ambFetch();},350);};
+  var nmax=document.getElementById("amb-f-nmax"); if(nmax)nmax.oninput=function(){if(AMB._tmr)clearTimeout(AMB._tmr);AMB._tmr=setTimeout(function(){AMB.nmax=nmax.value;AMB.page=0;_ambFetch();},350);};
   var q=document.getElementById("amb-f-q"); if(q)q.oninput=function(){ if(AMB._tmr)clearTimeout(AMB._tmr); AMB._tmr=setTimeout(function(){AMB.q=q.value.trim();AMB.page=0;_ambFetch();},350); };
+  var clr=document.getElementById("amb-clr"); if(clr)clr.onclick=function(){_ambResetFilters();_ambRenderFiltros();_ambFetch();};
+  f.querySelectorAll(".amb-dl").forEach(function(b){b.onclick=function(){_ambDownload(b.getAttribute("data-fmt"),b);};});
+}
+/* Carrega os valores possíveis dos filtros (município + extras do banco), respeitando a bacia.
+   Cacheado por bank|bacia. Debounce leve p/ trocas rápidas. */
+function _ambLoadFacets(){
+  var cfg=AMB_META_CFG[AMB.bank]||{};
+  var keys=["municipio"].concat((cfg.extra||[]).map(function(e){return e[0];}));
+  var ck=AMB.bank+"|"+AMB.bacia;
+  if(AMB.facetKey===ck)return; // já temos
+  if(AMB._ftmr)clearTimeout(AMB._ftmr);
+  AMB._ftmr=setTimeout(function(){
+    api("ambFacets",{bank:AMB.bank,bacia:AMB.bacia,keys:keys}).then(function(j){
+      AMB.facets=j.facets||{}; AMB.facetKey=ck; _ambRenderFiltros();
+    }).catch(function(){});
+  },60);
 }
 function _ambFetch(){
   var tbl=document.getElementById("amb-tbl"); var info=document.getElementById("amb-info"); var pg=document.getElementById("amb-pager");
   if(!tbl)return;
   AMB.busy=true; var mySeq=++AMB.seq;
   tbl.style.opacity="0.55";
-  api("ambList",{bank:AMB.bank,bacia:AMB.bacia,municipio:AMB.municipio,setor:AMB.setor,classe:AMB.classe,q:AMB.q,limit:AMB.limit,offset:AMB.page*AMB.limit}).then(function(j){
+  api("ambList",_ambParams({limit:AMB.limit,offset:AMB.page*AMB.limit})).then(function(j){
     if(mySeq!==AMB.seq)return; // resposta obsoleta (o usuário já mudou o filtro): descarta
     AMB.busy=false; AMB.total=j.total||0;
     _ambRenderTable(j);
@@ -3402,19 +3453,59 @@ function _ambRenderTable(j){
   var cols=AMB_COLS[AMB.bank]||[["m","Município","txt"]];
   var rows=j.rows||[];
   if(!rows.length){tbl.innerHTML='<p class="muted" style="padding:14px">Nenhum registro com os filtros atuais.</p>';return;}
-  var th='<tr>'+cols.map(function(c){return '<th style="text-align:'+((c[2]==="num"||c[2]==="int")?"right":"left")+';padding:8px 10px;position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap">'+esc(c[1])+'</th>';}).join("")+'</tr>';
-  var tb=rows.map(function(r,ix){
+  var th='<tr>'+cols.map(function(c){
+    var right=(c[2]==="num"||c[2]==="int");
+    var ar=AMB.sortKey===c[0]?(AMB.sortDir==="asc"?"▲":"▼"):"↕";
+    return '<th data-k="'+esc(c[0])+'" data-t="'+esc(c[2])+'" title="ordenar" style="cursor:pointer;user-select:none;text-align:'+(right?"right":"left")+';padding:8px 10px;position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap">'+esc(c[1])+' <span style="opacity:.5">'+ar+'</span></th>';
+  }).join("")+'</tr>';
+  var tb=rows.map(function(r){
     var tds=cols.map(function(c){
-      var v=_ambCell(r[c[0]],c[2]);
+      var right=(c[2]==="num"||c[2]==="int");
+      var raw=r[c[0]];
+      if(c[0]==="dv"&&raw!==""&&raw!=null&&isFinite(Number(raw))){var n=Number(raw);var txt=n<0?("vencida há "+(-n)+"d"):(n.toLocaleString("pt-BR")+" d");return '<td style="padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;text-align:right;white-space:nowrap;color:'+(n<0?"#c0392b":(n<=365?"#b9770e":"inherit"))+'">'+esc(txt)+'</td>';}
+      var v=_ambCell(raw,c[2]);
       var isLeadScore=(AMB.bank==="empreendimentos"&&c[0]==="lead");
-      return '<td style="padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;text-align:'+((c[2]==="num"||c[2]==="int")?"right":"left")+';'+(isLeadScore?"font-weight:700;color:var(--brand)":"")+'">'+v+'</td>';
+      return '<td style="padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;text-align:'+(right?"right":"left")+';'+(isLeadScore?"font-weight:700;color:var(--brand)":"")+'">'+v+'</td>';
     }).join("");
     return '<tr class="amb-row" data-id="'+esc(r._id)+'" style="cursor:pointer">'+tds+'</tr>';
   }).join("");
-  tbl.innerHTML='<table style="width:100%;border-collapse:collapse;min-width:640px"><thead>'+th+'</thead><tbody>'+tb+'</tbody></table>';
+  tbl.innerHTML='<table style="width:100%;border-collapse:collapse;min-width:680px"><thead>'+th+'</thead><tbody>'+tb+'</tbody></table>';
+  tbl.querySelectorAll("th[data-k]").forEach(function(h){h.onclick=function(){
+    var k=h.getAttribute("data-k"),t=h.getAttribute("data-t");
+    if(AMB.sortKey===k){AMB.sortDir=AMB.sortDir==="asc"?"desc":"asc";}
+    else{AMB.sortKey=k;AMB.sortType=t;AMB.sortDir=(t==="num"||t==="int"||t==="date")?"desc":"asc";}
+    AMB.page=0;_ambFetch();
+  };});
   tbl.querySelectorAll(".amb-row").forEach(function(tr){tr.onclick=function(){_ambFicha(tr.getAttribute("data-id"));};
     tr.onmouseenter=function(){tr.style.background="var(--surface-2,rgba(0,0,0,.03))";}; tr.onmouseleave=function(){tr.style.background="";};});
 }
+/* Download do recorte FILTRADO (server-side, todas as linhas até 50k) em CSV/GeoJSON/KML,
+   montado no cliente a partir dos mesmos campos exibidos. Mantém o padrão do painel por bacia. */
+function _ambDownload(fmt,btn){
+  var cfg=AMB_COLS[AMB.bank]||[]; var cols=cfg.map(function(c){return c[0];});
+  var old=btn?btn.textContent:""; if(btn){btn.disabled=true;btn.textContent="…";}
+  api("ambExport",_ambParams({cols:cols,max:50000})).then(function(j){
+    var rows=j.rows||[]; var base="leads_"+AMB.bank+(AMB.bacia?("_"+AMB.bacia):"");
+    if(fmt==="csv")_ambDL(base+".csv","text/csv;charset=utf-8",_ambCSV(rows,cfg));
+    else if(fmt==="kml")_ambDL(base+".kml","application/vnd.google-earth.kml+xml",_ambKML(rows,cfg,base));
+    else _ambDL(base+".geojson","application/geo+json",_ambGeo(rows,cfg));
+    if(btn){btn.disabled=false;btn.textContent=old;}
+    if(j.truncated)toast("Recorte grande: baixadas as primeiras "+(j.cap||50000).toLocaleString("pt-BR")+" linhas. Refine o filtro p/ o recorte exato.");
+  }).catch(function(e){if(btn){btn.disabled=false;btn.textContent=old;}toast("Falha no download: "+(e.message||e));});
+}
+function _ambDL(name,mime,text){var b=new Blob([text],{type:mime});var u=URL.createObjectURL(b);var a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(u);a.remove();},120);}
+function _ambCSV(rows,cols){var qq=function(v){v=(v==null?"":String(v));return /[";\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  var lines=[cols.map(function(c){return c[1];}).join(";")];
+  rows.forEach(function(r){lines.push(cols.map(function(c){return qq(r[c[0]]);}).join(";"));});
+  return "﻿"+lines.join("\r\n");}
+function _ambGeo(rows,cols){var feats=rows.filter(function(r){return r.c&&r.c.length===2&&r.c[0]!=null&&r.c[1]!=null;}).map(function(r){var pr={};cols.forEach(function(c){pr[c[1]]=r[c[0]];});return {type:"Feature",geometry:{type:"Point",coordinates:[r.c[0],r.c[1]]},properties:pr};});
+  return JSON.stringify({type:"FeatureCollection",name:"Intelecto_leads",crs:{type:"name",properties:{name:"urn:ogc:def:crs:EPSG::4674"}},features:feats});}
+function _ambKML(rows,cols,name){var q=function(s){return (s==null?"":String(s)).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});};
+  var tk=(cols[1]||cols[0]||["m"])[0];
+  var k='<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'+q(name)+'</name>';
+  rows.filter(function(r){return r.c&&r.c.length===2&&r.c[0]!=null&&r.c[1]!=null;}).forEach(function(r){var desc=cols.map(function(c){return c[1]+": "+(r[c[0]]==null?"":r[c[0]]);}).join("\n");
+    k+='<Placemark><name>'+q(r[tk]||r.m||"")+'</name><description>'+q(desc)+'</description><Point><coordinates>'+r.c[0]+','+r.c[1]+',0</coordinates></Point></Placemark>';});
+  return k+'</Document></kml>';}
 function _ambRenderPager(){
   var pg=document.getElementById("amb-pager"); if(!pg)return;
   var pages=Math.max(1,Math.ceil(AMB.total/AMB.limit)), cur=AMB.page+1;
@@ -3453,14 +3544,24 @@ function _ambFicha(id){
       }
     }
     var coord=(r._lat&&r._lon)?'<a class="muted" style="font-size:12px" target="_blank" rel="noopener" href="https://www.google.com/maps?q='+encodeURIComponent(r._lat+","+r._lon)+'">ver no mapa ↗</a>':"";
+    // Ficha de ação (funil): status + notas, salvos no D1 via funnel_push (gate comercial.gerir).
+    var funil=j.funil||{status:"",notas:"",key:""}; var pode=!!j.podeGerir;
+    var sts=["","A abordar","Em contato","Qualificado","Proposta","Ganho","Perdido","Descartado"];
+    var funilH='<h4 style="margin:16px 0 6px">Ficha de ação · funil</h4>'
+      +'<label class="muted" style="font-size:12px">Status</label><br><select id="amb-fn-st" class="input sm"'+(pode?"":" disabled")+'>'+sts.map(function(s){return '<option'+(s===funil.status?" selected":"")+'>'+esc(s)+'</option>';}).join("")+'</select><br>'
+      +'<label class="muted" style="font-size:12px;display:block;margin-top:8px">Notas</label><textarea id="amb-fn-nt" class="input sm" style="width:100%;min-height:68px"'+(pode?"":" disabled")+'>'+esc(funil.notas||"")+'</textarea>'
+      +(pode?'<br><button class="btn sm" id="amb-fn-save" style="margin-top:8px">Salvar no funil</button><span id="amb-fn-ok" class="muted" style="font-size:12px;margin-left:8px"></span>':'<p class="muted" style="font-size:12px">Somente leitura (sem permissão para gerir o funil).</p>');
     m.innerHTML='<div class="card" style="max-width:720px;margin:0 auto;padding:18px">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
       +'<div><h3 style="margin:0">'+titulo+'</h3><p class="muted" style="margin:2px 0;font-size:13px">'+esc(_ambFmtBacia(r._bacia))+(r._m?' · '+esc(r._m):"")+' '+coord+'</p></div>'
       +'<button class="btn sec sm" id="amb-fecha">Fechar</button></div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">'+campos+'</div>'
-      +extra+instH+'</div>';
+      +extra+instH+funilH+'</div>';
     var fx=document.getElementById("amb-fecha"); if(fx)fx.onclick=function(){m.style.display="none";m.innerHTML="";};
     m.onclick=function(ev){if(ev.target===m){m.style.display="none";m.innerHTML="";}};
+    var sv=document.getElementById("amb-fn-save");
+    if(sv)sv.onclick=function(){sv.disabled=true;var ok=document.getElementById("amb-fn-ok");if(ok)ok.textContent="salvando…";
+      api("funnel_push",{key:funil.key,status:document.getElementById("amb-fn-st").value,notas:document.getElementById("amb-fn-nt").value}).then(function(){sv.disabled=false;if(ok)ok.textContent="salvo ✓";}).catch(function(e){sv.disabled=false;if(ok)ok.textContent="erro: "+(e.message||e);});};
   }).catch(function(e){
     m.innerHTML='<div class="card" style="max-width:520px;margin:0 auto;padding:18px"><p class="err">Erro: '+esc(e.message||e)+'</p><button class="btn sec sm" onclick="document.getElementById(\'crm-modal\').style.display=\'none\'">Fechar</button></div>';
   });

@@ -2081,26 +2081,48 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "ambList") {
     const u = await auth(p);
     if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
-    const bank = String(p.bank || "empreendimentos").replace(/[^a-z_]/gi, "").slice(0, 40);
-    const where: string[] = ["tenant_id = ?", "bank = ?"];
-    const args: P[] = [u.tenant_id, bank];
-    const eq = (col: string, val: string, n: number) => { const v = String(val || "").slice(0, n); if (v) { where.push(col + " = ?"); args.push(v); } };
-    eq("bacia", String(p.bacia || ""), 60);
-    eq("setor", String(p.setor || ""), 80);
-    eq("classe", String(p.classe || ""), 20);
-    eq("municipio", String(p.municipio || ""), 90);
-    eq("situacao", String(p.situacao || ""), 80);
-    const q = String(p.q || "").trim().toLowerCase().slice(0, 90);
-    if (q) { for (const term of q.split(/\s+/).filter(Boolean).slice(0, 6)) { where.push("busca LIKE ?"); args.push("%" + term + "%"); } }
-    const w = where.join(" AND ");
+    const { bank, w, args } = ambWhere(p, u.tenant_id);
+    const ob = ambOrder(p);
     const limit = Math.max(1, Math.min(100, Math.floor(Number(p.limit) || 50)));
     const offset = Math.max(0, Math.floor(Number(p.offset) || 0));
-    const dir = String(p.dir || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
     const cnt = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM amb_registro WHERE " + w, args });
     const total = Number((cnt.rows[0] as P).n) || 0;
-    const rs = await sqlite.execute({ sql: "SELECT id, bacia, municipio, lat, lon, ord, props FROM amb_registro WHERE " + w + " ORDER BY ord " + dir + ", id ASC LIMIT ? OFFSET ?", args: [...args, limit, offset] });
+    const rs = await sqlite.execute({ sql: "SELECT id, bacia, municipio, lat, lon, ord, props FROM amb_registro WHERE " + w + " " + ob + " LIMIT ? OFFSET ?", args: [...args, limit, offset] });
     const rows = (rs.rows as P[]).map((r) => { let pr: P = {}; try { pr = JSON.parse(String(r.props || "{}")); } catch (_) { /* props corrompido: devolve só o comum */ } return { ...pr, _id: r.id, _bacia: r.bacia, _m: r.municipio, _ord: r.ord, _lat: r.lat, _lon: r.lon }; });
     return { ok: true, bank, rows, total, limit, offset };
+  }
+  /* Valores distintos (com contagem) p/ montar os seletores de filtro do banco corrente —
+     respeita a bacia selecionada. Cada chave: coluna dedicada (setor/classe/...) ou props. */
+  if (action === "ambFacets") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const bank = String(p.bank || "empreendimentos").replace(/[^a-z_]/gi, "").slice(0, 40);
+    const base: string[] = ["tenant_id = ?", "bank = ?"]; const bargs: P[] = [u.tenant_id, bank];
+    const bacia = String(p.bacia || "").slice(0, 60); if (bacia) { base.push("bacia = ?"); bargs.push(bacia); }
+    const COL = new Set(["setor", "classe", "situacao", "municipio", "bacia"]);
+    const keys = (Array.isArray(p.keys) ? p.keys : []).slice(0, 12);
+    const facets: Record<string, P[]> = {};
+    for (const kraw of keys) {
+      const k = String(kraw || "").replace(/[^a-z_0-9]/gi, "").slice(0, 30); if (!k) continue;
+      const expr = COL.has(k) ? k : "json_extract(props,'$." + k + "')";
+      const lim = k === "municipio" ? 400 : 80;
+      const r = await sqlite.execute({ sql: "SELECT " + expr + " v, COUNT(*) n FROM amb_registro WHERE " + base.join(" AND ") + " AND " + expr + " IS NOT NULL AND " + expr + " <> '' GROUP BY " + expr + " ORDER BY " + (k === "municipio" ? expr + " ASC" : "n DESC") + " LIMIT ?", args: [...bargs, lim] });
+      facets[String(kraw)] = (r.rows as P[]).map((x) => ({ v: String(x.v), n: Number(x.n) || 0 }));
+    }
+    return { ok: true, bank, facets };
+  }
+  /* Recorte FILTRADO completo (não paginado, teto 50k) p/ download no cliente (CSV/GeoJSON/KML).
+     Projeta só as colunas pedidas (sanitizadas) + coordenada. Mesmo WHERE/ordem da lista. */
+  if (action === "ambExport") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const { bank, w, args } = ambWhere(p, u.tenant_id);
+    const ob = ambOrder(p);
+    const cap = Math.max(1, Math.min(50000, Math.floor(Number(p.max) || 50000)));
+    const cols = (Array.isArray(p.cols) ? p.cols : []).map((k: any) => String(k).replace(/[^a-z_0-9]/gi, "").slice(0, 30)).filter(Boolean).slice(0, 30);
+    const rs = await sqlite.execute({ sql: "SELECT id, lat, lon, props FROM amb_registro WHERE " + w + " " + ob + " LIMIT ?", args: [...args, cap] });
+    const rows = (rs.rows as P[]).map((r) => { let pr: P = {}; try { pr = JSON.parse(String(r.props || "{}")); } catch (_) { /* */ } const o: P = {}; for (const k of cols) o[k] = pr[k]; o.c = [r.lon, r.lat]; return o; });
+    return { ok: true, bank, rows, truncated: rows.length >= cap, cap };
   }
   if (action === "ambFicha") {
     const u = await auth(p);
@@ -2115,7 +2137,14 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       const ir = await sqlite.execute({ sql: "SELECT id, instrumento, orgao, numero, situacao, prazo, obrigacoes, problema, servico, fonte, url_fonte FROM lead_instrumento WHERE tenant_id = ? AND lead_id = ? ORDER BY instrumento", args: [u.tenant_id, id] });
       instrumentos = ir.rows as P[];
     }
-    return { ok: true, bank, registro: { ...props, _id: row0.id, _bacia: row0.bacia, _m: row0.municipio, _lat: row0.lat, _lon: row0.lon }, instrumentos };
+    // Ficha de ação (funil): status/notas por registro. Chave própria (amb::bank::id), sem
+    // colisão com os painéis por bacia (fichaQF::). Reusa a tabela lead_funnel e funnel_push.
+    const fk = "amb::" + bank + "::" + id;
+    const fr = await sqlite.execute({ sql: "SELECT status, notas, dono, atualizado_em FROM lead_funnel WHERE tenant_id = ? AND lead_key = ?", args: [u.tenant_id, fk] });
+    const f0 = (fr.rows[0] as P) || {};
+    const funil = { key: fk, status: String(f0.status || ""), notas: String(f0.notas || ""), dono: String(f0.dono || ""), ts: String(f0.atualizado_em || "") };
+    const podeGerir = (await podeComercial(u.slug)) || temCapSet(await capsAtribuidas(u), "comercial.gerir");
+    return { ok: true, bank, registro: { ...props, _id: row0.id, _bacia: row0.bacia, _m: row0.municipio, _lat: row0.lat, _lon: row0.lon }, instrumentos, funil, podeGerir };
   }
   // ===== CRM COMERCIAL (frente E) — leitura do pipeline/leads/horas (gate comercial) =====
   if (action === "crm") {
@@ -5025,6 +5054,64 @@ async function montarPagina(): Promise<string> {
   const j = base.indexOf("\nSEED.hist=[]", i + 1);
   paginaCache = j < 0 ? base : base.slice(0, i >= 0 ? i : j) + "\n" + seed.replace(/\n+$/, "") + base.slice(j);
   return paginaCache;
+}
+
+/* ===== LEADS AMBIENTAIS — helpers de consulta (WHERE/ORDER) reusados por ambList/Facets/Export.
+   Toda chave de coluna/props é sanitizada (alfanum) e todo VALOR vai parametrizado (?), sem
+   interpolar dado do usuário no SQL. Sort por coluna comum (indexada) ou por props (json_extract,
+   com CAST p/ num e reordenação dd/mm/aaaa -> aaaammdd p/ date). */
+function ambWhere(p: P, tenant: string): { bank: string; w: string; args: P[] } {
+  const bank = String(p.bank || "empreendimentos").replace(/[^a-z_]/gi, "").slice(0, 40);
+  const where: string[] = ["tenant_id = ?", "bank = ?"];
+  const args: P[] = [tenant, bank];
+  const eq = (col: string, val: any, n: number) => { const v = String(val == null ? "" : val).slice(0, n); if (v) { where.push(col + " = ?"); args.push(v); } };
+  eq("bacia", p.bacia, 60);
+  eq("municipio", p.municipio, 90);
+  eq("setor", p.setor, 80);
+  eq("classe", p.classe, 20);
+  eq("situacao", p.situacao, 80);
+  // filtros categóricos genéricos em props (fx = { chave: valor }).
+  if (p.fx && typeof p.fx === "object") {
+    for (const kraw of Object.keys(p.fx).slice(0, 8)) {
+      const k = String(kraw).replace(/[^a-z_0-9]/gi, "").slice(0, 30);
+      const v = String((p.fx as P)[kraw] == null ? "" : (p.fx as P)[kraw]).slice(0, 120);
+      if (k && v) { where.push("json_extract(props,'$." + k + "') = ?"); args.push(v); }
+    }
+  }
+  // vencimento (dias p/ vencer): vencidas / a vencer ≤ N meses / futuras (> 1 ano).
+  const dv = String(p.dv || "");
+  if (dv) {
+    const c = "CAST(json_extract(props,'$.dv') AS REAL)";
+    if (dv === "venc") where.push(c + " < 0");
+    else if (dv === "fut") where.push(c + " > 365");
+    else { const mm = Math.round(Number(dv) * 30.4) || 0; where.push(c + " >= 0 AND " + c + " <= ?"); args.push(mm); }
+  }
+  // faixa numérica sobre uma chave de props (nkey): score, área, IQA…
+  const nkey = String(p.nkey || "").replace(/[^a-z_0-9]/gi, "").slice(0, 30);
+  if (nkey) {
+    const c = "CAST(json_extract(props,'$." + nkey + "') AS REAL)";
+    if (p.nmin !== "" && p.nmin != null && isFinite(Number(p.nmin))) { where.push(c + " >= ?"); args.push(Number(p.nmin)); }
+    if (p.nmax !== "" && p.nmax != null && isFinite(Number(p.nmax))) { where.push(c + " <= ?"); args.push(Number(p.nmax)); }
+  }
+  const q = String(p.q || "").trim().toLowerCase().slice(0, 90);
+  if (q) { for (const term of q.split(/\s+/).filter(Boolean).slice(0, 6)) { where.push("busca LIKE ?"); args.push("%" + term + "%"); } }
+  return { bank, w: where.join(" AND "), args };
+}
+function ambOrder(p: P): string {
+  const COMMON: Record<string, string> = { municipio: "municipio", bacia: "bacia", setor: "setor", classe: "classe", situacao: "situacao", ord: "ord", dt: "dt", rotulo: "rotulo" };
+  const key = String(p.sortKey || "").replace(/[^a-z_0-9]/gi, "").slice(0, 30);
+  const type = String(p.sortType || "txt");
+  const dir = String(p.dir || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+  if (!key) return "ORDER BY ord " + dir + ", id ASC";
+  let expr: string;
+  if (COMMON[key]) expr = COMMON[key];
+  else {
+    const j = "json_extract(props,'$." + key + "')";
+    if (type === "num" || type === "int") expr = "CAST(" + j + " AS REAL)";
+    else if (type === "date") expr = "(substr(" + j + ",7,4)||substr(" + j + ",4,2)||substr(" + j + ",1,2))";
+    else expr = j;
+  }
+  return "ORDER BY " + expr + " " + dir + ", id ASC";
 }
 
 // Painel de uma bacia (Leads Ambientais) servido PRIVADO do R2, com gate perm:comercial.
