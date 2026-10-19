@@ -678,6 +678,8 @@ document.addEventListener("click",function(e){
   wrap.querySelectorAll(".tabpanel").forEach(function(p){
     if(p.closest(".tabs")===wrap) p.classList.toggle("hidden",p.id!==alvo);
   });
+  // Explorador de leads: inicializa ao ativar a aba (garantia além do listener do botão).
+  if(alvo==="com-amb"&&typeof _ambInit==="function"){try{_ambInit();}catch(_){}}
 });
 
 /* ===================== T6 · PERFIL & CONTA ===================== */
