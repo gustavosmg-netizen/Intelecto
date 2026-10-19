@@ -3343,7 +3343,7 @@ var AMB_COLS_MORE={
   embargos:[["outras","Outras penalidades","txt"]],
   contaminadas:[["uso","Uso declarado","txt"]]
 };
-var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",weights:null,showMore:false,page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null};
+var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",weights:null,showMore:false,mapOpen:false,page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null,_map:null,_mk:null,_bg:false};
 function _ambResetFilters(){AMB.municipio="";AMB.q="";AMB.fx={};AMB.dv="";AMB.nmin="";AMB.nmax="";AMB.sortKey="";AMB.sortType="";AMB.sortDir="desc";AMB.weights=null;AMB.showMore=false;AMB.page=0;}
 function _ambEffCols(){var base=(AMB_COLS[AMB.bank]||[]).slice();if(AMB.showMore&&AMB_COLS_MORE[AMB.bank])base=base.concat(AMB_COLS_MORE[AMB.bank]);return base;}
 function _ambScoreW(r){var W=AMB.weights||AMB_DEFW,b=r.brk||{},s=0;for(var k in W){s+=(Number(W[k])||0)*(Number(b[k])||0);}return Math.round(s);}
@@ -3370,6 +3370,7 @@ function _ambInit(){
     +'<div id="amb-filtros" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:10px"></div>'
     +'<div id="amb-resumo" style="margin-bottom:8px"></div>'
     +'<div id="amb-info" class="muted" style="font-size:13px;margin-bottom:6px"></div>'
+    +'<div id="amb-map" style="display:none;height:460px;margin:8px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden"></div>'
     +'<div id="amb-tbl" style="overflow:auto;border:1px solid var(--line);border-radius:var(--r-lg)"><p class="muted" style="padding:14px">Carregando…</p></div>'
     +'<div id="amb-pager" style="display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0"></div>'
     +'<p class="muted" style="font-size:12px">Dados de prospecção (fontes públicas: IDE-Sisema/SLA-MG, ANM, ANA, SNIS…). PF protegida por LGPD. Para o mapa georreferenciado por bacia, use a aba “Painéis por bacia (mapa)”.</p>';
@@ -3420,7 +3421,8 @@ function _ambRenderFiltros(){
     +'<span class="muted" style="font-size:11px;align-self:center">baixar recorte filtrado:</span>'
     +'<button class="btn sec sm amb-dl" data-fmt="csv" type="button">⬇ CSV</button>'
     +'<button class="btn sec sm amb-dl" data-fmt="geojson" type="button">⬇ GeoJSON</button>'
-    +'<button class="btn sec sm amb-dl" data-fmt="kml" type="button">⬇ KML</button>';
+    +'<button class="btn sec sm amb-dl" data-fmt="kml" type="button">⬇ KML</button>'
+    +'<button class="btn sec sm" id="amb-mapbtn" type="button">'+(AMB.mapOpen?"✕ fechar mapa":"🗺 mapa")+'</button>';
   if(AMB.bank==="empreendimentos"){var W=AMB.weights||AMB_DEFW;
     h+='<span style="flex-basis:100%;height:0"></span><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;border-top:1px dashed var(--line);padding-top:8px;margin-top:4px;width:100%"><span class="muted" style="font-size:11px;align-self:center">Pesos do Lead Score · Coordenação:</span>'
       +["fit","agua","timing","pressao","autuacao","cred"].map(function(k){return '<label style="font-size:11px">'+esc(AMB_WLBL[k])+'<br><input class="input sm amb-w" data-k="'+k+'" type="number" min="0" max="60" style="width:56px" value="'+(W[k])+'"></label>';}).join("")
@@ -3436,6 +3438,7 @@ function _ambRenderFiltros(){
   var q=document.getElementById("amb-f-q"); if(q)q.oninput=function(){ if(AMB._tmr)clearTimeout(AMB._tmr); AMB._tmr=setTimeout(function(){AMB.q=q.value.trim();AMB.page=0;_ambFetch();},350); };
   var clr=document.getElementById("amb-clr"); if(clr)clr.onclick=function(){_ambResetFilters();_ambRenderFiltros();_ambFetch();};
   f.querySelectorAll(".amb-dl").forEach(function(b){b.onclick=function(){_ambDownload(b.getAttribute("data-fmt"),b);};});
+  var mapBtn=document.getElementById("amb-mapbtn"); if(mapBtn)mapBtn.onclick=function(){_ambToggleMap();};
   var colsBtn=document.getElementById("amb-cols"); if(colsBtn)colsBtn.onclick=function(){AMB.showMore=!AMB.showMore;_ambRenderFiltros();_ambFetch();};
   var wap=document.getElementById("amb-wapply"); if(wap)wap.onclick=function(){var w={};f.querySelectorAll(".amb-w").forEach(function(i){var v=Number(i.value);if(isFinite(v)&&v>0)w[i.getAttribute("data-k")]=v;});AMB.weights=w;AMB.sortKey="";AMB.sortType="";AMB.page=0;_ambRenderFiltros();_ambFetch();};
   var wrs=document.getElementById("amb-wreset"); if(wrs)wrs.onclick=function(){AMB.weights=null;AMB.sortKey="";AMB.page=0;_ambRenderFiltros();_ambFetch();};
@@ -3462,7 +3465,7 @@ function _ambFetch(){
   api("ambList",_ambParams({limit:AMB.limit,offset:AMB.page*AMB.limit})).then(function(j){
     if(mySeq!==AMB.seq)return; // resposta obsoleta (o usuário já mudou o filtro): descarta
     AMB.busy=false; AMB.total=j.total||0;
-    _ambRenderTable(j); _ambRenderResumo();
+    _ambRenderTable(j); _ambRenderResumo(); if(AMB.mapOpen)_ambMapRefresh();
     var ini=AMB.total?(AMB.page*AMB.limit+1):0, fim=Math.min(AMB.total,(AMB.page+1)*AMB.limit);
     if(info)info.textContent=AMB.total.toLocaleString("pt-BR")+" registros · mostrando "+ini.toLocaleString("pt-BR")+"–"+fim.toLocaleString("pt-BR");
     _ambRenderPager();
@@ -3541,6 +3544,50 @@ function _ambRenderPager(){
   var pv=document.getElementById("amb-prev"), nx=document.getElementById("amb-next");
   if(pv)pv.onclick=function(){if(AMB.page>0){AMB.page--;_ambFetch();window.scrollTo({top:0,behavior:"smooth"});}};
   if(nx)nx.onclick=function(){if((AMB.page+1)*AMB.limit<AMB.total){AMB.page++;_ambFetch();window.scrollTo({top:0,behavior:"smooth"});}};
+}
+/* ===== Mapa vetorial (sem tiles) — Leaflet carregado sob demanda do mesmo domínio (/vendor).
+   CircleMarker (SVG/canvas, sem ícone externo → OK com a CSP img-src 'self'). Fundo = contornos
+   das 7 bacias (/leads/bacias.geojson). Pontos = recorte FILTRADO (ambPoints, teto 3k). */
+function _ambToggleMap(){
+  AMB.mapOpen=!AMB.mapOpen;
+  var el=document.getElementById("amb-map"); if(el)el.style.display=AMB.mapOpen?"block":"none";
+  _ambRenderFiltros();
+  if(AMB.mapOpen)_ambEnsureLeaflet(function(){_ambMapInit();_ambMapRefresh();});
+}
+function _ambEnsureLeaflet(cb){
+  if(window.L){cb();return;}
+  if(!document.getElementById("amb-lf-css")){var lk=document.createElement("link");lk.id="amb-lf-css";lk.rel="stylesheet";lk.href="/vendor/leaflet.css";document.head.appendChild(lk);}
+  var s=document.getElementById("amb-lf-js");
+  if(s){s.addEventListener("load",cb);return;}
+  s=document.createElement("script");s.id="amb-lf-js";s.src="/vendor/leaflet.js";s.onload=cb;
+  s.onerror=function(){var m=document.getElementById("amb-map");if(m)m.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar o mapa.</p>';};
+  document.head.appendChild(s);
+}
+function _ambMapInit(){
+  if(AMB._map||!window.L)return;
+  var m=L.map("amb-map",{preferCanvas:true,attributionControl:false}).setView([-18.6,-44.4],6);
+  AMB._map=m; AMB._mk=L.layerGroup().addTo(m);
+  fetch("/leads/bacias.geojson",{credentials:"same-origin"}).then(function(r){return r.json();}).then(function(gj){
+    L.geoJSON(gj,{style:{color:"#1f7a3d",weight:1,fillColor:"#1f7a3d",fillOpacity:0.04}}).addTo(m); AMB._bg=true;
+  }).catch(function(){});
+  setTimeout(function(){try{m.invalidateSize();}catch(_){}},80);
+}
+function _ambMapRefresh(){
+  if(!AMB.mapOpen||!AMB._map||!window.L)return;
+  var m=AMB._map; if(AMB._mk)AMB._mk.clearLayers();
+  var lead=AMB.bank==="empreendimentos";
+  api("ambPoints",_ambParams({max:3000})).then(function(j){
+    var pts=(j.pts||[]); var lat=[],lon=[];
+    pts.forEach(function(pt){ if(pt.lat==null||pt.lon==null)return;
+      var ordv=Number(pt.ord)||0;
+      var col=lead?(ordv>=60?"#c0392b":(ordv>=40?"#b9770e":"#1f7a3d")):"#1f7a3d";
+      var cm=L.circleMarker([pt.lat,pt.lon],{radius:lead?Math.max(3,Math.min(9,ordv/10)):4,color:col,weight:1,fillColor:col,fillOpacity:.65});
+      cm.bindTooltip(String(pt.rotulo||pt.id));
+      cm.on("click",(function(id){return function(){_ambFicha(id);};})(pt.id));
+      cm.addTo(AMB._mk); lat.push(pt.lat); lon.push(pt.lon);
+    });
+    if(lat.length){try{m.fitBounds([[Math.min.apply(null,lat),Math.min.apply(null,lon)],[Math.max.apply(null,lat),Math.max.apply(null,lon)]],{padding:[20,20],maxZoom:11});}catch(_){}}
+  }).catch(function(){});
 }
 /* Panorama compacto: total do recorte atual + distribuição (topo) da 1ª categórica do banco
    na bacia selecionada (dos facets já carregados). Sem lib de gráfico. */

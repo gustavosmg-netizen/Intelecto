@@ -2124,6 +2124,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const rows = (rs.rows as P[]).map((r) => { let pr: P = {}; try { pr = JSON.parse(String(r.props || "{}")); } catch (_) { /* */ } const o: P = {}; for (const k of cols) o[k] = pr[k]; o.c = [r.lon, r.lat]; return o; });
     return { ok: true, bank, rows, truncated: rows.length >= cap, cap };
   }
+  /* Pontos (lat/lon) do recorte FILTRADO p/ o mapa vetorial (sem tiles). Teto 3k, ordenados
+     pela métrica do banco (top primeiro se truncar). Payload enxuto: id/lat/lon/ord/rótulo. */
+  if (action === "ambPoints") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
+    const { bank, w, args } = ambWhere(p, u.tenant_id);
+    const ob = ambOrder(p);
+    const cap = Math.max(1, Math.min(5000, Math.floor(Number(p.max) || 3000)));
+    const rs = await sqlite.execute({ sql: "SELECT id, lat, lon, ord, rotulo FROM amb_registro WHERE " + w + " AND lat IS NOT NULL AND lon IS NOT NULL " + ob + " LIMIT ?", args: [...args, cap] });
+    const pts = (rs.rows as P[]).map((r) => ({ id: r.id, lat: r.lat, lon: r.lon, ord: r.ord, rotulo: r.rotulo }));
+    return { ok: true, bank, pts, truncated: pts.length >= cap, cap };
+  }
   if (action === "ambFicha") {
     const u = await auth(p);
     if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
