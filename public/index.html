@@ -1337,10 +1337,10 @@ var TRILHA_GUIAS={
     quem:"Equipe+ cria eventos; todos os internos consultam.",
     resultado:"Ritos e prazos visíveis para toda a equipe.",
     dica:"Marque o setor e o responsável: a agenda fica útil para toda a equipe, não só para quem criou."},
-  brief:{obj:"O radar interno de editais e notícias, com triagem por IA.",
-    passos:["Percorra o feed do dia pelo score de impacto.","Abra o item para ler o resumo e as tags.","Coordenação: adicione ou remova itens do radar."],
-    quem:"Coordenação adiciona e tria; Equipe lê.",
-    resultado:"Radar priorizado de oportunidades e notícias.",
+  brief:{obj:"O radar interno de editais, notícias, artigos e licenciamento, com fontes agendadas e triagem por IA.",
+    passos:["Percorra o feed pelo score de impacto, categoria e data.","Abra o item para ler o resumo e as tags.","Coordenação: cadastre fontes (RSS/JSON/página) em “Fontes & agenda”; a coleta roda sozinha e você pode “colher agora”.","Coordenação: adicione ou remova itens do radar manualmente."],
+    quem:"Coordenação cadastra fontes, adiciona e tria; Equipe lê.",
+    resultado:"Radar priorizado de oportunidades e notícias, alimentado por fontes agendadas + curadoria.",
     dica:"O score é um ponto de partida de priorização, não a decisão final."},
   acervo:{obj:"A biblioteca técnica da casa: normas, fichas e precedentes.",
     passos:["Use a busca para encontrar uma norma, ficha ou precedente.","Navegue pelos guias internos organizados por tema.","Consulte o acervo via MCP quando precisar da base completa."],
@@ -2028,28 +2028,35 @@ function ligaCadastro(){
    e link. Abas Editais/Notícias/Todos + filtro por área e score. A fronteira é o SERVIDOR
    (ações brief/briefadd/briefdel): o front só renderiza o que a API devolveu; o formulário
    de adicionar só aparece para quem o servidor marcou podeGerir. Sem valor monetário. */
-var BRIEFF={tipo:"",area:"",scoremin:0,q:""};
+var BRIEFF={view:"feed",categoria:"",area:"",scoremin:0,q:"",de:"",ate:"",origem:""};
 var BRIEF_AREAS_LBL={san:"Saneamento / Meio Ambiente",min:"Mineração",pd:"P&D / Fomento",bio:"Biogás / Bioeconomia"};
+var BRIEF_CAT_LBL={noticia:"Notícia do setor",edital:"Edital",artigo:"Artigo científico",licenciamento:"Licenciamento ambiental",outro:"Outros"};
+var BRIEF_CAD_LBL={diaria:"Diária",semanal:"Semanal",mensal:"Mensal"};
+var BRIEF_TF_LBL={rss:"RSS / Atom (feed)",json:"JSON (feed)",html:"Página HTML (1 item)"};
 function _briefScoreCls(s){s=Number(s)||0;return s>=70?"is-alto":(s>=40?"is-medio":"is-baixo");}
 function _briefAreaTags(area){
   return String(area||"").split(/[\s,;]+/).filter(Boolean).map(function(a){
     return '<span class="brief-area brief-area-'+esc(a)+'">'+esc(BRIEF_AREAS_LBL[a]||a)+'</span>';
   }).join("");
 }
+function _briefDataBr(d){return /^\d{4}-\d{2}-\d{2}/.test(String(d||""))?String(d).slice(8,10)+"/"+String(d).slice(5,7)+"/"+String(d).slice(0,4):esc(d||"");}
+function _briefCatDe(it){var c=String(it.categoria||"").toLowerCase();if(BRIEF_CAT_LBL[c])return c;return it.tipo==="edital"?"edital":"noticia";}
 function _briefCard(it,podeGerir){
-  var tipoLbl=it.tipo==="edital"?"Edital":"Notícia";
-  var dataBr=/^\d{4}-\d{2}-\d{2}/.test(String(it.data||""))?String(it.data).slice(8,10)+"/"+String(it.data).slice(5,7)+"/"+String(it.data).slice(0,4):esc(it.data||"");
+  var cat=_briefCatDe(it),catLbl=BRIEF_CAT_LBL[cat]||"Notícia";
+  var dataBr=_briefDataBr(it.data);
   var fonte=it.fonte?esc(it.fonte):"—";
   var aTriar=String(it.sit||"")==="A_TRIAR";
-  var score=aTriar?'<span class="brief-score is-triar" title="Triagem da IA pendente — adicione novamente ou aguarde">a triar</span>'
+  var auto=String(it.origem||"")==="auto";
+  var score=aTriar?'<span class="brief-score is-triar" title="Triagem da IA pendente — rode a coleta de novo ou triе manualmente">a triar</span>'
                   :'<span class="brief-score '+_briefScoreCls(it.score)+'" title="Impact Score de relevância para os focos da casa"><b>'+(Number(it.score)||0)+'</b><span>Impact</span></span>';
   var tags=String(it.tags||"").split(/\s*,\s*/).filter(Boolean).slice(0,6).map(function(t){return '<span class="tag tag-brand">'+esc(t)+'</span>';}).join("");
   var resumo=it.resumo?esc(it.resumo):(aTriar?'Conteúdo capturado; triagem da IA pendente.':'Sem resumo.');
   var link=it.url?'<a class="linkbtn" href="'+esc(it.url)+'" target="_blank" rel="noopener">abrir fonte →</a>':'';
   var del=podeGerir?'<button class="linkbtn brief-del" data-briefdel="'+esc(it.id)+'" title="Remover do brief">remover</button>':'';
+  var origemBadge=auto?'<span class="tag" style="background:var(--brand);color:#fff" title="Coletado automaticamente de uma fonte">auto</span>':'<span class="tag" title="Curadoria manual">manual</span>';
   return '<article class="brief-card">'+
     '<div class="brief-card-l">'+
-      '<div class="brief-card-top"><span class="brief-tipo brief-tipo-'+esc(it.tipo)+'">'+tipoLbl+'</span>'+_briefAreaTags(it.area)+'</div>'+
+      '<div class="brief-card-top"><span class="brief-tipo brief-tipo-'+esc(it.tipo)+'">'+esc(catLbl)+'</span>'+origemBadge+_briefAreaTags(it.area)+'</div>'+
       '<h3 class="brief-title">'+esc(it.titulo||"(sem título)")+'</h3>'+
       '<p class="brief-resumo">'+resumo+'</p>'+
       (tags?'<div class="brief-tags">'+tags+'</div>':'')+
@@ -2060,57 +2067,85 @@ function _briefCard(it,podeGerir){
 }
 function viewBrief(el){
   var head=viewHead("Inteligência · Radar","Daily Brief",
-    "Radar de editais e notícias com triagem por IA, priorizado pelos focos da casa: saneamento/meio ambiente, mineração, P&D/fomento e biogás/bioeconomia. Uso interno.");
-  el.innerHTML=head+'<div id="brief-wrap"><p class="muted" style="padding:10px 0">Carregando…</p></div>';
+    "Radar de editais, notícias do setor, artigos científicos e licenciamento ambiental, com fontes agendadas e triagem por IA, priorizado pelos focos da casa: saneamento/meio ambiente, mineração, P&D/fomento e biogás/bioeconomia. Uso interno.");
+  el.innerHTML=head+'<div id="brief-nav"></div><div id="brief-wrap"><p class="muted" style="padding:10px 0">Carregando…</p></div>';
   carregarBrief();
 }
-function _briefFiltrosHtml(areas,podeGerir){
+function _briefNav(podeGerir){
+  var nav=document.getElementById("brief-nav");if(!nav)return;
+  if(!podeGerir){nav.innerHTML="";return;}
+  nav.innerHTML='<div class="tabs" style="margin:0 0 10px"><nav class="subnav" role="tablist">'+
+    '<button class="subnav-btn'+(BRIEFF.view==="feed"?" is-active":"")+'" data-briefview="feed" type="button">Feed &amp; histórico</button>'+
+    '<button class="subnav-btn'+(BRIEFF.view==="fontes"?" is-active":"")+'" data-briefview="fontes" type="button">Fontes &amp; agenda</button>'+
+    '</nav></div>';
+  nav.querySelectorAll("[data-briefview]").forEach(function(b){b.onclick=function(){BRIEFF.view=b.getAttribute("data-briefview");(BRIEFF.view==="fontes"?carregarFontes:carregarBrief)();};});
+}
+function _briefColetaBanner(coleta){
+  if(!coleta)return "";
+  var dt=coleta.em?new Date(coleta.em):null;
+  var quando=dt?(dt.toLocaleDateString("pt-BR")+" "+dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})):"—";
+  return '<div class="card" style="padding:10px 12px;margin-bottom:10px"><span class="muted">Última coleta automática: </span>'+
+    '<b>'+esc(quando)+'</b> · '+(coleta.por==="cron"?"agendada":"manual ("+esc(coleta.por||"")+")")+' · '+
+    (Number(coleta.fontes)||0)+' fonte(s) · <b style="color:var(--ok)">'+(Number(coleta.novos)||0)+'</b> novos'+
+    (Number(coleta.erros)?' · <b style="color:var(--err)">'+coleta.erros+'</b> com erro':'')+'</div>';
+}
+function _briefFiltrosHtml(podeGerir){
+  var catTabs=[["","Todos"]].concat(Object.keys(BRIEF_CAT_LBL).map(function(c){return [c,BRIEF_CAT_LBL[c]];}));
+  var tabs=catTabs.map(function(o){
+    return '<button class="subnav-btn'+(BRIEFF.categoria===o[0]?" is-active":"")+'" data-brieftab="'+o[0]+'" type="button">'+esc(o[1])+'</button>';}).join("");
   var areaOpts='<option value="">Todas as áreas</option>'+Object.keys(BRIEF_AREAS_LBL).map(function(a){
     return '<option value="'+a+'"'+(BRIEFF.area===a?' selected':'')+'>'+esc(BRIEF_AREAS_LBL[a])+'</option>';}).join("");
   var scoreOpts=[["0","Qualquer score"],["40","Score ≥ 40"],["60","Score ≥ 60"],["80","Score ≥ 80"]].map(function(o){
     return '<option value="'+o[0]+'"'+(String(BRIEFF.scoremin)===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join("");
-  var form=podeGerir?('<details class="card brief-add"><summary><b>+ Adicionar ao brief</b> <span class="muted" style="font-weight:400">(cole uma URL ou o texto; a IA faz a triagem)</span></summary>'+
+  var origemOpts=[["","Origem: todas"],["auto","Só automáticas"],["manual","Só manuais"]].map(function(o){
+    return '<option value="'+o[0]+'"'+(BRIEFF.origem===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join("");
+  var form=podeGerir?('<details class="card brief-add"><summary><b>+ Adicionar manualmente</b> <span class="muted" style="font-weight:400">(cole uma URL ou o texto; a IA faz a triagem)</span></summary>'+
     '<div class="brief-add-body">'+
-      '<div class="field"><label>Tipo</label><select id="brief-f-tipo"><option value="noticia">Notícia</option><option value="edital">Edital</option></select></div>'+
+      '<div class="field"><label>Categoria</label><select id="brief-f-cat">'+Object.keys(BRIEF_CAT_LBL).map(function(c){return '<option value="'+c+'">'+esc(BRIEF_CAT_LBL[c])+'</option>';}).join("")+'</select></div>'+
       '<div class="field"><label>URL (opcional)</label><input id="brief-f-url" placeholder="https://..."></div>'+
       '<div class="field"><label>Título (opcional — a IA sugere se vazio)</label><input id="brief-f-titulo" placeholder="Título do edital/notícia"></div>'+
       '<div class="field"><label>Texto (cole aqui se não houver URL ou se a URL falhar)</label><textarea id="brief-f-texto" rows="4" placeholder="Cole o conteúdo do edital ou da notícia…"></textarea></div>'+
       '<div class="brief-add-act"><button id="brief-f-btn" class="btn">Triar e adicionar</button><span id="brief-f-msg" class="muted"></span></div>'+
     '</div></details>'):'';
   return form+
-    '<div class="tabs brief-tabs">'+
-    '<nav class="subnav" role="tablist">'+
-      '<button class="subnav-btn'+(BRIEFF.tipo===""?" is-active":"")+'" data-brieftab="" type="button">Todos</button>'+
-      '<button class="subnav-btn'+(BRIEFF.tipo==="edital"?" is-active":"")+'" data-brieftab="edital" type="button">Editais</button>'+
-      '<button class="subnav-btn'+(BRIEFF.tipo==="noticia"?" is-active":"")+'" data-brieftab="noticia" type="button">Notícias</button>'+
-    '</nav></div>'+
+    '<div class="tabs brief-tabs"><nav class="subnav" role="tablist">'+tabs+'</nav></div>'+
     '<div class="brief-filtros">'+
       '<div class="search-row" style="flex:1;min-width:200px"><input id="brief-q" placeholder="Buscar título, resumo, tag ou fonte" value="'+esc(BRIEFF.q)+'"><button id="brief-q-btn" class="btn sec">Buscar</button></div>'+
       '<select id="brief-area">'+areaOpts+'</select>'+
       '<select id="brief-score">'+scoreOpts+'</select>'+
+      '<select id="brief-origem">'+origemOpts+'</select>'+
+      '<label class="muted" style="display:flex;align-items:center;gap:4px">De <input id="brief-de" type="date" value="'+esc(BRIEFF.de)+'"></label>'+
+      '<label class="muted" style="display:flex;align-items:center;gap:4px">até <input id="brief-ate" type="date" value="'+esc(BRIEFF.ate)+'"></label>'+
     '</div>';
 }
 function carregarBrief(){
+  BRIEFF.view="feed";_briefNav(true);
   var wrap=document.getElementById("brief-wrap");if(!wrap)return;
-  api("brief",{tipo:BRIEFF.tipo,area:BRIEFF.area,scoremin:BRIEFF.scoremin,q:BRIEFF.q}).then(function(j){
+  api("brief",{categoria:BRIEFF.categoria,area:BRIEFF.area,scoremin:BRIEFF.scoremin,q:BRIEFF.q,de:BRIEFF.de,ate:BRIEFF.ate,origem:BRIEFF.origem}).then(function(j){
     var itens=j.itens||[],podeGerir=!!j.podeGerir;
+    _briefNav(podeGerir);
     var alto=itens.filter(function(x){return (Number(x.score)||0)>=70;}).length;
+    var autos=itens.filter(function(x){return String(x.origem||"")==="auto";}).length;
     var kpis='<div class="kpis"><div class="kpi"><div class="v" style="color:var(--brand)">'+itens.length+'</div><div class="l">No radar</div></div>'+
-      '<div class="kpi"><div class="v" style="color:var(--ok)">'+alto+'</div><div class="l">Alta relevância (≥70)</div></div></div>';
+      '<div class="kpi"><div class="v" style="color:var(--ok)">'+alto+'</div><div class="l">Alta relevância (≥70)</div></div>'+
+      '<div class="kpi"><div class="v">'+autos+'</div><div class="l">Coletados por fonte</div></div></div>';
     var lista=itens.length?('<div class="brief-feed">'+itens.map(function(it){return _briefCard(it,podeGerir);}).join("")+'</div>')
-      :'<div class="card"><p class="muted" style="margin:0">Nada no radar com estes filtros.'+(podeGerir?' Use “+ Adicionar ao brief” para incluir um edital ou notícia.':'')+'</p></div>';
-    wrap.innerHTML=_briefFiltrosHtml(j.areas,podeGerir)+kpis+lista;
+      :'<div class="card"><p class="muted" style="margin:0">Nada no radar com estes filtros.'+(podeGerir?' Cadastre fontes em “Fontes &amp; agenda” ou use “+ Adicionar manualmente”.':'')+'</p></div>';
+    wrap.innerHTML=(podeGerir?_briefColetaBanner(j.coleta):"")+_briefFiltrosHtml(podeGerir)+kpis+lista;
     ligaBrief(podeGerir);
   }).catch(function(e){wrap.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar: '+esc(e.message||e)+'</p>';});
 }
 function ligaBrief(podeGerir){
   var wrap=document.getElementById("brief-wrap");if(!wrap)return;
-  wrap.querySelectorAll("[data-brieftab]").forEach(function(b){b.onclick=function(){BRIEFF.tipo=b.getAttribute("data-brieftab");carregarBrief();};});
+  wrap.querySelectorAll("[data-brieftab]").forEach(function(b){b.onclick=function(){BRIEFF.categoria=b.getAttribute("data-brieftab");carregarBrief();};});
   var qb=document.getElementById("brief-q-btn"),qi=document.getElementById("brief-q");
   if(qb)qb.onclick=function(){BRIEFF.q=(qi&&qi.value||"").trim();carregarBrief();};
   if(qi)qi.addEventListener("keydown",function(e){if(e.key==="Enter"){BRIEFF.q=qi.value.trim();carregarBrief();}});
   var as=document.getElementById("brief-area");if(as)as.onchange=function(){BRIEFF.area=as.value;carregarBrief();};
   var ss=document.getElementById("brief-score");if(ss)ss.onchange=function(){BRIEFF.scoremin=Number(ss.value)||0;carregarBrief();};
+  var os=document.getElementById("brief-origem");if(os)os.onchange=function(){BRIEFF.origem=os.value;carregarBrief();};
+  var dd=document.getElementById("brief-de");if(dd)dd.onchange=function(){BRIEFF.de=dd.value;carregarBrief();};
+  var da=document.getElementById("brief-ate");if(da)da.onchange=function(){BRIEFF.ate=da.value;carregarBrief();};
   wrap.querySelectorAll("[data-briefdel]").forEach(function(b){b.onclick=function(){
     if(!confirm("Remover este item do brief?"))return;
     b.disabled=true;
@@ -2120,20 +2155,125 @@ function ligaBrief(podeGerir){
   if(podeGerir){
     var fb=document.getElementById("brief-f-btn");
     if(fb)fb.onclick=function(){
-      var tipo=(document.getElementById("brief-f-tipo")||{}).value||"noticia";
+      var cat=(document.getElementById("brief-f-cat")||{}).value||"noticia";
       var url=((document.getElementById("brief-f-url")||{}).value||"").trim();
       var titulo=((document.getElementById("brief-f-titulo")||{}).value||"").trim();
       var texto=((document.getElementById("brief-f-texto")||{}).value||"").trim();
       var msg=document.getElementById("brief-f-msg");
       if(!url&&!texto){if(msg){msg.textContent="Informe a URL ou cole o texto.";msg.className="err";}return;}
       fb.disabled=true;if(msg){msg.textContent="Triando… a IA está lendo e pontuando.";msg.className="muted";}
-      api("briefadd",{tipo:tipo,url:url,titulo:titulo,texto:texto}).then(function(j){
+      api("briefadd",{categoria:cat,url:url,titulo:titulo,texto:texto}).then(function(j){
         toast(j.triado?("Adicionado ao brief · Impact "+j.score):"Adicionado (triagem pendente, marcado “a triar”).");
-        BRIEFF.tipo="";BRIEFF.area="";BRIEFF.scoremin=0;BRIEFF.q="";
+        BRIEFF.categoria="";BRIEFF.area="";BRIEFF.scoremin=0;BRIEFF.q="";BRIEFF.origem="";BRIEFF.de="";BRIEFF.ate="";
         carregarBrief();
       }).catch(function(e){if(msg){msg.textContent=e.message||"Falha ao adicionar.";msg.className="err";}fb.disabled=false;});
     };
   }
+}
+/* ---------- FONTES & AGENDA (CRUD das fontes de coleta + disparo manual) ---------- */
+function _briefStatusCls(s){s=String(s||"").toLowerCase();if(!s)return"";if(/erro|falha|inv|bloque/.test(s))return"err";if(/sem nov|sem itens|insufic/.test(s))return"muted";return"ok";}
+function _briefFonteRow(f){
+  var cat=BRIEF_CAT_LBL[String(f.categoria||"").toLowerCase()]||f.categoria||"—";
+  var cad=BRIEF_CAD_LBL[String(f.cadencia||"").toLowerCase()]||f.cadencia||"—";
+  var tf=BRIEF_TF_LBL[String(f.tipo_fonte||"").toLowerCase()]||f.tipo_fonte||"—";
+  var st=f.ult_status?('<span class="'+_briefStatusCls(f.ult_status)+'">'+esc(f.ult_status)+'</span>'):'<span class="muted">nunca executada</span>';
+  var ult=f.ult_exec?_briefDataBr(String(f.ult_exec).slice(0,10)):"—";
+  var dados=encodeURIComponent(JSON.stringify(f));
+  var urlTxt=f.url?('<a href="'+esc(f.url)+'" target="_blank" rel="noopener">'+esc(String(f.url).slice(0,60))+(String(f.url).length>60?"…":"")+'</a>'):'<span class="muted">sem URL (inativa)</span>';
+  return '<div class="card" style="padding:12px;margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">'+
+      '<div style="min-width:220px"><b>'+esc(f.nome||"(sem nome)")+'</b> '+
+        (Number(f.ativo)?'<span class="tag" style="background:var(--ok);color:#fff">ativa</span>':'<span class="tag">inativa</span>')+
+        '<div class="muted" style="font-size:12px;margin-top:3px">'+esc(cat)+' · '+esc(tf)+' · '+esc(cad)+(f.area?' · '+esc(BRIEF_AREAS_LBL[f.area]||f.area):'')+'</div>'+
+        '<div style="font-size:12px;margin-top:3px">'+urlTxt+'</div>'+
+      '</div>'+
+      '<div style="text-align:right;font-size:12px"><div class="muted">última: '+esc(ult)+(f.ult_exec?' · '+(Number(f.ult_novos)||0)+' novos':'')+'</div><div>'+st+'</div></div>'+
+    '</div>'+
+    '<div class="brief-add-act" style="margin-top:8px">'+
+      '<button class="btn sec" data-fonteedit="'+dados+'">Editar</button>'+
+      (f.url?'<button class="btn sec" data-fontecolher="'+esc(f.id)+'">Colher agora</button>':'')+
+      '<button class="linkbtn" data-fontedel="'+esc(f.id)+'" style="color:var(--err)">Remover</button>'+
+    '</div>'+
+  '</div>';
+}
+function _briefFonteForm(){
+  var catOpts=Object.keys(BRIEF_CAT_LBL).map(function(c){return '<option value="'+c+'">'+esc(BRIEF_CAT_LBL[c])+'</option>';}).join("");
+  var tfOpts=Object.keys(BRIEF_TF_LBL).map(function(t){return '<option value="'+t+'">'+esc(BRIEF_TF_LBL[t])+'</option>';}).join("");
+  var cadOpts=Object.keys(BRIEF_CAD_LBL).map(function(c){return '<option value="'+c+'">'+esc(BRIEF_CAD_LBL[c])+'</option>';}).join("");
+  var areaOpts='<option value="">Área (opcional)</option>'+Object.keys(BRIEF_AREAS_LBL).map(function(a){return '<option value="'+a+'">'+esc(BRIEF_AREAS_LBL[a])+'</option>';}).join("");
+  return '<details class="card brief-add" id="brief-fonte-det"><summary><b>+ Nova fonte</b> <span class="muted" style="font-weight:400">(prefira feeds/APIs oficiais; a coleta respeita robots.txt e limites)</span></summary>'+
+    '<div class="brief-add-body">'+
+      '<input type="hidden" id="bf-id">'+
+      '<div class="field"><label>Nome</label><input id="bf-nome" placeholder="Ex.: Editais Finep — RSS"></div>'+
+      '<div class="field"><label>URL do feed/página</label><input id="bf-url" placeholder="https://… (RSS, JSON ou página)"></div>'+
+      '<div class="field"><label>Categoria</label><select id="bf-cat">'+catOpts+'</select></div>'+
+      '<div class="field"><label>Tipo de fonte</label><select id="bf-tf">'+tfOpts+'</select></div>'+
+      '<div class="field"><label>Cadência</label><select id="bf-cad">'+cadOpts+'</select></div>'+
+      '<div class="field"><label>Foco</label><select id="bf-area">'+areaOpts+'</select></div>'+
+      '<div class="field"><label>Seletor (opcional — caminho do array no JSON, ex.: items)</label><input id="bf-sel" placeholder="deixe vazio para RSS/HTML"></div>'+
+      '<div class="field"><label><input type="checkbox" id="bf-ativo"> Ativa (entra na coleta agendada)</label></div>'+
+      '<div class="brief-add-act"><button id="bf-save" class="btn">Salvar fonte</button><button id="bf-cancel" class="btn sec" type="button">Limpar</button><span id="bf-msg" class="muted"></span></div>'+
+    '</div></details>';
+}
+function carregarFontes(){
+  BRIEFF.view="fontes";_briefNav(true);
+  var wrap=document.getElementById("brief-wrap");if(!wrap)return;
+  wrap.innerHTML='<p class="muted" style="padding:10px 0">Carregando fontes…</p>';
+  api("brieffontes",{}).then(function(j){
+    var fontes=j.fontes||[];
+    var ativas=fontes.filter(function(f){return Number(f.ativo);}).length;
+    var topo='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+      '<span class="muted">'+fontes.length+' fonte(s) · <b>'+ativas+'</b> ativa(s)</span>'+
+      '<button id="brief-colher-todas" class="btn">Colher agora (devidas)</button></div>';
+    var lista=fontes.length?fontes.map(_briefFonteRow).join(""):'<div class="card"><p class="muted" style="margin:0">Nenhuma fonte ainda. Use “+ Nova fonte”.</p></div>';
+    wrap.innerHTML=_briefColetaBanner(j.coleta)+topo+_briefFonteForm()+'<div id="brief-fontes-lista">'+lista+'</div>';
+    ligaFontes();
+  }).catch(function(e){wrap.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar as fontes: '+esc(e.message||e)+'</p>';});
+}
+function _bfVal(id){var el=document.getElementById(id);return el?el.value:"";}
+function ligaFontes(){
+  var save=document.getElementById("bf-save");
+  if(save)save.onclick=function(){
+    var msg=document.getElementById("bf-msg");
+    var nome=_bfVal("bf-nome").trim();
+    if(!nome){if(msg){msg.textContent="Informe o nome.";msg.className="err";}return;}
+    var body={id:_bfVal("bf-id"),nome:nome,url:_bfVal("bf-url").trim(),categoria:_bfVal("bf-cat"),tipo_fonte:_bfVal("bf-tf"),
+      cadencia:_bfVal("bf-cad"),area:_bfVal("bf-area"),seletor:_bfVal("bf-sel").trim(),
+      ativo:(document.getElementById("bf-ativo")||{}).checked?1:0};
+    save.disabled=true;if(msg){msg.textContent="Salvando…";msg.className="muted";}
+    api("brieffonteset",body).then(function(){toast("Fonte salva.");carregarFontes();})
+      .catch(function(e){if(msg){msg.textContent=e.message||"Falha ao salvar.";msg.className="err";}save.disabled=false;});
+  };
+  var cancel=document.getElementById("bf-cancel");
+  if(cancel)cancel.onclick=function(){["bf-id","bf-nome","bf-url","bf-sel"].forEach(function(i){var el=document.getElementById(i);if(el)el.value="";});var a=document.getElementById("bf-ativo");if(a)a.checked=false;};
+  var colherTodas=document.getElementById("brief-colher-todas");
+  if(colherTodas)colherTodas.onclick=function(){
+    colherTodas.disabled=true;var o=colherTodas.textContent;colherTodas.textContent="Coletando…";
+    api("briefrun",{}).then(function(j){toast("Coleta: "+j.novos+" novos de "+j.fontes+" fonte(s)"+(j.erros?" · "+j.erros+" com erro":"")+".");carregarFontes();})
+      .catch(function(e){toast(e.message||"Falha na coleta.");colherTodas.disabled=false;colherTodas.textContent=o;});
+  };
+  document.querySelectorAll("[data-fontecolher]").forEach(function(b){b.onclick=function(){
+    b.disabled=true;var o=b.textContent;b.textContent="Coletando…";
+    api("briefrun",{id:b.getAttribute("data-fontecolher")}).then(function(j){toast("Fonte colhida: "+j.novos+" novo(s).");carregarFontes();})
+      .catch(function(e){toast(e.message||"Falha.");b.disabled=false;b.textContent=o;});
+  };});
+  document.querySelectorAll("[data-fontedel]").forEach(function(b){b.onclick=function(){
+    if(!confirm("Remover esta fonte? O histórico já coletado permanece no feed."))return;
+    b.disabled=true;
+    api("brieffontedel",{id:b.getAttribute("data-fontedel")}).then(function(){toast("Fonte removida.");carregarFontes();})
+      .catch(function(e){toast(e.message||"Falha ao remover.");b.disabled=false;});
+  };});
+  document.querySelectorAll("[data-fonteedit]").forEach(function(b){b.onclick=function(){
+    var f={};try{f=JSON.parse(decodeURIComponent(b.getAttribute("data-fonteedit")));}catch(e){}
+    var set=function(i,v){var el=document.getElementById(i);if(el)el.value=v==null?"":v;};
+    set("bf-id",f.id);set("bf-nome",f.nome);set("bf-url",f.url);set("bf-cat",String(f.categoria||"noticia").toLowerCase());
+    set("bf-tf",String(f.tipo_fonte||"rss").toLowerCase());set("bf-cad",String(f.cadencia||"semanal").toLowerCase());
+    set("bf-area",String(f.area||""));set("bf-sel",f.seletor);
+    var a=document.getElementById("bf-ativo");if(a)a.checked=!!Number(f.ativo);
+    var det=document.getElementById("brief-fonte-det");if(det)det.open=true;
+    var msg=document.getElementById("bf-msg");if(msg){msg.textContent="Editando: "+(f.nome||f.id);msg.className="muted";}
+    if(det&&det.scrollIntoView)det.scrollIntoView({behavior:"smooth",block:"nearest"});
+  };});
 }
 function viewAcervo(el){
   el.innerHTML=viewHead("Acervo Técnico","Acervo & Biblioteca",

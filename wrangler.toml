@@ -52,5 +52,6 @@ binding = "AI"
 # por event.cron:
 #  - "*/5 * * * *" : keep-alive (aquece Worker/D1 p/ o handshake /mcp nao estourar timeout).
 #  - "0 6 * * *"   : backup diario do D1 -> R2 (03:00 BRT / 06:00 UTC).
+#  - "0 9 * * *"   : coletor do Daily Brief (06:00 BRT / 09:00 UTC) — fontes ativas e devidas.
 [triggers]
-crons = ["*/5 * * * *", "0 6 * * *"]
+crons = ["*/5 * * * *", "0 6 * * *", "0 9 * * *"]

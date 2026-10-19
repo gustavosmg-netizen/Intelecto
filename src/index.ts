@@ -118,18 +118,43 @@ const BRIEF_AREAS: Record<string, string> = {
   bio: "Biogas / Bioeconomia",
 };
 const BRIEF_AREA_COD = Object.keys(BRIEF_AREAS);
-/** PORTA ABERTA para fontes automaticas (NAO implementada nesta rodada): catalogo-candidato
- *  semeado DESLIGADO na config `brief_fontes`. Um coletor futuro leria esta lista e chamaria a
- *  MESMA triagemIA(). Nada aqui faz busca/scraping agora — e so a estrutura deixada pronta. */
-const BRIEF_FONTES_SEED = {
-  _doc: "Fontes candidatas para coleta automatica FUTURA. ativo:false — nada e buscado nesta rodada; o radar e curadoria manual + IA. Proximo passo: um cron/worker leria as ativas e chamaria briefadd/triagemIA.",
-  fontes: [
-    { id: "gov-financiamento", nome: "Finep / editais de fomento", tipo: "edital", area: "pd", url: "", ativo: false },
-    { id: "gov-licenciamento", nome: "Orgaos ambientais / licenciamento", tipo: "noticia", area: "san", url: "", ativo: false },
-    { id: "mineracao", nome: "Noticias de mineracao (Vale, Samarco, rejeito)", tipo: "noticia", area: "min", url: "", ativo: false },
-    { id: "biogas", nome: "Biogas / bioeconomia (CSTR)", tipo: "noticia", area: "bio", url: "", ativo: false },
-  ],
+/** Categorias do radar (tabela `brief_fonte` e coluna `brief.categoria`). Codigo -> rotulo. O
+ *  `tipo` (coluna legada, CHECK edital|noticia) deriva da categoria: so 'edital' vira 'edital',
+ *  o resto vira 'noticia'. Assim o feed mais rico (artigos, licenciamento, outros) convive com
+ *  a restricao antiga sem migracao destrutiva. */
+const BRIEF_CATEGORIAS: Record<string, string> = {
+  noticia: "Notícia do setor",
+  edital: "Edital",
+  artigo: "Artigo científico",
+  licenciamento: "Licenciamento ambiental",
+  outro: "Outros",
 };
+const BRIEF_CAT_COD = Object.keys(BRIEF_CATEGORIAS);
+/** Normaliza uma categoria livre ao conjunto fechado; default 'noticia'. */
+function briefCat(raw: any): string { const c = String(raw || "").trim().toLowerCase(); return BRIEF_CAT_COD.includes(c) ? c : "noticia"; }
+/** Mapeia categoria -> `tipo` legado (satisfaz o CHECK da tabela `brief`). */
+function catToTipo(cat: string): "edital" | "noticia" { return briefCat(cat) === "edital" ? "edital" : "noticia"; }
+/** Cadencias de coleta e o intervalo (ms) a partir do qual uma fonte volta a ser "devida". Folga
+ *  embutida (ex.: "diaria" reexecuta apos ~20h) para o tick diario do cron pegar a fonte sem pular dia. */
+const BRIEF_CADENCIAS: Record<string, number> = {
+  diaria: 20 * 3600e3,
+  semanal: 6.5 * 86400e3,
+  mensal: 29 * 86400e3,
+};
+function briefCadencia(raw: any): string { const c = String(raw || "").trim().toLowerCase(); return BRIEF_CADENCIAS[c] ? c : "semanal"; }
+/** Tipos de parse de fonte: rss/atom, json (feed) ou html (pagina inteira como 1 item). */
+const BRIEF_FONTE_TIPOS = ["rss", "json", "html"];
+function briefFonteTipo(raw: any): string { const t = String(raw || "").trim().toLowerCase(); return BRIEF_FONTE_TIPOS.includes(t) ? t : "rss"; }
+/** CATALOGO-SEMENTE das fontes do radar: nasce DESLIGADO (ativo=0) e SEM URL. Nada e buscado ate
+ *  a Coordenacao preencher a URL e ativar na aba Fontes. Nao inventamos endpoints: a casa cola a
+ *  fonte oficial/feed que confia. Preferir feeds/APIs oficiais (RSS) ao scraping de HTML. */
+const BRIEF_FONTES_SEED = [
+  { id: "noticias-setor", nome: "Notícias do setor (saneamento/ambiente)", url: "", categoria: "noticia", tipo_fonte: "rss", cadencia: "semanal", area: "san" },
+  { id: "editais-fomento", nome: "Editais de fomento (Finep/CNPq/FAPEMIG)", url: "", categoria: "edital", tipo_fonte: "rss", cadencia: "semanal", area: "pd" },
+  { id: "licenciamento-mg", nome: "Licenciamento ambiental (SEMAD/COPAM-MG)", url: "", categoria: "licenciamento", tipo_fonte: "html", cadencia: "semanal", area: "san" },
+  { id: "artigos-cientificos", nome: "Artigos científicos (água/efluentes/biogás)", url: "", categoria: "artigo", tipo_fonte: "rss", cadencia: "mensal", area: "bio" },
+  { id: "mineracao", nome: "Notícias de mineração (Vale/Samarco/rejeito)", url: "", categoria: "noticia", tipo_fonte: "rss", cadencia: "semanal", area: "min" },
+];
 /** Normaliza as areas devolvidas pela IA para o conjunto fechado san|min|pd|bio (sem duplicar). */
 function normBriefAreas(raw: any): string {
   const arr = Array.isArray(raw) ? raw : String(raw || "").split(/[\s,;|]+/);
@@ -275,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-18b";
+const SCHEMA_VER = "2026-10-19a";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -757,16 +782,33 @@ function ensureSchema(): Promise<void> {
     /* ===== DAILY BRIEF ===== */
     // Indice por tenant+score para o feed (ordenado por relevancia). Idempotente.
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS brief_tenant ON brief (tenant_id, score DESC)"); } catch (_) {}
-    // PORTA ABERTA p/ fontes automaticas (NAO implementadas nesta rodada): semeia a config
-    // `brief_fontes` com o catalogo-candidato DESLIGADO (ativo:false). Hoje o radar e 100%
-    // curadoria manual + triagem por IA (origem='manual'); um coletor futuro leria esta lista
-    // e chamaria a MESMA triagemIA()/MIN. INSERT OR IGNORE: nunca sobrescreve ajuste do dono.
+    // Colunas do feed p/ a coleta automatica (ALTER idempotente — preserva itens existentes):
+    //  - categoria: categoria rica (noticia|edital|artigo|licenciamento|outro); `tipo` legado deriva dela.
+    //  - chave: hash de dedup (url|titulo por tenant) — impede reentrada do mesmo item entre rodadas.
+    //  - fonte_id: liga o item a fonte de `brief_fonte` que o trouxe (rastreabilidade; '' p/ manual).
+    try { await sqlite.execute("ALTER TABLE brief ADD COLUMN categoria TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+    try { await sqlite.execute("ALTER TABLE brief ADD COLUMN chave TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+    try { await sqlite.execute("ALTER TABLE brief ADD COLUMN fonte_id TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+    try { await sqlite.execute("CREATE INDEX IF NOT EXISTS brief_chave ON brief (tenant_id, chave)"); } catch (_) {}
+    // FONTES DO RADAR (tabela, antes era so um JSON em config `brief_fontes`). Cada linha e uma
+    // fonte de coleta: url, categoria, como parsear (tipo_fonte rss|json|html), cadencia, ativo,
+    // ultima execucao/status. tenant_id inline. Confidencial por tenant (filtro no servidor).
     try {
-      await sqlite.execute({
-        sql: "INSERT OR IGNORE INTO config (k, v, tenant_id) VALUES (?, ?, ?)",
-        args: ["brief_fontes", JSON.stringify(BRIEF_FONTES_SEED), TENANT_INTELECTO],
-      });
-    } catch (_) { /* config materializada no primeiro boot */ }
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS brief_fonte (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL,
+        nome TEXT DEFAULT '', url TEXT DEFAULT '', categoria TEXT DEFAULT 'noticia',
+        tipo_fonte TEXT DEFAULT 'rss', seletor TEXT DEFAULT '', cadencia TEXT DEFAULT 'semanal',
+        area TEXT DEFAULT '', ativo INTEGER DEFAULT 0,
+        ult_exec TEXT DEFAULT '', ult_status TEXT DEFAULT '', ult_novos INTEGER DEFAULT 0,
+        criado TEXT DEFAULT '', u TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      // Catalogo-semente DESLIGADO (ativo=0) e SEM url: nada e coletado ate a Coordenacao preencher
+      // e ativar na aba Fontes. INSERT OR IGNORE: nunca sobrescreve ajuste ja feito pela casa.
+      await sqlite.batch(BRIEF_FONTES_SEED.map((f) => ({
+        sql: "INSERT OR IGNORE INTO brief_fonte (tenant_id, id, nome, url, categoria, tipo_fonte, seletor, cadencia, area, ativo, criado) VALUES (?,?,?,?,?,?,?,?,?,0,'')",
+        args: [TENANT_INTELECTO, f.id, f.nome, f.url, f.categoria, f.tipo_fonte, "", f.cadencia, f.area],
+      })));
+    } catch (_) { /* ja existe */ }
 
     /* ===== RH: catalogo de cargos (manual vivo, editavel pela Coordenacao) =====
      * Descreve missao, responsabilidades, entregaveis, rotinas, cadencia e onboarding por
@@ -1339,6 +1381,8 @@ const MIN: Record<string, Papel> = {
   // e coordenacao herdam por aninhamento; cliente rank 0 < equipe e fornecedor lateral ficam
   // de fora, exatamente como pedido). Adicionar/triar e apagar sao gestao: piso 'coordenacao'.
   brief: "equipe", briefadd: "coordenacao", briefdel: "coordenacao",
+  // Fontes do radar (CRUD) e disparo manual da coleta: gestao, piso 'coordenacao' (+ cap brief.curar no handler).
+  brieffontes: "coordenacao", brieffonteset: "coordenacao", brieffontedel: "coordenacao", briefrun: "coordenacao",
   // Backup manual do D1 (verificacao sob demanda); o handler ainda exige isOwner.
   backup_now: "coordenacao",
   // T4 — Hub/Launcher: piso = cliente (TODO logado pode perguntar o PROPRIO Hub). A acao
@@ -1599,8 +1643,8 @@ const EVENTOS_SENSIVEIS: string[] = [
   "senha_alterada", "senha_troca_negada", "avatar_alterado", "papel_autopromocao_negada",
   // SHOWCASE/PORTAL DO CLIENTE — associacao de cliente e liberacao de projeto ao cliente:
   "membro_cliente_set", "liberar_cliente",
-  // DAILY BRIEF — curadoria e triagem do radar interno (quem adicionou/apagou o que):
-  "brief_add", "brief_del",
+  // DAILY BRIEF — curadoria e triagem do radar interno (quem adicionou/apagou o que, geriu fonte, rodou coleta):
+  "brief_add", "brief_del", "brief_fonte_set", "brief_fonte_del", "brief_coleta",
   // G3 — gestão do quadro de colaboradores (adicionar/editar papel/inativar/remover):
   "membro_add", "membro_set", "membro_del",
   // M4 — falha de entrega de e-mail (retida para rastreio operacional).
@@ -3985,7 +4029,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "briefadd") {
     const u = await auth(p);
     if (!temCapSet(await capsDe(u), "brief.curar")) throw new Error("Seu cargo não permite curar o Daily Brief.");
-    const tipo = String(p.tipo || "").trim().toLowerCase() === "edital" ? "edital" : "noticia";
+    // categoria rica (default do `tipo` legado quando so veio tipo, p/ compat com UI antiga)
+    const cat = briefCat(p.categoria || (String(p.tipo || "").trim().toLowerCase() === "edital" ? "edital" : "noticia"));
+    const tipo = catToTipo(cat);
     const url = String(p.url || "").trim();
     const texto = String(p.texto || p.conteudo || "").trim();
     let titulo = String(p.titulo || "").trim();
@@ -4006,12 +4052,13 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const id = crypto.randomUUID().slice(0, 8);
     const data = /^\d{4}-\d{2}-\d{2}/.test(String(p.data || "")) ? String(p.data).slice(0, 10) : now.slice(0, 10);
     const sit = tri ? "TRIADO" : "A_TRIAR";
+    const chave = await briefChave(u.tenant_id, url, titulo);
     await sqlite.execute({
-      sql: "INSERT INTO brief (id,tenant_id,tipo,titulo,fonte,url,data,resumo,score,tags,area,origem,sit,autor,criado) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'manual', ?,?,?)",
-      args: [id, u.tenant_id, tipo, titulo.slice(0, 240), fonte.slice(0, 120), url.slice(0, 500), data,
-        tri ? tri.resumo : "", tri ? tri.score : 0, tri ? tri.tags : "", tri ? tri.area : "", sit, u.slug, now],
+      sql: "INSERT INTO brief (id,tenant_id,tipo,categoria,titulo,fonte,url,data,resumo,score,tags,area,origem,sit,autor,criado,chave,fonte_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'manual', ?,?,?,?, '')",
+      args: [id, u.tenant_id, tipo, cat, titulo.slice(0, 240), fonte.slice(0, 120), url.slice(0, 500), data,
+        tri ? tri.resumo : "", tri ? tri.score : 0, tri ? tri.tags : "", tri ? tri.area : "", sit, u.slug, now, chave],
     });
-    await audit("brief_add", u.slug, "id:" + id + " tipo:" + tipo + " sit:" + sit + " score:" + (tri ? tri.score : "-") + " tenant:" + u.tenant_id, ip);
+    await audit("brief_add", u.slug, "id:" + id + " cat:" + cat + " sit:" + sit + " score:" + (tri ? tri.score : "-") + " tenant:" + u.tenant_id, ip);
     return { ok: true, id, triado: !!tri, sit, score: tri ? tri.score : 0, resumo: tri ? tri.resumo : "", tags: tri ? tri.tags : "", area: tri ? tri.area : "" };
   }
 
@@ -4019,23 +4066,38 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const cond: string[] = ["tenant_id = ?"];
     const args: any[] = [u.tenant_id];
-    const tipo = String(p.tipo || "").trim().toLowerCase();
-    if (tipo === "edital" || tipo === "noticia") { cond.push("tipo = ?"); args.push(tipo); }
+    // Filtro por CATEGORIA rica (preferido). Itens antigos sem categoria caem em 'noticia'
+    // (mesma derivacao do tipo legado) p/ nao sumirem do filtro. `tipo` ainda aceito (compat UI).
+    const catf = String(p.categoria || "").trim().toLowerCase();
+    if (BRIEF_CAT_COD.includes(catf)) {
+      if (catf === "noticia") cond.push("((categoria = 'noticia') OR (COALESCE(categoria,'') = '' AND tipo = 'noticia'))");
+      else if (catf === "edital") cond.push("((categoria = 'edital') OR (COALESCE(categoria,'') = '' AND tipo = 'edital'))");
+      else { cond.push("categoria = ?"); args.push(catf); }
+    } else {
+      const tipo = String(p.tipo || "").trim().toLowerCase();
+      if (tipo === "edital" || tipo === "noticia") { cond.push("tipo = ?"); args.push(tipo); }
+    }
     const area = String(p.area || "").trim().toLowerCase();
     if (BRIEF_AREA_COD.includes(area)) { cond.push("area LIKE ?"); args.push("%" + area + "%"); }
     const smin = Math.max(0, Math.min(100, Math.round(Number(p.scoremin)) || 0));
     if (smin > 0) { cond.push("score >= ?"); args.push(smin); }
+    const de = String(p.de || "").trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(de)) { cond.push("data >= ?"); args.push(de); }
+    const ate = String(p.ate || "").trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(ate)) { cond.push("data <= ?"); args.push(ate); }
+    const origem = String(p.origem || "").trim().toLowerCase();
+    if (origem === "auto" || origem === "manual") { cond.push("origem = ?"); args.push(origem); }
     const q = String(p.q || "").trim().toLowerCase();
     if (q) {
       cond.push("(lower(titulo) LIKE ? OR lower(resumo) LIKE ? OR lower(tags) LIKE ? OR lower(fonte) LIKE ?)");
       const like = "%" + q + "%"; args.push(like, like, like, like);
     }
     const r = await sqlite.execute({
-      sql: "SELECT id,tipo,titulo,fonte,url,data,resumo,score,tags,area,origem,sit,autor,criado FROM brief WHERE " +
+      sql: "SELECT id,tipo,categoria,titulo,fonte,url,data,resumo,score,tags,area,origem,sit,autor,criado,fonte_id FROM brief WHERE " +
         cond.join(" AND ") + " ORDER BY score DESC, data DESC, criado DESC LIMIT 300",
       args,
     });
-    return { ok: true, itens: r.rows, podeGerir: u.coord, areas: BRIEF_AREAS };
+    let coleta: any = null;
+    if (u.coord) { try { coleta = JSON.parse((await cfgGet("brief_coleta_last")) || "null"); } catch { coleta = null; } }
+    return { ok: true, itens: r.rows, podeGerir: u.coord, areas: BRIEF_AREAS, categorias: BRIEF_CATEGORIAS, coleta };
   }
 
   if (action === "briefdel") {
@@ -4048,6 +4110,70 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "DELETE FROM brief WHERE id = ? AND tenant_id = ?", args: [id, u.tenant_id] });
     await audit("brief_del", u.slug, "id:" + id + " tenant:" + u.tenant_id, ip);
     return { ok: true, id };
+  }
+
+  /* ---- FONTES DO RADAR (CRUD) — gestao, piso coordenacao + cap brief.curar ---- */
+  if (action === "brieffontes") {
+    const u = await auth(p);
+    if (!temCapSet(await capsDe(u), "brief.curar")) throw new Error("Seu cargo não permite gerir as fontes do Daily Brief.");
+    const r = await sqlite.execute({
+      sql: "SELECT id,nome,url,categoria,tipo_fonte,seletor,cadencia,area,ativo,ult_exec,ult_status,ult_novos FROM brief_fonte WHERE tenant_id = ? ORDER BY ativo DESC, nome ASC",
+      args: [u.tenant_id],
+    });
+    let coleta: any = null; try { coleta = JSON.parse((await cfgGet("brief_coleta_last")) || "null"); } catch { coleta = null; }
+    return { ok: true, fontes: r.rows, categorias: BRIEF_CATEGORIAS, areas: BRIEF_AREAS, cadencias: Object.keys(BRIEF_CADENCIAS), tiposFonte: BRIEF_FONTE_TIPOS, coleta };
+  }
+
+  if (action === "brieffonteset") {
+    const u = await auth(p);
+    if (!temCapSet(await capsDe(u), "brief.curar")) throw new Error("Seu cargo não permite gerir as fontes do Daily Brief.");
+    const nome = String(p.nome || "").trim();
+    if (!nome) throw new Error("Informe o nome da fonte.");
+    const url = String(p.url || "").trim();
+    if (url && !/^https?:\/\//i.test(url)) throw new Error("URL inválida — use http(s)://");
+    const ativo = (p.ativo === true || p.ativo === 1 || String(p.ativo) === "1") ? 1 : 0;
+    if (ativo && !url) throw new Error("Para ativar a fonte, informe a URL (feed/página oficial).");
+    const cat = briefCat(p.categoria), tf = briefFonteTipo(p.tipo_fonte), cad = briefCadencia(p.cadencia);
+    const area = String(p.area || "").trim().toLowerCase(); const areaOk = BRIEF_AREA_COD.includes(area) ? area : "";
+    const seletor = String(p.seletor || "").trim().slice(0, 200);
+    let id = String(p.id || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    const existe = id ? (await sqlite.execute({ sql: "SELECT id FROM brief_fonte WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] })).rows.length : 0;
+    if (id && existe) {
+      await sqlite.execute({
+        sql: "UPDATE brief_fonte SET nome=?,url=?,categoria=?,tipo_fonte=?,seletor=?,cadencia=?,area=?,ativo=?,u=? WHERE tenant_id=? AND id=?",
+        args: [nome.slice(0, 160), url.slice(0, 500), cat, tf, seletor, cad, areaOk, ativo, u.slug, u.tenant_id, id],
+      });
+      await audit("brief_fonte_set", u.slug, "upd:" + id + " ativo:" + ativo + " cat:" + cat + " tenant:" + u.tenant_id, ip);
+    } else {
+      if (!id) id = (nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "fonte") + "-" + crypto.randomUUID().slice(0, 4);
+      await sqlite.execute({
+        sql: "INSERT INTO brief_fonte (tenant_id,id,nome,url,categoria,tipo_fonte,seletor,cadencia,area,ativo,criado,u) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        args: [u.tenant_id, id, nome.slice(0, 160), url.slice(0, 500), cat, tf, seletor, cad, areaOk, ativo, now, u.slug],
+      });
+      await audit("brief_fonte_set", u.slug, "new:" + id + " ativo:" + ativo + " cat:" + cat + " tenant:" + u.tenant_id, ip);
+    }
+    return { ok: true, id };
+  }
+
+  if (action === "brieffontedel") {
+    const u = await auth(p);
+    if (!temCapSet(await capsDe(u), "brief.curar")) throw new Error("Seu cargo não permite gerir as fontes do Daily Brief.");
+    const id = String(p.id || "").trim();
+    if (!id) throw new Error("Informe a fonte.");
+    const r = await sqlite.execute({ sql: "SELECT id FROM brief_fonte WHERE id = ? AND tenant_id = ?", args: [id, u.tenant_id] });
+    if (!r.rows.length) throw new Error("Fonte não encontrada.");
+    await sqlite.execute({ sql: "DELETE FROM brief_fonte WHERE id = ? AND tenant_id = ?", args: [id, u.tenant_id] });
+    await audit("brief_fonte_del", u.slug, "id:" + id + " tenant:" + u.tenant_id, ip);
+    return { ok: true, id };
+  }
+
+  if (action === "briefrun") {
+    const u = await auth(p);
+    if (!temCapSet(await capsDe(u), "brief.curar")) throw new Error("Seu cargo não permite rodar a coleta do Daily Brief.");
+    const fonteId = String(p.id || "").trim() || undefined; // opcional: so uma fonte (botao "colher agora")
+    const res = await briefColetar(ENV, { autor: u.slug, fonteId });
+    await audit("brief_coleta", u.slug, (fonteId ? "fonte:" + fonteId + " " : "") + "fontes:" + res.fontes + " novos:" + res.novos + " erros:" + res.erros + (res.erro ? " erro:" + res.erro.slice(0, 60) : "") + " tenant:" + u.tenant_id, ip);
+    return { ok: true, ...res };
   }
 
   if (action === "trilhas") {
@@ -4492,11 +4618,250 @@ async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?
   }
 }
 
+/* ============================================================================
+ * DAILY BRIEF — COLETOR AGENDADO (radar automatico)
+ * --------------------------------------------------------------------------
+ * Roda no cron (tick diario) e, sob demanda, pela acao `briefrun`. Para cada fonte ATIVA e
+ * DEVIDA (pela cadencia), baixa o conteudo, extrai itens novos e grava no feed `brief` com
+ * triagem por IA (a MESMA triagemIA do fluxo manual). Principios inegociaveis:
+ *  - LIMITES: respeita robots.txt (grupo *), timeout por fetch, teto de itens/fonte, teto de
+ *    chamadas de IA por rodada e teto de fontes/rodada. Prefere RSS/feed a scraping de HTML.
+ *  - ROBUSTEZ: erro/timeout de UMA fonte NUNCA derruba a rodada nem o cron — vira status na
+ *    propria fonte (ult_status) e segue. A funcao inteira e best-effort (nunca lanca).
+ *  - DEDUP: cada item carrega uma `chave` (hash de url|titulo por tenant); item ja visto nao
+ *    reentra. O feed e historico: nada e apagado pela coleta.
+ *  - CONFIDENCIALIDADE/LGPD: sem valor monetario (regra da triagem); nao coletamos dado pessoal
+ *    — so titulo/resumo/link de publicacao. origem='auto' distingue do 'manual'. */
+const BRIEF_UA = "Mozilla/5.0 (compatible; IntelectoBrief/1.0; +portal.intelecto-eng.com.br)";
+const BRIEF_COLETA = { maxFontes: 12, maxItensFonte: 6, maxIA: 24, fetchTimeoutMs: 8000, fetchMaxBytes: 1_500_000 };
+
+/** Fetch resiliente com timeout (AbortController) e teto de bytes. Nunca lanca: devolve
+ *  { ok, status, ct, text }. CSP do browser nao se aplica aqui (server-side). */
+async function briefFetchRaw(url: string, timeoutMs = BRIEF_COLETA.fetchTimeoutMs): Promise<{ ok: boolean; status: number; ct: string; text: string }> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers: { "user-agent": BRIEF_UA, "accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, application/json, text/html;q=0.8" }, redirect: "follow", signal: ctrl.signal });
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (!res.ok) return { ok: false, status: res.status, ct, text: "" };
+    const buf = await res.arrayBuffer();
+    const slice = buf.byteLength > BRIEF_COLETA.fetchMaxBytes ? buf.slice(0, BRIEF_COLETA.fetchMaxBytes) : buf;
+    return { ok: true, status: res.status, ct, text: new TextDecoder("utf-8").decode(slice) };
+  } catch (e: any) {
+    return { ok: false, status: 0, ct: "", text: "" };
+  } finally { clearTimeout(to); }
+}
+
+/** robots.txt do grupo `*` (conservador): cacheado por origem na rodada. Longest-match entre
+ *  Allow/Disallow decide. Sem robots acessivel => permite (robots ausente = sem restricao). */
+async function briefRobotsOk(url: string, cache: Map<string, { allow: string[]; disallow: string[] }>): Promise<boolean> {
+  let u: URL;
+  try { u = new URL(url); } catch { return false; }
+  const origem = u.origin;
+  let rules = cache.get(origem);
+  if (!rules) {
+    rules = { allow: [], disallow: [] };
+    try {
+      const r = await briefFetchRaw(origem + "/robots.txt", 5000);
+      if (r.ok && r.text) {
+        let aplica = false; // dentro de um grupo que cobre o nosso UA (* ou IntelectoBrief)
+        for (const linhaRaw of r.text.split(/\r?\n/)) {
+          const linha = linhaRaw.replace(/#.*$/, "").trim();
+          if (!linha) continue;
+          const mi = linha.indexOf(":");
+          if (mi < 0) continue;
+          const campo = linha.slice(0, mi).trim().toLowerCase();
+          const val = linha.slice(mi + 1).trim();
+          if (campo === "user-agent") { const ua = val.toLowerCase(); aplica = ua === "*" || ua.includes("intelectobrief"); }
+          else if (aplica && campo === "disallow" && val) rules.disallow.push(val);
+          else if (aplica && campo === "allow" && val) rules.allow.push(val);
+        }
+      }
+    } catch { /* robots best-effort: ausencia nao bloqueia */ }
+    cache.set(origem, rules);
+  }
+  const path = (u.pathname || "/") + (u.search || "");
+  const match = (pats: string[]) => pats.reduce((best, p) => (path.startsWith(p) && p.length > best ? p.length : best), 0);
+  const d = match(rules.disallow), a = match(rules.allow);
+  return d === 0 || a >= d; // sem disallow que case, ou allow mais especifico, => permitido
+}
+
+/** Decodifica entidades XML/HTML basicas e remove tags. Para titulo/resumo de item de feed. */
+function briefDecode(s: string): string {
+  return String(s || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&#(\d+);/g, (_m, n) => { try { return String.fromCodePoint(Number(n)); } catch { return " "; } })
+    .replace(/&#x([0-9a-f]+);/gi, (_m, n) => { try { return String.fromCodePoint(parseInt(n, 16)); } catch { return " "; } })
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ").trim();
+}
+
+type BriefItem = { titulo: string; url: string; data: string; resumo: string };
+
+/** Extrai itens de RSS 2.0 (<item>) ou Atom (<entry>). Regex-based (sem dependencia): robusto o
+ *  suficiente para os campos que usamos. Devolve [] se nada casar (nunca lanca). */
+function parseRss(xml: string, limite: number): BriefItem[] {
+  const out: BriefItem[] = [];
+  try {
+    const blocos = xml.match(/<item\b[\s\S]*?<\/item>/gi) || xml.match(/<entry\b[\s\S]*?<\/entry>/gi) || [];
+    for (const b of blocos) {
+      if (out.length >= limite) break;
+      const tag = (re: RegExp) => { const m = b.match(re); return m ? briefDecode(m[1]) : ""; };
+      const titulo = tag(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+      // RSS: <link>url</link>. Atom: <link href="url"/>.
+      let url = tag(/<link\b[^>]*>([\s\S]*?)<\/link>/i);
+      if (!url) { const m = b.match(/<link\b[^>]*href=["']([^"']+)["']/i); if (m) url = briefDecode(m[1]); }
+      const data = tag(/<(?:pubDate|published|updated|dc:date)\b[^>]*>([\s\S]*?)<\/(?:pubDate|published|updated|dc:date)>/i);
+      const resumo = tag(/<(?:description|summary|content)\b[^>]*>([\s\S]*?)<\/(?:description|summary|content)>/i);
+      if (!titulo && !url) continue;
+      out.push({ titulo, url, data, resumo });
+    }
+  } catch { /* parse best-effort */ }
+  return out;
+}
+
+/** Extrai itens de um feed JSON. `seletor` = caminho opcional ate o array (ex.: "items" ou
+ *  "data.results"); vazio => procura o primeiro array de objetos. Mapeia campos comuns. */
+function parseJsonFeed(obj: any, seletor: string, limite: number): BriefItem[] {
+  const out: BriefItem[] = [];
+  try {
+    let arr: any = obj;
+    if (seletor) { for (const k of seletor.split(".").map(s => s.trim()).filter(Boolean)) arr = arr == null ? null : arr[k]; }
+    if (!Array.isArray(arr)) {
+      // JSON Feed padrao usa .items; senao, primeiro array de objetos encontrado no topo
+      if (obj && Array.isArray(obj.items)) arr = obj.items;
+      else if (obj && typeof obj === "object") { for (const k in obj) { if (Array.isArray(obj[k]) && obj[k].length && typeof obj[k][0] === "object") { arr = obj[k]; break; } } }
+    }
+    if (!Array.isArray(arr)) return out;
+    for (const it of arr) {
+      if (out.length >= limite) break;
+      if (!it || typeof it !== "object") continue;
+      const titulo = briefDecode(it.title || it.titulo || it.name || it.headline || "");
+      const url = String(it.url || it.link || it.href || it.id || "").trim();
+      const data = String(it.date_published || it.published || it.pubDate || it.date || it.data || "").trim();
+      const resumo = briefDecode(it.summary || it.description || it.content_text || it.resumo || it.abstract || "");
+      if (!titulo && !url) continue;
+      out.push({ titulo, url, data, resumo });
+    }
+  } catch { /* best-effort */ }
+  return out;
+}
+
+/** Limpa HTML cru em texto (reaproveita a logica do briefFetch manual, aqui sobre `text` ja baixado). */
+function briefHtmlToText(t: string): string {
+  return String(t || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<\/(p|div|br|li|h[1-6])>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, 7000);
+}
+
+/** Chave de dedup estavel por tenant: sha-256(tenant|url) ou (tenant|titulo). Hex curto (16). */
+async function briefChave(tenant: string, url: string, titulo: string): Promise<string> {
+  const base = tenant + "|" + (url ? url.trim().toLowerCase() : "t:" + titulo.trim().toLowerCase());
+  const dig = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(base));
+  return [...new Uint8Array(dig)].slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Converte uma data de feed (RFC822/ISO/livre) para YYYY-MM-DD; falha => hoje. */
+function briefData(raw: string, hoje: string): string {
+  const s = String(raw || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : hoje;
+}
+
+/** COLETOR. env = binding Worker. opts.fonteId limita a uma fonte (usado pelo botao "colher agora"
+ *  de uma fonte especifica); opts.autor registra quem disparou (cron ou slug). Best-effort total. */
+async function briefColetar(env: any, opts: { fonteId?: string; autor?: string } = {}): Promise<{ ok: boolean; fontes: number; novos: number; erros: number; detalhe: any[]; erro?: string }> {
+  ENV = env; // helpers (sqlite/ensureSchema/triagemIA) usam o ENV global
+  const autor = opts.autor || "cron";
+  const detalhe: any[] = [];
+  let novos = 0, erros = 0, fontesProc = 0, iaUsadas = 0;
+  try {
+    await ensureSchema();
+    const hoje = new Date().toISOString().slice(0, 10);
+    const agora = Date.now();
+    const cond = ["tenant_id = ?", "ativo = 1", "url != ''"];
+    const args: any[] = [TENANT_INTELECTO];
+    if (opts.fonteId) { cond.push("id = ?"); args.push(opts.fonteId); }
+    const fr = await sqlite.execute({ sql: "SELECT id,nome,url,categoria,tipo_fonte,seletor,cadencia,area,ult_exec FROM brief_fonte WHERE " + cond.join(" AND ") + " ORDER BY ult_exec ASC LIMIT ?", args: [...args, BRIEF_COLETA.maxFontes] });
+    const robots = new Map<string, { allow: string[]; disallow: string[] }>();
+    for (const row of fr.rows as any[]) {
+      // Devida? (ignora cadencia quando a coleta e de UMA fonte sob demanda)
+      const intervalo = BRIEF_CADENCIAS[briefCadencia(row.cadencia)] || BRIEF_CADENCIAS.semanal;
+      const ult = Date.parse(String(row.ult_exec || "")) || 0;
+      if (!opts.fonteId && ult && agora - ult < intervalo) continue;
+      fontesProc++;
+      let status = "ok", nfonte = 0;
+      try {
+        if (!(await briefRobotsOk(String(row.url), robots))) {
+          status = "bloqueado por robots.txt";
+        } else {
+          const raw = await briefFetchRaw(String(row.url));
+          if (!raw.ok) { status = "falha ao baixar (HTTP " + raw.status + ")"; }
+          else {
+            const tf = briefFonteTipo(row.tipo_fonte);
+            let itens: BriefItem[] = [];
+            if (tf === "json") { try { itens = parseJsonFeed(JSON.parse(raw.text), String(row.seletor || ""), BRIEF_COLETA.maxItensFonte); } catch { status = "JSON inválido"; } }
+            else if (tf === "rss") { itens = parseRss(raw.text, BRIEF_COLETA.maxItensFonte); if (!itens.length) status = "sem itens no feed"; }
+            else { // html = pagina inteira como 1 item (conservador, sem harvest de links)
+              const txt = briefHtmlToText(raw.text);
+              if (txt.length >= 20) itens = [{ titulo: "", url: String(row.url), data: hoje, resumo: txt.slice(0, 400) }];
+              else status = "conteúdo insuficiente";
+            }
+            const cat = briefCat(row.categoria), tipo = catToTipo(cat), fonteNome = String(row.nome || (() => { try { return new URL(String(row.url)).hostname.replace(/^www\./, ""); } catch { return ""; } })());
+            for (const it of itens) {
+              const chave = await briefChave(TENANT_INTELECTO, it.url, it.titulo || fonteNome);
+              const dup = await sqlite.execute({ sql: "SELECT 1 FROM brief WHERE tenant_id = ? AND chave = ? LIMIT 1", args: [TENANT_INTELECTO, chave] });
+              if (dup.rows.length) continue;
+              // Conteudo a triar: resumo do feed, ou (html) a pagina; so chama IA ate o teto.
+              const conteudo = (it.resumo || "") + (tf === "html" ? "\n" + briefHtmlToText(raw.text) : "");
+              let tri = null as any;
+              if (iaUsadas < BRIEF_COLETA.maxIA && conteudo.trim().length >= 20) { tri = await triagemIA(conteudo, tipo); iaUsadas++; }
+              const titulo = (it.titulo || (tri && tri.titulo) || briefDecode(it.resumo).slice(0, 120) || fonteNome || "(sem título)").slice(0, 240);
+              const id = crypto.randomUUID().slice(0, 8);
+              const area = tri && tri.area ? tri.area : String(row.area || "");
+              await sqlite.execute({
+                sql: "INSERT INTO brief (id,tenant_id,tipo,categoria,titulo,fonte,url,data,resumo,score,tags,area,origem,sit,autor,criado,chave,fonte_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'auto', ?,?,?,?,?)",
+                args: [id, TENANT_INTELECTO, tipo, cat, titulo, fonteNome.slice(0, 120), String(it.url || "").slice(0, 500), briefData(it.data, hoje),
+                  tri ? tri.resumo : briefDecode(it.resumo).slice(0, 400), tri ? tri.score : 0, tri ? tri.tags : "", area,
+                  tri ? "TRIADO" : "A_TRIAR", autor, new Date().toISOString(), chave, String(row.id)],
+              });
+              novos++; nfonte++;
+            }
+            if (status === "ok" && nfonte === 0 && itens.length) status = "sem novidades";
+          }
+        }
+      } catch (e: any) { status = "erro: " + String(e && e.message ? e.message : e).slice(0, 80); }
+      if (status.startsWith("erro") || status.startsWith("falha") || status.startsWith("bloqueado") || status.includes("inválido")) erros++;
+      try {
+        await sqlite.execute({
+          sql: "UPDATE brief_fonte SET ult_exec = ?, ult_status = ?, ult_novos = ? WHERE tenant_id = ? AND id = ?",
+          args: [new Date().toISOString(), status.slice(0, 120), nfonte, TENANT_INTELECTO, String(row.id)],
+        });
+      } catch { /* status best-effort */ }
+      detalhe.push({ id: row.id, nome: row.nome, status, novos: nfonte });
+    }
+    // Resumo da rodada (para a UI e trilha). Config, nao audit spam; o manual tambem audita.
+    const resumo = { em: new Date().toISOString(), por: autor, fontes: fontesProc, novos, erros, ia: iaUsadas, detalhe };
+    try { await cfgSet("brief_coleta_last", JSON.stringify(resumo)); } catch { /* best-effort */ }
+    return { ok: true, fontes: fontesProc, novos, erros, detalhe };
+  } catch (e: any) {
+    return { ok: false, fontes: fontesProc, novos, erros, detalhe, erro: e && e.message ? e.message : String(e) };
+  }
+}
+
 export default {
   fetch: app.fetch,
   scheduled: (event: any, env: any, ctx: any) => {
-    /* ramifica por cron: backup diario vs keep-alive (ver [triggers] no wrangler.toml) */
+    /* ramifica por cron (ver [triggers] no wrangler.toml):
+     *  - "0 6 * * *" : backup diario do D1 -> R2
+     *  - "0 9 * * *" : coletor do Daily Brief (fontes ativas e devidas pela cadencia)
+     *  - demais ("*​/5 * * * *") : keep-alive */
     if (event && event.cron === "0 6 * * *") ctx.waitUntil(backupD1(env));
+    else if (event && event.cron === "0 9 * * *") ctx.waitUntil(briefColetar(env, { autor: "cron" }));
     else ctx.waitUntil(keepAlive(env));
   },
 };
