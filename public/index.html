@@ -3332,8 +3332,21 @@ var AMB_META_CFG={
   cobertura:{extra:[["pres","Prestador"]]},
   barragens:{extra:[["pda","Dano potencial"],["cl","Classe"],["met","Método construtivo"]]}
 };
-var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null};
-function _ambResetFilters(){AMB.bacia=AMB.bacia;AMB.municipio="";AMB.q="";AMB.fx={};AMB.dv="";AMB.nmin="";AMB.nmax="";AMB.sortKey="";AMB.sortType="";AMB.sortDir="desc";AMB.page=0;}
+/* Pesos padrão do Lead Score (Coordenação pode ajustar → re-rank server-side via props.brk). */
+var AMB_DEFW={fit:30,agua:25,timing:20,pressao:10,autuacao:10,cred:5};
+var AMB_WLBL={fit:"Fit frente",agua:"Pot. hídrico",timing:"Prazo licença",pressao:"Pressão município",autuacao:"Autuação",cred:"Credencial"};
+/* Colunas EXTRA por banco (modo "todas as colunas"). O subconjunto padrão fica em AMB_COLS. */
+var AMB_COLS_MORE={
+  empreendimentos:[["a","Atividade","txt"],["cd","Cód. DN217","txt"],["fa","Fase","txt"],["ts","Tipo solicitação","txt"],["em","Emissão","date"],["ag","Pot. água","txt"],["prl","Prioridade","txt"],["np","Nº processo","txt"]],
+  outorgas:[["un","Unid. vazão","txt"],["ang","Ângulo comercial","txt"],["proc","Processo","txt"]],
+  minerarios:[["uso","Uso","txt"]],
+  embargos:[["outras","Outras penalidades","txt"]],
+  contaminadas:[["uso","Uso declarado","txt"]]
+};
+var AMB={bank:"empreendimentos",bacia:"",municipio:"",q:"",fx:{},dv:"",nmin:"",nmax:"",sortKey:"",sortType:"",sortDir:"desc",weights:null,showMore:false,page:0,limit:50,total:0,inited:false,meta:null,facets:{},facetKey:"",busy:false,seq:0,_tmr:null,_ftmr:null};
+function _ambResetFilters(){AMB.municipio="";AMB.q="";AMB.fx={};AMB.dv="";AMB.nmin="";AMB.nmax="";AMB.sortKey="";AMB.sortType="";AMB.sortDir="desc";AMB.weights=null;AMB.showMore=false;AMB.page=0;}
+function _ambEffCols(){var base=(AMB_COLS[AMB.bank]||[]).slice();if(AMB.showMore&&AMB_COLS_MORE[AMB.bank])base=base.concat(AMB_COLS_MORE[AMB.bank]);return base;}
+function _ambScoreW(r){var W=AMB.weights||AMB_DEFW,b=r.brk||{},s=0;for(var k in W){s+=(Number(W[k])||0)*(Number(b[k])||0);}return Math.round(s);}
 function _ambFmtBacia(s){return String(s||"").replace(/_/g," ").replace(/\b\w/g,function(c){return c.toUpperCase();});}
 function _ambCell(v,type){
   if(v==null||v==="")return "";
@@ -3346,6 +3359,7 @@ function _ambParams(extra){
   var o={bank:AMB.bank,bacia:AMB.bacia,municipio:AMB.municipio,q:AMB.q,fx:AMB.fx,dv:AMB.dv};
   if(cfg.range){o.nkey=cfg.range.key;o.nmin=AMB.nmin;o.nmax=AMB.nmax;}
   if(AMB.sortKey){o.sortKey=AMB.sortKey;o.sortType=AMB.sortType;o.dir=AMB.sortDir;}
+  else if(AMB.weights&&AMB.bank==="empreendimentos"){o.weights=AMB.weights;o.dir="desc";}
   return Object.assign(o,extra||{});
 }
 function _ambInit(){
@@ -3354,6 +3368,7 @@ function _ambInit(){
   wrap.innerHTML=
     '<div id="amb-chips" class="hub-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:12px"><p class="muted">Carregando bancos…</p></div>'
     +'<div id="amb-filtros" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:10px"></div>'
+    +'<div id="amb-resumo" style="margin-bottom:8px"></div>'
     +'<div id="amb-info" class="muted" style="font-size:13px;margin-bottom:6px"></div>'
     +'<div id="amb-tbl" style="overflow:auto;border:1px solid var(--line);border-radius:var(--r-lg)"><p class="muted" style="padding:14px">Carregando…</p></div>'
     +'<div id="amb-pager" style="display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0"></div>'
@@ -3399,12 +3414,18 @@ function _ambRenderFiltros(){
     h+='<label style="font-size:12px">Vencimento<br><select id="amb-f-dv" class="input sm">'+["","venc","6","12","24","fut"].map(function(v){return '<option value="'+v+'"'+(v===AMB.dv?" selected":"")+'>'+dvl[v]+'</option>';}).join("")+'</select></label>';}
   if(cfg.range){h+='<label style="font-size:12px">'+esc(cfg.range.label)+' mín/máx<br><input id="amb-f-nmin" class="input sm" type="number" step="'+(cfg.range.step||"any")+'" placeholder="mín" value="'+esc(AMB.nmin)+'" style="width:70px"> <input id="amb-f-nmax" class="input sm" type="number" step="'+(cfg.range.step||"any")+'" placeholder="máx" value="'+esc(AMB.nmax)+'" style="width:70px"></label>';}
   h+='<label style="font-size:12px;flex:1;min-width:160px">Busca<br><input id="amb-f-q" class="input sm" placeholder="nome, atividade, titular…" value="'+esc(AMB.q)+'" style="width:100%"></label>';
-  h+='<button class="btn sec sm" id="amb-clr" type="button">limpar</button>'
-    +'<span style="flex-basis:100%;height:0"></span>'
+  h+='<button class="btn sec sm" id="amb-clr" type="button">limpar</button>';
+  if(AMB_COLS_MORE[AMB.bank])h+='<button class="btn sec sm" id="amb-cols" type="button">'+(AMB.showMore?"− colunas":"+ colunas")+'</button>';
+  h+='<span style="flex-basis:100%;height:0"></span>'
     +'<span class="muted" style="font-size:11px;align-self:center">baixar recorte filtrado:</span>'
     +'<button class="btn sec sm amb-dl" data-fmt="csv" type="button">⬇ CSV</button>'
     +'<button class="btn sec sm amb-dl" data-fmt="geojson" type="button">⬇ GeoJSON</button>'
     +'<button class="btn sec sm amb-dl" data-fmt="kml" type="button">⬇ KML</button>';
+  if(AMB.bank==="empreendimentos"){var W=AMB.weights||AMB_DEFW;
+    h+='<span style="flex-basis:100%;height:0"></span><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;border-top:1px dashed var(--line);padding-top:8px;margin-top:4px;width:100%"><span class="muted" style="font-size:11px;align-self:center">Pesos do Lead Score · Coordenação:</span>'
+      +["fit","agua","timing","pressao","autuacao","cred"].map(function(k){return '<label style="font-size:11px">'+esc(AMB_WLBL[k])+'<br><input class="input sm amb-w" data-k="'+k+'" type="number" min="0" max="60" style="width:56px" value="'+(W[k])+'"></label>';}).join("")
+      +'<button class="btn sm" id="amb-wapply" type="button">Aplicar</button><button class="btn sec sm" id="amb-wreset" type="button">Padrão</button>'
+      +(AMB.weights?'<span style="font-size:11px;align-self:center;color:var(--brand)">ranking recalculado ✓</span>':'')+'</div>';}
   f.innerHTML=h;
   var bs=document.getElementById("amb-f-bacia"); if(bs)bs.onchange=function(){AMB.bacia=bs.value;AMB.municipio="";AMB.fx={};AMB.page=0;_ambLoadFacets();_ambFetch();};
   var mn=document.getElementById("amb-f-mun"); if(mn)mn.onchange=function(){AMB.municipio=mn.value.trim();AMB.page=0;_ambFetch();};
@@ -3415,6 +3436,9 @@ function _ambRenderFiltros(){
   var q=document.getElementById("amb-f-q"); if(q)q.oninput=function(){ if(AMB._tmr)clearTimeout(AMB._tmr); AMB._tmr=setTimeout(function(){AMB.q=q.value.trim();AMB.page=0;_ambFetch();},350); };
   var clr=document.getElementById("amb-clr"); if(clr)clr.onclick=function(){_ambResetFilters();_ambRenderFiltros();_ambFetch();};
   f.querySelectorAll(".amb-dl").forEach(function(b){b.onclick=function(){_ambDownload(b.getAttribute("data-fmt"),b);};});
+  var colsBtn=document.getElementById("amb-cols"); if(colsBtn)colsBtn.onclick=function(){AMB.showMore=!AMB.showMore;_ambRenderFiltros();_ambFetch();};
+  var wap=document.getElementById("amb-wapply"); if(wap)wap.onclick=function(){var w={};f.querySelectorAll(".amb-w").forEach(function(i){var v=Number(i.value);if(isFinite(v)&&v>0)w[i.getAttribute("data-k")]=v;});AMB.weights=w;AMB.sortKey="";AMB.sortType="";AMB.page=0;_ambRenderFiltros();_ambFetch();};
+  var wrs=document.getElementById("amb-wreset"); if(wrs)wrs.onclick=function(){AMB.weights=null;AMB.sortKey="";AMB.page=0;_ambRenderFiltros();_ambFetch();};
 }
 /* Carrega os valores possíveis dos filtros (município + extras do banco), respeitando a bacia.
    Cacheado por bank|bacia. Debounce leve p/ trocas rápidas. */
@@ -3438,7 +3462,7 @@ function _ambFetch(){
   api("ambList",_ambParams({limit:AMB.limit,offset:AMB.page*AMB.limit})).then(function(j){
     if(mySeq!==AMB.seq)return; // resposta obsoleta (o usuário já mudou o filtro): descarta
     AMB.busy=false; AMB.total=j.total||0;
-    _ambRenderTable(j);
+    _ambRenderTable(j); _ambRenderResumo();
     var ini=AMB.total?(AMB.page*AMB.limit+1):0, fim=Math.min(AMB.total,(AMB.page+1)*AMB.limit);
     if(info)info.textContent=AMB.total.toLocaleString("pt-BR")+" registros · mostrando "+ini.toLocaleString("pt-BR")+"–"+fim.toLocaleString("pt-BR");
     _ambRenderPager();
@@ -3450,7 +3474,7 @@ function _ambFetch(){
 }
 function _ambRenderTable(j){
   var tbl=document.getElementById("amb-tbl"); if(!tbl)return; tbl.style.opacity="1";
-  var cols=AMB_COLS[AMB.bank]||[["m","Município","txt"]];
+  var cols=_ambEffCols(); if(!cols.length)cols=[["m","Município","txt"]];
   var rows=j.rows||[];
   if(!rows.length){tbl.innerHTML='<p class="muted" style="padding:14px">Nenhum registro com os filtros atuais.</p>';return;}
   var th='<tr>'+cols.map(function(c){
@@ -3463,8 +3487,9 @@ function _ambRenderTable(j){
       var right=(c[2]==="num"||c[2]==="int");
       var raw=r[c[0]];
       if(c[0]==="dv"&&raw!==""&&raw!=null&&isFinite(Number(raw))){var n=Number(raw);var txt=n<0?("vencida há "+(-n)+"d"):(n.toLocaleString("pt-BR")+" d");return '<td style="padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;text-align:right;white-space:nowrap;color:'+(n<0?"#c0392b":(n<=365?"#b9770e":"inherit"))+'">'+esc(txt)+'</td>';}
-      var v=_ambCell(raw,c[2]);
       var isLeadScore=(AMB.bank==="empreendimentos"&&c[0]==="lead");
+      if(isLeadScore&&AMB.weights)raw=_ambScoreW(r); // score recalculado pelos pesos atuais
+      var v=_ambCell(raw,c[2]);
       return '<td style="padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;text-align:'+(right?"right":"left")+';'+(isLeadScore?"font-weight:700;color:var(--brand)":"")+'">'+v+'</td>';
     }).join("");
     return '<tr class="amb-row" data-id="'+esc(r._id)+'" style="cursor:pointer">'+tds+'</tr>';
@@ -3482,7 +3507,7 @@ function _ambRenderTable(j){
 /* Download do recorte FILTRADO (server-side, todas as linhas até 50k) em CSV/GeoJSON/KML,
    montado no cliente a partir dos mesmos campos exibidos. Mantém o padrão do painel por bacia. */
 function _ambDownload(fmt,btn){
-  var cfg=AMB_COLS[AMB.bank]||[]; var cols=cfg.map(function(c){return c[0];});
+  var cfg=_ambEffCols(); var cols=cfg.map(function(c){return c[0];});
   var old=btn?btn.textContent:""; if(btn){btn.disabled=true;btn.textContent="…";}
   api("ambExport",_ambParams({cols:cols,max:50000})).then(function(j){
     var rows=j.rows||[]; var base="leads_"+AMB.bank+(AMB.bacia?("_"+AMB.bacia):"");
@@ -3516,6 +3541,19 @@ function _ambRenderPager(){
   var pv=document.getElementById("amb-prev"), nx=document.getElementById("amb-next");
   if(pv)pv.onclick=function(){if(AMB.page>0){AMB.page--;_ambFetch();window.scrollTo({top:0,behavior:"smooth"});}};
   if(nx)nx.onclick=function(){if((AMB.page+1)*AMB.limit<AMB.total){AMB.page++;_ambFetch();window.scrollTo({top:0,behavior:"smooth"});}};
+}
+/* Panorama compacto: total do recorte atual + distribuição (topo) da 1ª categórica do banco
+   na bacia selecionada (dos facets já carregados). Sem lib de gráfico. */
+function _ambRenderResumo(){
+  var box=document.getElementById("amb-resumo"); if(!box)return;
+  var cfg=AMB_META_CFG[AMB.bank]||{}; var fac=AMB.facets||{};
+  var cards='<span style="display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 8px 6px 0;font-size:13px"><b>'+AMB.total.toLocaleString("pt-BR")+'</b> <span class="muted">no recorte atual</span></span>';
+  var ex=(cfg.extra||[])[0];
+  if(ex&&fac[ex[0]]&&fac[ex[0]].length){
+    var top=fac[ex[0]].slice(0,4);
+    cards+='<span style="display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 8px 6px 0;font-size:12px"><span class="muted">'+esc(ex[1])+' na bacia:</span> '+top.map(function(o){return esc(o.v)+' <b>'+Number(o.n).toLocaleString("pt-BR")+'</b>';}).join(' · ')+'</span>';
+  }
+  box.innerHTML=cards;
 }
 function _ambFicha(id){
   var m=document.getElementById("crm-modal"); if(!m)return;

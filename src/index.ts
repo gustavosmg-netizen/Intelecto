@@ -5102,6 +5102,18 @@ function ambOrder(p: P): string {
   const key = String(p.sortKey || "").replace(/[^a-z_0-9]/gi, "").slice(0, 30);
   const type = String(p.sortType || "txt");
   const dir = String(p.dir || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+  /* Re-ranking do Lead Score por PESOS da Coordenação (só empreendimentos têm `brk`): o score é
+     Σ peso_k × intensidade_k, com intensidades 0..1 em props.brk.{fit,agua,timing,pressao,autuacao,cred}.
+     Pesos vêm do cliente, coeridos a número finito e embutidos como literais (seguro). Sem sortKey
+     explícito, a ordenação passa a ser por esse score ponderado. */
+  if (!key && p.weights && typeof p.weights === "object") {
+    const parts: string[] = [];
+    for (const k of ["fit", "agua", "timing", "pressao", "autuacao", "cred"]) {
+      const w = Number((p.weights as P)[k]);
+      if (isFinite(w) && w > 0) parts.push(w.toFixed(3) + "*COALESCE(CAST(json_extract(props,'$.brk." + k + "') AS REAL),0)");
+    }
+    if (parts.length) return "ORDER BY (" + parts.join("+") + ") " + dir + ", id ASC";
+  }
   if (!key) return "ORDER BY ord " + dir + ", id ASC";
   let expr: string;
   if (COMMON[key]) expr = COMMON[key];
