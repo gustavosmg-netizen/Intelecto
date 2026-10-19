@@ -1359,8 +1359,8 @@ var TRILHA_GUIAS={
     quem:"Coordenação e Admin veem e editam o manual de cargos (área de gestão restrita).",
     resultado:"A gestão mantém claro o que se espera de cada cargo e como desenvolver cada pessoa.",
     dica:"Comece pelos cargos-exemplo e ajuste à realidade da casa."},
-  comercial:{obj:"Prospecção georreferenciada de leads ambientais de MG, por bacia hidrográfica.",
-    passos:["Abra a bacia e explore empreendimentos, outorgas, fiscalização e minerários.","Marque o lead no funil e registre suas notas.","Use os Top Leads (score) para priorizar a abordagem."],
+  comercial:{obj:"Explorador de leads ambientais de MG numa tela única (todos os bancos juntos), consulta direta no D1.",
+    passos:["Escolha o banco (leads, outorgas, minerários, embargos…) e filtre/ordene/busque.","Abra a ficha, veja TACs e registre o lead no funil.","Use os atalhos (Top Leads, licenças vencendo) e o mapa para priorizar."],
     quem:"Equipe+ com perm:comercial.",
     resultado:"Lead qualificado e registrado no funil comercial.",
     dica:"Comece pelos Top Leads: o score combina fit, potencial hídrico, prazo e pressão do município."},
@@ -3208,7 +3208,7 @@ var CRM_METAS={leads:150,qualif:45,prop:27,negoc:13,fech:10,vendas:150000};
 var CRMDATA=null, CRMFILTRO="";
 function _crmMacro(st){st=Number(st)||0;return st<=0?"":st<=4?CRM_MACRO[0]:st<=8?CRM_MACRO[1]:st<=12?CRM_MACRO[2]:st<=16?CRM_MACRO[3]:st<=20?CRM_MACRO[4]:CRM_MACRO[5];}
 function viewComercial(el){
-  var head=viewHead("Comercial","Comercial · CRM & Leads","Pipeline comercial (réplica do CRM), leads inbound do site, horas da equipe e prospecção georreferenciada por bacia.");
+  var head=viewHead("Comercial","Comercial · CRM & Leads","Pipeline comercial (réplica do CRM), leads inbound do site, horas da equipe e o explorador de leads ambientais de MG (tela única).");
   el.innerHTML=head
     +'<div class="tabs"><nav class="subnav" role="tablist">'
     +'<button class="subnav-btn is-active" data-tab="com-painel" type="button">Painel</button>'
@@ -3281,12 +3281,16 @@ var AMB_DEFW={fit:30,agua:25,timing:20,pressao:10,autuacao:10,cred:5};
 var AMB_WLBL={fit:"Fit frente",agua:"Pot. hídrico",timing:"Prazo licença",pressao:"Pressão município",autuacao:"Autuação",cred:"Credencial"};
 /* Colunas EXTRA por banco (modo "todas as colunas"). O subconjunto padrão fica em AMB_COLS. */
 var AMB_COLS_MORE={
-  empreendimentos:[["a","Atividade","txt"],["cd","Cód. DN217","txt"],["fa","Fase","txt"],["ts","Tipo solicitação","txt"],["em","Emissão","date"],["ag","Pot. água","txt"],["prl","Prioridade","txt"],["np","Nº processo","txt"]],
+  empreendimentos:[["a","Atividade","txt"],["cd","Cód. DN217","txt"],["fa","Fase","txt"],["ts","Tipo solicitação","txt"],["em","Emissão","date"],["ag","Pot. água","txt"],["prl","Prioridade","txt"],["np","Nº processo","txt"],["ns","Nº solicitação","txt"],["rrio","Corpo receptor","txt"],["q710","Q7,10 (L/s)","num"],["qmlt","Qmlt (L/s)","num"],["q90","Q90 (L/s)","num"],["pq","Por quê (lead)","txt"]],
   outorgas:[["un","Unid. vazão","txt"],["ang","Ângulo comercial","txt"],["proc","Processo","txt"]],
   minerarios:[["uso","Uso","txt"]],
   embargos:[["outras","Outras penalidades","txt"]],
   contaminadas:[["uso","Uso declarado","txt"]]
 };
+/* Rótulos de TODOS os campos conhecidos (p/ a ficha mostrar o detalhamento completo da base,
+   como fazia o painel por bacia). Chaves não mapeadas aparecem com o nome cru. */
+var AMB_FIELD_LABELS={lead:"Lead score",sc:"Score bruto",rank:"Rank",fr:"Frente comercial",prl:"Prioridade",pg:"Porte",paf:"Padrão aplicável",n:"Empreendimento",tp:"Tipo pessoa",m:"Município",a:"Atividade",cd:"Cód. DN217",cl:"Classe",cln:"Classe (nº)",md:"Modalidade",fa:"Fase",ts:"Tipo solicitação",st:"Situação",ag:"Pot. hídrico",em:"Emissão",vl:"Validade",dv:"Dias p/ vencer",np:"Nº processo",ns:"Nº solicitação",sv:"Serviço sugerido",pq:"Por quê (lead)",rrio:"Corpo receptor",q710:"Q7,10 (L/s)",qmlt:"Qmlt (L/s)",q90:"Q90 (L/s)",rdist:"Dist. ao rio (m)",lk:"Processo no SLA",out:"Outorgado",fin:"Finalidade",mod:"Modalidade de uso",tipo:"Tipo",corpo:"Corpo hídrico",un:"Unid. vazão",proc:"Processo",sub:"Substância",fase:"Fase",area:"Área (ha)",ano:"Ano",uso:"Uso",aut:"Autuado",at:"Atividade",dt:"Data",pen:"Penalidade",outras:"Outras penalidades",ai:"Nº AI",r:"Responsável",ga:"Grupo de atividade",clf:"Classificação",et:"Etapa",cont:"Contaminantes",meio:"Meio impactado",est:"Estrutura/Estação",pda:"Dano potencial",met:"Método construtivo",emp:"Empreendedor",situ:"Situação da licença",supram:"SUPRAM/URA",ang:"Ângulo comercial",iqa:"IQA",classe:"Classe de qualidade",enq:"Enquadramento",ste:"Status enquadramento",opp:"Oportunidade",agua:"Abast. água (%)",col:"Coleta esgoto (%)",tra:"Trat. esgoto (%)",pres:"Prestador",pmsb:"Plano saneamento",pmgirs:"Plano resíduos",sit:"Situação",tip:"Destinação final",cons:"Consórcio RSU",reg:"Regularização",comp:"Compartilhado",tot:"Total a recompor (ha)",app:"APP (ha)",rl:"Reserva legal (ha)"};
+var AMB_FIELD_HIDE={id:1,c:1,brk:1,scd:1,oport:1,p:1,lon:1,lat:1,cln:1,_id:1,_bacia:1,_m:1,_ord:1,_lat:1,_lon:1};
 /* Atalhos temáticos: 1 clique define banco + filtros + ordenação (substituem as abas curadas
    do painel por bacia). fx aplica filtros categóricos (props). */
 var AMB_SHORTCUTS=[
@@ -3332,7 +3336,7 @@ function _ambInit(){
     +'<div id="amb-map" style="display:none;height:460px;margin:8px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden"></div>'
     +'<div id="amb-tbl" style="overflow:auto;border:1px solid var(--line);border-radius:var(--r-lg)"><p class="muted" style="padding:14px">Carregando…</p></div>'
     +'<div id="amb-pager" style="display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0"></div>'
-    +'<p class="muted" style="font-size:12px">Dados de prospecção (fontes públicas: IDE-Sisema/SLA-MG, ANM, ANA, SNIS…). PF protegida por LGPD. Para o mapa georreferenciado por bacia, use a aba “Painéis por bacia (mapa)”.</p>';
+    +'<p class="muted" style="font-size:12px">Dados de prospecção (fontes públicas: IDE-Sisema/SLA-MG, ANM, ANA, SNIS…). PF protegida por LGPD. Use o botão “🗺 mapa” para o mapa georreferenciado do recorte filtrado.</p>';
   api("ambMeta").then(function(j){
     AMB.meta=j; _ambRenderChips(); _ambRenderFiltros();
     // escolhe o 1º banco presente (prefere empreendimentos)
@@ -3608,14 +3612,18 @@ function _ambFicha(id){
   var m=document.getElementById("crm-modal"); if(!m)return;
   m.innerHTML='<div class="card" style="max-width:720px;margin:0 auto;padding:18px"><p class="muted">Carregando ficha…</p></div>'; m.style.display="block";
   api("ambFicha",{bank:AMB.bank,id:id}).then(function(j){
-    var r=j.registro||{}, cols=AMB_COLS[AMB.bank]||[], inst=j.instrumentos||[];
+    var r=j.registro||{}, inst=j.instrumentos||[];
     var titulo=esc(r.n||r.out||r.aut||r.emp||r.r||r._m||"Registro");
-    var campos=cols.map(function(c){var v=_ambCell(r[c[0]],c[2]);if(v==="")return "";return '<div style="margin-bottom:6px"><span class="muted" style="font-size:12px">'+esc(c[1])+'</span><br><b style="font-size:14px">'+v+'</b></div>';}).filter(Boolean).join("");
+    // DETALHE COMPLETO: todos os campos da base (como no painel por bacia), rotulados. A ordem
+    // segue as colunas configuradas e depois os demais campos presentes no registro.
+    var hide=Object.assign({pq:1},AMB_FIELD_HIDE);
+    var order=[]; (AMB_COLS[AMB.bank]||[]).forEach(function(c){order.push(c[0]);}); (AMB_COLS_MORE[AMB.bank]||[]).forEach(function(c){order.push(c[0]);});
+    var keys=order.filter(function(k){return !hide[k]&&r[k]!=null&&r[k]!=="";});
+    Object.keys(r).forEach(function(k){if(String(k)[0]!=="_"&&!hide[k]&&order.indexOf(k)<0&&r[k]!=null&&r[k]!=="")keys.push(k);});
+    var campos=keys.map(function(k){var lbl=AMB_FIELD_LABELS[k]||k;var val=r[k];var disp=(typeof val==="number")?Number(val).toLocaleString("pt-BR"):esc(String(val));return '<div style="margin-bottom:6px"><span class="muted" style="font-size:12px">'+esc(lbl)+'</span><br><b style="font-size:14px'+(k==="lead"?";color:var(--brand)":"")+'">'+disp+'</b></div>';}).join("");
     var extra="";
-    if(AMB.bank==="empreendimentos"){
-      if(r.pq)extra+='<div style="margin:8px 0;padding:10px;background:var(--surface-2,rgba(0,0,0,.03));border-radius:8px"><span class="muted" style="font-size:12px">Por quê (lead)</span><br>'+esc(r.pq)+'</div>';
-      if(r.a)extra+='<div style="margin-bottom:6px"><span class="muted" style="font-size:12px">Atividade</span><br>'+esc(r.a)+'</div>';
-    }
+    if(r.pq)extra+='<div style="margin:8px 0;padding:10px;background:var(--surface-2,rgba(0,0,0,.03));border-radius:8px"><span class="muted" style="font-size:12px">Por quê (lead)</span><br>'+esc(r.pq)+'</div>';
+    if(r.lk&&/^https?:/i.test(String(r.lk)))extra+='<a class="btn sm" target="_blank" rel="noopener" href="'+esc(r.lk)+'" style="margin:8px 8px 8px 0;display:inline-block">Abrir processo no SLA ↗</a>';
     var instH="";
     if(AMB.bank==="empreendimentos"){
       if(inst.length){
@@ -4117,8 +4125,8 @@ function viewInicioExec(){
   /* ABAS POR ÁREA (só Admin): Engenharia é tudo o que já existe (resumo + sidebar); Comercial e
      Financeiro entram como stubs. A alternância usa o listener delegado de .tabs (apresentação). */
   var com=_areaCard("Comercial — Leads Ambientais",
-    "Prospecção georreferenciada da casa, por bacia hidrográfica de MG. Abra o módulo para o funil completo.",
-    ["Funil de oportunidades e propostas em andamento","Leads por bacia: empreendimentos, outorgas, fiscalização, minerários","Top Leads por score e carteira de clientes"],
+    "Explorador de leads ambientais de MG numa tela única (todos os bancos), consultado direto no D1. Abra o módulo para o funil completo.",
+    ["Leads + outorgas, minerários, embargos, contaminadas, ETEs, IQA, saneamento, barragens e fiscalizações","Filtros, ordenação, busca, download e mapa — tudo server-side","Top Leads por score (pesos ajustáveis) e TACs na ficha"],
     "comercial","Abrir Leads Ambientais →",true);
   var fin=_areaCard("Financeiro — Lucro × Prejuízo",
     "Posição por projeto, em R$ (restrita ao dono). Abra o módulo para a carteira financeira completa.",

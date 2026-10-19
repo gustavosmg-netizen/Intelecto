@@ -1663,7 +1663,7 @@ const MODULOS: Modulo[] = [
   { id: "acervo",     view: "acervo",     acao: "acervo_busca", label: "Acervo Técnico",   titulo: "Acervo Técnico",       resumo: "Biblioteca de normas, fichas e precedentes da casa.",  icon: "📚", grupo: "CONHECIMENTO" },
   { id: "trilhas",    view: "trilhas",    acao: "trilhas",      label: "Trilhas",          titulo: "Trilhas — Manual Vivo",resumo: "Guia de uso de cada módulo que você acessa, no seu papel.", icon: "🧭", grupo: "CONHECIMENTO" },
   { id: "escritorio", view: "escritorio", acao: "escritorio",   label: "Escritório de IA", titulo: "Escritório de IA",     resumo: "Catalogo e lancador dos agentes, skills e tools da casa (rodam no Claude Code).",     icon: "🤖", grupo: "CONHECIMENTO" },
-  { id: "comercial",  view: "comercial",  acao: "comercial",    label: "Comercial · CRM",  titulo: "Comercial · CRM & Leads",resumo: "Pipeline comercial (CRM), leads inbound, horas da equipe e prospecção georreferenciada por bacia.", icon: "📍", grupo: "COMERCIAL" },
+  { id: "comercial",  view: "comercial",  acao: "comercial",    label: "Comercial · CRM",  titulo: "Comercial · CRM & Leads",resumo: "Pipeline comercial (CRM), leads inbound, horas da equipe e o explorador de leads ambientais de MG (tela única, todos os bancos).", icon: "📍", grupo: "COMERCIAL" },
   { id: "rh",         view: "rh",         acao: "rh",           label: "RH & Cargos",      titulo: "RH, Cargos e Rotinas", resumo: "Cargos, responsabilidades, rotinas e onboarding por função. Área de gestão.", icon: "👥", grupo: "PESSOAS" },
   { id: "ficha",      view: "ficha",      acao: "pessoaficha",  label: "Minha ficha",      titulo: "Ficha da Pessoa",      resumo: "Seu currículo, Lattes, habilidades, metas, treinamentos e evolução pelas horas.", icon: "🧑‍🎓", grupo: "PESSOAS" },
   { id: "servicos",   view: "servicos",   acao: "portf",        label: "Portfólio de Serviços", titulo: "Portfólio de Serviços", resumo: "Serviços da casa com histórico de versões e as habilidades que cada um exige.", icon: "🧰", grupo: "CONHECIMENTO" },
@@ -2044,12 +2044,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   }
 
   // ===== COMERCIAL · Leads Ambientais (allowlist perm:comercial) =====
+  // RELIGADO à base nova (amb_registro): a aba usa ambMeta/ambList; esta ação vira um shim
+  // compatível (campo `index.regioes` preservado p/ qualquer consumidor antigo), agora servido
+  // do D1 e não mais do R2. Nada depende mais dos painéis HTML por bacia.
   if (action === "comercial") {
     const u = await auth(p);
     if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.ver")) throw new Error("Sem acesso a esta aba.");
-    let index: P = { regioes: [] };
-    try { const o = ENV.BLOB ? await ENV.BLOB.get("comercial/leads-mg/index.json") : null; if (o) index = JSON.parse(await o.text()); } catch (_) { /* bucket/objeto ausente: lista vazia */ }
-    return { ok: true, index };
+    const bk = await sqlite.execute({ sql: "SELECT bank, COUNT(*) n FROM amb_registro WHERE tenant_id = ? GROUP BY bank", args: [u.tenant_id] });
+    const banks: Record<string, number> = {};
+    for (const r of bk.rows as P[]) banks[String(r.bank)] = Number(r.n) || 0;
+    const rg = await sqlite.execute({ sql: "SELECT bacia, COUNT(*) emp FROM amb_registro WHERE tenant_id = ? AND bank = 'empreendimentos' AND bacia <> '' GROUP BY bacia ORDER BY emp DESC", args: [u.tenant_id] });
+    const regioes = (rg.rows as P[]).map((r) => ({ slug: String(r.bacia), nome: String(r.bacia).replace(/_/g, " "), emp: Number(r.emp) || 0 }));
+    return { ok: true, index: { regioes }, banks, fonte: "d1:amb_registro" };
   }
   if (action === "funnel_pull") {
     const u = await auth(p);
@@ -5160,22 +5166,8 @@ function ambOrder(p: P): string {
   return "ORDER BY " + expr + " " + dir + ", id ASC";
 }
 
-// Painel de uma bacia (Leads Ambientais) servido PRIVADO do R2, com gate perm:comercial.
-// Token no corpo (mesmo modelo do /api); nunca na URL. O SPA injeta a resposta via srcdoc.
-app.post("/comercial/leads-region", async (c) => {
-  try {
-    const b: P = await c.req.json().catch(() => ({} as P));
-    const u = await auth({ token: String(b.token || "") || cookieVal(c.req.header("cookie") || "", "ce_t") } as P);
-    if (!(await podeComercial(u.slug))) return c.text("Sem acesso.", 403);
-    const slug = String(b.slug || "").replace(/[^a-z0-9_]/gi, "");
-    if (!slug) return c.text("slug invalido.", 400);
-    const o = ENV.BLOB ? await ENV.BLOB.get("comercial/leads-mg/" + slug + ".html") : null;
-    if (!o) return c.text("Painel nao encontrado.", 404);
-    return new Response(await o.text(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=300" } });
-  } catch (e: any) {
-    return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);
-  }
-});
+// (Rota /comercial/leads-region REMOVIDA — os painéis HTML por bacia no R2 foram aposentados;
+//  os leads ambientais agora são a tela única nativa no D1, via ações amb* no /api.)
 
 // Arquivo do Acervo servido PRIVADO do bucket-fonte (acervo-intelecto), gate por concessão de
 // acervo (isOwner || acgrant). Token no corpo (mesmo modelo do /api e do /comercial); nunca na
