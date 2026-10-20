@@ -96,6 +96,20 @@ test("Onda 1: regra de status (concluído/cancelado não recebe horas) + andamen
   assert.match(ts, /progressoDerivado: pctEtapa/);
 });
 
+test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS capacidade_vig/);
+  assert.match(ts, /async function classesNaoTrabalho/);
+  // capacidade vem da tabela (h/semana ÷ 5), não mais da constante hardcoded.
+  assert.match(ts, /const hdia = arred2\(hsem \/ 5\)/);
+  assert.match(ts, /action === "capacidadeSet"/);
+  assert.match(ts, /action === "atividadeClasseSet"/);
+  // a migração 0004 existe e a 0005 é o template documentado do crm_time.
+  assert.match(read("migrations/0004_atividade_capacidade.sql"), /CREATE TABLE IF NOT EXISTS capacidade_vig/);
+  assert.match(read("migrations/0005_crm_time_to_lanc.sql"), /crm_time é hora de ÁREA, não de pessoa/);
+});
+
 test("UI: painel Contrato & parcelas no detalhe do projeto", () => {
   const html = read("public/index.html");
   assert.match(html, /function _contratoBloco/);

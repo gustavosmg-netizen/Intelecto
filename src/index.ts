@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-20b";
+const SCHEMA_VER = "2026-10-20c";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -681,6 +681,42 @@ function ensureSchema(): Promise<void> {
     } catch (_) { /* já existe */ }
     // Índice da FILA DE CONCILIAÇÃO: o caixa sem CC consultado por tenant (ver ação `conciliacao`).
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS fluxo_cc ON fluxo (tenant_id, cc)"); } catch (_) {}
+    /* CATÁLOGO DE CLASSES DE ATIVIDADE (Onda 1) — tira do código as palavras-chave que classificam
+       o apontamento como não-trabalho (feriado/férias/ausência). Cada classe tem padrões de texto
+       (separados por |) casados contra lanc.t. É o que torna a capacidade reaproveitável: outra
+       empresa edita os termos (ex.: "Folga", "PTO") sem mexer no código. Seed = o comportamento de
+       hoje (mesmos 4 termos), para nada mudar no dia 1. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS atividade_classe (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', cid TEXT NOT NULL, nome TEXT DEFAULT '',
+        classe TEXT NOT NULL DEFAULT 'feriado', padroes TEXT DEFAULT '', ordem INTEGER DEFAULT 0,
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '', PRIMARY KEY (tenant_id, cid))`);
+      const seed: [string, string, string, string, number][] = [
+        ["feriado", "Feriado", "feriado", "Feriado", 0],
+        ["ferias", "Férias", "ferias", "Ferias|Férias", 1],
+        ["ausj", "Ausência justificada", "aus_just", "Ausente Justificado", 2],
+        ["ausn", "Ausência não justificada", "aus_naojust", "Ausente Não Justificado|Ausente Nao Justificado", 3],
+      ];
+      await sqlite.batch(seed.map((s) => ({
+        sql: "INSERT OR IGNORE INTO atividade_classe (tenant_id, cid, nome, classe, padroes, ordem, atualizado) VALUES (?,?,?,?,?,?,'')",
+        args: [TENANT_INTELECTO, s[0], s[1], s[2], s[3], s[4]],
+      })));
+    } catch (_) { /* já existe */ }
+    /* CAPACIDADE COM VIGÊNCIA (Onda 1) — horas/semana por pessoa, datada (como o custo/hora). Tira do
+       código a lista fixa (CAP20). hdia = horas_semana ÷ 5. Seed = a realidade de hoje (estagiários
+       20h, demais 40h), para não mudar o cálculo no dia 1; a partir daí a Coordenação edita no RH. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS capacidade_vig (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, desde TEXT NOT NULL,
+        horas_semana REAL DEFAULT 40, u TEXT DEFAULT '', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, slug, desde))`);
+      // Semente da realidade atual: cada colaborador conhecido recebe sua capacidade a partir de uma
+      // data-base. INSERT OR IGNORE preserva ajustes já feitos. CAP20 é usado SÓ aqui, como semente.
+      await sqlite.batch(COLABS.map((slug) => ({
+        sql: "INSERT OR IGNORE INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?, 'seed','')",
+        args: [TENANT_INTELECTO, slug, "2025-01-01", CAP20.has(slug) ? 20 : 40],
+      })));
+    } catch (_) { /* já existe */ }
     // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute encargos da MO;
     // o custo real do projeto = MO + imposto + consumíveis + terceiros + outros + overhead (Onda 1, D-3).
     try { await sqlite.execute("ALTER TABLE projx ADD COLUMN consumiveis REAL DEFAULT 0"); } catch (_) { /* já existe */ }
@@ -1580,30 +1616,61 @@ function diasUteisMes(ym: string): number {
  * rótulos da atividade t). Esperado = dias úteis×h/dia − feriado − férias − ausência JUSTIFICADA;
  * Realizado = trabalho (tudo menos os 4 rótulos); Saldo = Realizado − Esperado (>0 extra, <0 déficit;
  * ausência NÃO justificada puxa p/ déficit). Custo da extra = saldo+ × custo/hora vigente no mês. */
+/** Classes de atividade não-trabalho do tenant (feriado/férias/ausências), do CATÁLOGO editável.
+ *  Devolve os padrões de texto por classe. Fallback para os termos padrão se a tabela estiver vazia. */
+async function classesNaoTrabalho(tenant: string): Promise<{ feriado: string[]; ferias: string[]; aus_just: string[]; aus_naojust: string[] }> {
+  const out = { feriado: [] as string[], ferias: [] as string[], aus_just: [] as string[], aus_naojust: [] as string[] };
+  try {
+    const r = await sqlite.execute({ sql: "SELECT classe, padroes FROM atividade_classe WHERE tenant_id = ?", args: [tenant] });
+    for (const x of r.rows as P[]) {
+      const c = String(x.classe); const pads = String(x.padroes || "").split("|").map((s) => s.trim()).filter(Boolean);
+      if ((out as any)[c]) (out as any)[c].push(...pads);
+    }
+  } catch (_) { /* tabela ausente: usa o fallback abaixo */ }
+  if (!out.feriado.length && !out.ferias.length && !out.aus_just.length && !out.aus_naojust.length) {
+    out.feriado = ["Feriado"]; out.ferias = ["Ferias", "Férias"]; out.aus_just = ["Ausente Justificado"]; out.aus_naojust = ["Ausente Não Justificado", "Ausente Nao Justificado"];
+  }
+  return out;
+}
 async function capacidadeApontado(tenant: string): Promise<P[]> {
-  const r = await sqlite.execute({
-    sql: "SELECT slug, substr(d,1,7) ym," +
-      " SUM(CASE WHEN t LIKE '%Feriado%' THEN h ELSE 0 END) feriado," +
-      " SUM(CASE WHEN t LIKE '%Ferias%' OR t LIKE '%Férias%' THEN h ELSE 0 END) ferias," +
-      " SUM(CASE WHEN t LIKE '%Ausente Justificado%' THEN h ELSE 0 END) ausj," +
-      " SUM(CASE WHEN t LIKE '%Ausente N%o Justificado%' THEN h ELSE 0 END) ausn," +
-      " SUM(CASE WHEN t LIKE '%Feriado%' OR t LIKE '%Ferias%' OR t LIKE '%Férias%' OR t LIKE '%Ausente Justificado%' OR t LIKE '%Ausente N%o Justificado%' THEN 0 ELSE h END) trab" +
-      " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym",
-    args: [tenant],
-  });
+  // Classificação por CATÁLOGO (não mais por termos no código). Monta as somas parametrizadas.
+  const cls = await classesNaoTrabalho(tenant);
+  const selArgs: any[] = [];
+  const sumCol = (pads: string[], alias: string) => {
+    if (!pads.length) return "0 " + alias;
+    return "SUM(CASE WHEN (" + pads.map((k) => { selArgs.push("%" + k + "%"); return "t LIKE ?"; }).join(" OR ") + ") THEN h ELSE 0 END) " + alias;
+  };
+  const colFer = sumCol(cls.feriado, "feriado");
+  const colFrs = sumCol(cls.ferias, "ferias");
+  const colAj = sumCol(cls.aus_just, "ausj");
+  const colAn = sumCol(cls.aus_naojust, "ausn");
+  const allPads = [...cls.feriado, ...cls.ferias, ...cls.aus_just, ...cls.aus_naojust];
+  const trabCol = allPads.length
+    ? ("SUM(CASE WHEN (" + allPads.map((k) => { selArgs.push("%" + k + "%"); return "t LIKE ?"; }).join(" OR ") + ") THEN 0 ELSE h END) trab")
+    : "SUM(h) trab";
+  const sql = "SELECT slug, substr(d,1,7) ym, " + [colFer, colFrs, colAj, colAn, trabCol].join(", ")
+    + " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym";
+  const r = await sqlite.execute({ sql, args: [...selArgs, tenant] });
   const cvr = await sqlite.execute({ sql: "SELECT slug, desde, valor FROM custohora_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
   const vig: Record<string, { desde: string; valor: number }[]> = {};
   for (const x of cvr.rows as P[]) { (vig[String(x.slug)] = vig[String(x.slug)] || []).push({ desde: String(x.desde), valor: Number(x.valor) || 0 }); }
   const taxaEm = (slug: string, ym: string) => { let v = 0; const ref = ym + "-01"; for (const e of (vig[slug] || [])) { if (e.desde <= ref) v = e.valor; else break; } return v; };
+  // CAPACIDADE COM VIGÊNCIA (tabela, não mais CAP20): horas/semana datadas por pessoa → hdia = h/5.
+  const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
+  const capv: Record<string, { desde: string; hsem: number }[]> = {};
+  for (const x of capr.rows as P[]) { (capv[String(x.slug)] = capv[String(x.slug)] || []).push({ desde: String(x.desde), hsem: Number(x.horas_semana) || 0 }); }
+  const hsemEm = (slug: string, ym: string) => { let v = NaN; const ref = ym + "-01"; for (const e of (capv[slug] || [])) { if (e.desde <= ref) v = e.hsem; else break; } return v; };
   const porSlug: Record<string, P> = {};
   for (const row of r.rows as P[]) {
     const slug = String(row.slug); const ym = String(row.ym);
-    const hdia = CAP20.has(slug) ? 4 : 8;
+    const hsemMes = hsemEm(slug, ym); const hsem = Number.isNaN(hsemMes) ? 40 : hsemMes; // fallback 40h/sem
+    const hdia = arred2(hsem / 5);
     const feriado = arred2(Number(row.feriado) || 0), ferias = arred2(Number(row.ferias) || 0), ausj = arred2(Number(row.ausj) || 0), ausn = arred2(Number(row.ausn) || 0), trab = arred2(Number(row.trab) || 0);
     const esperado = arred2(diasUteisMes(ym) * hdia - feriado - ferias - ausj);
     const saldo = arred2(trab - esperado);
     const custoExtra = saldo > 0 ? arred2(saldo * taxaEm(slug, ym)) : 0;
-    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem: CAP20.has(slug) ? 20 : 40, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    o.hsem = hsem;
     (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, custoExtra });
     o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = arred2(o.tSaldo + saldo);
     o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0)); o.tCustoExtra = arred2(o.tCustoExtra + custoExtra);
@@ -1750,6 +1817,7 @@ const MIN: Record<string, Papel> = {
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
   conciliacao: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
+  atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
   capacidade: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
@@ -3271,7 +3339,40 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "capacidade") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     const pessoas = await capacidadeApontado(u.tenant_id);
-    return { ok: true, pessoas };
+    const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde DESC", args: [u.tenant_id] });
+    const capAtual: Record<string, number> = {};
+    for (const x of capr.rows as P[]) { const s = String(x.slug); if (!(s in capAtual)) capAtual[s] = Number(x.horas_semana) || 0; }
+    const cls = await sqlite.execute({ sql: "SELECT cid, nome, classe, padroes, ordem FROM atividade_classe WHERE tenant_id = ? ORDER BY ordem", args: [u.tenant_id] });
+    return { ok: true, pessoas, capacidades: capAtual, classes: cls.rows };
+  }
+  /* CATÁLOGO DE CLASSES DE ATIVIDADE — editar os padrões de texto que marcam feriado/férias/ausência
+     (reaproveitável por empresa). Gate coordenação (financeiro.editar). Auditado. */
+  if (action === "atividadeClasseSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Classe ausente.");
+    const padroes = String(p.padroes || "").slice(0, 400);
+    const nome = String(p.nome || "").slice(0, 80);
+    await sqlite.execute({
+      sql: "INSERT INTO atividade_classe (tenant_id, cid, nome, classe, padroes, atualizado, u) VALUES (?,?,?,COALESCE((SELECT classe FROM atividade_classe WHERE tenant_id=? AND cid=?),?),?,?,?) "
+        + "ON CONFLICT(tenant_id,cid) DO UPDATE SET nome=excluded.nome, padroes=excluded.padroes, atualizado=excluded.atualizado, u=excluded.u",
+      args: [u.tenant_id, cid, nome, u.tenant_id, cid, cid, padroes, new Date().toISOString(), u.slug],
+    });
+    await audit("atividade_classe", u.slug, cid + " padroes=" + padroes, ip);
+    return { ok: true, cid };
+  }
+  /* CAPACIDADE COM VIGÊNCIA — registrar horas/semana de uma pessoa a partir de uma data (histórico
+     preservado, como o custo/hora). Gate coordenação. Auditado. */
+  if (action === "capacidadeSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const slug = String(p.slug || "").trim(); if (!slug) throw new Error("Colaborador ausente.");
+    const desde = String(p.desde || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) throw new Error("Data de vigência inválida (AAAA-MM-DD).");
+    const hs = Math.max(0, Math.min(80, Number(p.horas_semana) || 0));
+    await sqlite.execute({
+      sql: "INSERT INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id,slug,desde) DO UPDATE SET horas_semana=excluded.horas_semana, u=excluded.u",
+      args: [u.tenant_id, slug, desde, hs, u.slug, new Date().toISOString()],
+    });
+    await audit("capacidade", u.slug, slug + " " + desde + " " + hs + "h/sem", ip);
+    return { ok: true, slug, desde, horas_semana: hs };
   }
   /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
      restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */

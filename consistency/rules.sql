@@ -57,6 +57,15 @@ FROM cc_contrato c WHERE c.status = 'confirmado'
 SELECT 'C14' rule, 'alto' sev, COUNT(*) n, 'Financeiro' dono, 'Financeiro › Conciliação' atalho
 FROM contrato_parcela WHERE status = 'prevista' AND venc_prev <> '' AND venc_prev < date('now');
 
+-- C15 · pessoa com horas e sem capacidade cadastrada (usa fallback 40h/sem)  [medio · RH · Financeiro › Capacidade]
+SELECT 'C15' rule, 'medio' sev, COUNT(*) n, 'RH' dono, 'Financeiro › Capacidade' atalho
+FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug = l.slug AND m.tenant_id = l.tenant_id WHERE m.ativo = 1) a
+WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug = a.slug);
+
+-- C16 · segundo livro de horas ainda com registros (crm_time a migrar)  [medio · Comercial · Comercial › Horas]  [base: 73]
+SELECT 'C16' rule, 'medio' sev, COUNT(*) n, 'Comercial' dono, 'Comercial › Horas' atalho
+FROM crm_time WHERE deleted = 0 AND hours > 0;
+
 -- C5 · andamento divergente (> 10 p.p.) entre Carteira e último registro de andamento  [alto · Projetos · Projeto 360 › Visão]  [base: 39]
 SELECT 'C5' rule, 'alto' sev, COUNT(*) n, 'Projetos' dono, 'Projeto 360 › Visão' atalho
 FROM projx x
