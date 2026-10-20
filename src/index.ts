@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19g";
+const SCHEMA_VER = "2026-10-19h";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -994,9 +994,10 @@ function ensureSchema(): Promise<void> {
      * Vitrine EDITORIAL e demonstravel: cada `vitrine_case` tem apresentacao em HTML (corpo) e
      * uma galeria de PRODUTOS FINAIS (vitrine_produto: prancha/relatorio/modelo 3D/apresentacao/
      * imagem/link) que apontam para arquivos do bucket ACERVO (reaproveita o storage, sem bucket
-     * novo) ou para URLs. E DISTINTA da aba `showcase` ("Vitrine de Projetos"), que projeta os
-     * registros operacionais proj/prod por cliente; aqui o conteudo e curado pela gestao e
-     * publicavel. cliente SEMPRE por centro de custo (nunca nome real) e ZERO valor monetario.
+     * novo) ou para URLs. Esta camada de cases curados é EXIBIDA DENTRO da "Vitrine de Projetos"
+     * (viewShowcase, bloco "Cases em destaque") — NÃO é uma aba separada (evita a 2ª "Vitrine"
+     * duplicada); complementa a projeção automática proj/prod por cliente do showcase. Conteúdo
+     * curado pela gestao. cliente SEMPRE por centro de custo (nunca nome real) e ZERO valor monetario.
      * Edicao = coordenacao/admin; leitura = piso 'equipe' (abertura externa/cliente = TODO, ver
      * nota no route()). Nasce com 1-2 cases EXEMPLO ("(exemplo — edite)") so para a tela nascer
      * com conteudo — sem dado de cliente real nem numero. INSERT OR IGNORE: nao duplica nem
@@ -1016,17 +1017,27 @@ function ensureSchema(): Promise<void> {
         fonte TEXT DEFAULT 'acervo', ref TEXT DEFAULT '', ordem INTEGER DEFAULT 0, criado TEXT DEFAULT '',
         PRIMARY KEY (tenant_id, id))`);
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS vitrine_prod_cid ON vitrine_produto (tenant_id, cid, ordem)"); } catch (_) {}
-      // Seed: 2 cases EXEMPLO (idempotente). Sem cliente real, sem valor. Nascem PUBLICADOS p/ a
-      // tela nascer com conteudo; a gestao edita/despublica/remove. Produtos nascem como link de
-      // exemplo (fonte='url') — a gestao troca por arquivos reais do acervo depois.
+      // Seed: 4 cases REAIS (modelo), a partir dos trabalhos entregues pela casa. Cliente SEMPRE
+      // por código de centro de custo/contrato (nunca o nome real); ZERO valor monetário; nenhum
+      // número de desempenho inventado — o corpo descreve escopo, método e entregáveis (por código
+      // de documento), e a gestão completa os dados exatos ao editar. Idempotente (INSERT OR IGNORE:
+      // não sobrescreve edições da casa). Os PRODUTOS FINAIS (pranchas/relatórios/3D) entram pela
+      // galeria após o upload ao ACERVO (script em migracoes/vitrine/, rodado pelo Gustavo). Os 2
+      // cases EXEMPLO antigos (vexemplo-*) são removidos abaixo, só se ainda intocados (u='seed').
       const _vxNow = new Date().toISOString();
       const _vxCases: [string, string, string, string, string, string, number][] = [
-        ["vexemplo-ete", "(exemplo — edite) Projeto executivo de ETE compacta", "E.00.00.00", "Água e efluentes · ETE",
-          "Case de demonstração da Vitrine. Substitua por um trabalho real entregue pela casa: concepção, memorial de cálculo, pranchas executivas e modelo 3D georreferenciado de uma estação de tratamento de esgoto.",
-          "<p><em>Este é um case de exemplo — edite ou remova.</em></p><h3>Desafio</h3><p>Descreva aqui o problema do cliente (por centro de custo, nunca o nome real) e a demanda ambiental atendida.</p><h3>O que a casa entregou</h3><ul><li>Concepção e seleção de rota de tratamento.</li><li>Memorial de cálculo e descritivo (Crivo A-F).</li><li>Pranchas executivas no padrão do cliente.</li><li>Modelo 3D georreferenciado para compatibilização.</li></ul><h3>Resultado</h3><p>Resuma o ganho técnico/ambiental — sem qualquer valor monetário.</p>", 1],
-        ["vexemplo-tratabilidade", "(exemplo — edite) Estudo de tratabilidade (Jar-Test) de efluente industrial", "E.00.00.01", "Tratabilidade · Industrial",
-          "Case de demonstração da Vitrine. Substitua por um estudo real: ensaios de bancada, seleção de coagulante/polímero, curvas de dosagem e tradução do resultado em rota tecnológica.",
-          "<p><em>Este é um case de exemplo — edite ou remova.</em></p><h3>Escopo</h3><p>Caracterização do efluente e plano de ensaios (Jar-Test).</p><h3>Entregáveis demonstráveis</h3><ul><li>Relatório de tratabilidade com curvas de dosagem ótima.</li><li>Apresentação executiva dos resultados.</li></ul><p>Anexe os produtos finais na galeria abaixo (pranchas, relatórios, modelos 3D, apresentações).</p>", 2],
+        ["case-ete-cftp", "ETE/CFTP — Projeto executivo de estação de tratamento de esgoto", "0174GG", "Água e efluentes · ETE",
+          "Projeto executivo completo de uma ETE compacta: concepção, dimensionamento, pranchas emitidas no padrão do cliente e modelo 3D georreferenciado para compatibilização. Emitido pelo Motor da casa com o Crivo Intelecto A-F.",
+          "<h3>Escopo</h3><p>Concepção e projeto executivo de estação de tratamento de esgoto com a linha: tratamento preliminar (gradeamento e desarenação), reator anaeróbio UASB, filtro anóxico/aerado, decantador de alta taxa, desinfecção por cloração e leito de secagem de lodo.</p><h3>O que a casa entregou</h3><ul><li>Memorial Descritivo (MD-0174GG-B-00003) e Memorial de Cálculo (MC-0174GG-B-00006), revisão vigente, com rastreabilidade do dado ao parágrafo e Crivo A-F.</li><li>Conjunto executivo de pranchas emitidas (série 0174GG-B-000xx): fluxograma geral, planta de implantação e detalhamento por unidade (UASB, decantador de alta taxa, tratamento preliminar, filtro aerado).</li><li>Modelo 3D executivo georreferenciado, navegável, usado na verificação de interferências e compatibilização.</li></ul><h3>Diferencial</h3><p>Emissão padronizada pelo Motor da casa (dado único → folha template → auditoria separada), com verificação independente de cálculo, gráfico, normativo e do modelo 3D antes da liberação.</p><p class=\"muted\"><em>Produtos finais na galeria abaixo — anexados pela gestão.</em></p>", 1],
+        ["case-tratab-samarco", "Tratabilidade de efluente de mineração — DM e BN11", "POT26020", "Tratabilidade · Mineração",
+          "Estudo de tratabilidade de efluentes de áreas de mina: ensaios de bancada (Jar-Test), seleção de coagulante/floculante, curvas de dosagem e caracterização com análise de metais, traduzidos em rota de tratamento.",
+          "<h3>Escopo</h3><p>Caracterização físico-química das amostras e plano de ensaios de tratabilidade (coagulação, floculação e sedimentação) para dois pontos de efluente de mineração, incluindo análise de metais.</p><h3>O que a casa entregou</h3><ul><li>Produto 01 — Relatório de caracterização das amostras recebidas.</li><li>Produtos 02 a 04 — Apresentações dos blocos de ensaio.</li><li>Produto 05 — Relatório Técnico Final com análise de metais (POT26020-RT-H-005), com curvas de dosagem e recomendação de rota.</li><li>Produto 06 — Apresentação executiva do resultado final.</li></ul><h3>Diferencial</h3><p>Da bancada ao critério de projeto: o resultado do Jar-Test vira dosagem de projeto e rota tecnológica, com cada número rastreável ao ensaio.</p><p class=\"muted\"><em>Produtos finais na galeria abaixo — anexados pela gestão.</em></p>", 2],
+        ["case-aro-secagem", "Secagem térmica — nota técnica de processo", "ARO", "Processo térmico · Secagem",
+          "Nota técnica de processo de secagem térmica: balanço de massa e energia do secador e definição dos parâmetros operacionais, entregue como produto final com apresentação executiva.",
+          "<h3>Escopo</h3><p>Avaliação do processo de secagem térmica — balanço de massa e energia, carga térmica e parâmetros de operação — a partir dos dados de processo do cliente.</p><h3>O que a casa entregou</h3><ul><li>Nota Técnica NT-ARO-SEC-001 (revisão vigente), com a memória de cálculo do balanço.</li><li>Apresentação executiva (HTML) do processo e dos resultados.</li></ul><h3>Diferencial</h3><p>Fecha o balanço (grau de liberdade → massa → energia) antes de recomendar parâmetro, no método da casa.</p><p class=\"muted\"><em>Produtos finais na galeria abaixo — anexados pela gestão.</em></p>", 3],
+        ["case-biogas-thermo", "Usina de biogás/biometano — ThermoBiogasUp (P&D)", "CSTR · FINEP", "Biogás · P&D",
+          "Projeto de P&D (fomento FINEP) de usina de biogás/biometano: digestão anaeróbia em reatores CSTR em PRFV, verificação de mistura por CFD e modelos 3D interativos de licenciamento e arranjo. Em desenvolvimento.",
+          "<p><em>Projeto de P&amp;D em desenvolvimento (fomento FINEP) — case de capacidade técnica da casa.</em></p><h3>Escopo</h3><p>Concepção de usina de biogás/biometano com digestão anaeróbia em reatores CSTR em PRFV, verificação de mistura por CFD (OpenFOAM), cenários de pressão/vácuo e licenciamento.</p><h3>Artefatos demonstráveis</h3><ul><li>Modelo 3D interativo do arranjo e do licenciamento.</li><li>Estudos de CFD de mistura dos reatores CSTR (visualizadores HTML).</li><li>Memorial descritivo/de cálculo do processo.</li><li>Pranchas de equipamentos (P&amp;ID / TechDraw) da base de projeto.</li></ul><p class=\"muted\"><em>Produtos finais na galeria abaixo — anexados pela gestão.</em></p>", 4],
       ];
       for (const [cid, titulo, cc, area, resumo, corpo, ordem] of _vxCases) {
         await sqlite.execute({
@@ -1034,6 +1045,8 @@ function ensureSchema(): Promise<void> {
           args: [TENANT_INTELECTO, cid, titulo, cc, area, resumo, corpo, "", "", 1, ordem, 1, _vxNow, "seed"],
         });
       }
+      // Remove os 2 cases EXEMPLO da rodada anterior — só se ainda NÃO editados pela casa (u='seed').
+      try { await sqlite.execute({ sql: "DELETE FROM vitrine_case WHERE tenant_id = ? AND cid IN ('vexemplo-ete','vexemplo-tratabilidade') AND u = 'seed'", args: [TENANT_INTELECTO] }); } catch (_) {}
     } catch (_) { /* ja existe */ }
 
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
@@ -1710,7 +1723,11 @@ const MODULOS: Modulo[] = [
   { id: "pend",       view: "pend",       acao: "pinpend",      label: "Pendentes",        titulo: "Aprovações & Trilha",  resumo: "Liberações, pedidos de acesso e trilha de auditoria.", icon: "⏳", grupo: "PROJETOS" },
   { id: "projetos",   view: "projetos",   acao: "produtos",     label: "Projetos",         titulo: "Carteira de Projetos", resumo: "Projetos da casa, responsáveis e andamento.",          icon: "📁", grupo: "PROJETOS" },
   { id: "showcase",   view: "showcase",   acao: "showcase",     label: "Vitrine",          titulo: "Vitrine de Projetos",  resumo: "Galeria executiva de projetos e entregas por cliente e status.", icon: "🖼️", grupo: "PROJETOS" },
-  { id: "vitrine",    view: "vitrine",    acao: "vitrine",      label: "Vitrine · Cases",  titulo: "Vitrine · Show-run de Cases", resumo: "Galeria navegável dos cases entregues pela casa, com apresentação e produtos finais demonstráveis (pranchas, relatórios, modelos 3D, apresentações). Edição pela gestão.", icon: "✨", grupo: "PROJETOS" },
+  /* (NÃO duplicar a Vitrine) A galeria de CASES (show-run: apresentação HTML + produtos finais)
+     foi EMBUTIDA na própria "Vitrine de Projetos" (viewShowcase, bloco "Cases em destaque"), por
+     decisão do dono (descartar a aba nova, enriquecer a antiga). Por isso NÃO há módulo próprio
+     'vitrine' aqui — seria a 2ª aba "Vitrine" que causou a confusão. As ações vitrine/vitrineFicha
+     e o CRUD seguem existindo (route()+MIN), consumidos pelo bloco de cases dentro do showcase. */
   { id: "agenda",     view: "agenda",     acao: "eventos",      label: "Agenda",           titulo: "Agenda & Ritos",       resumo: "Eventos, reuniões e ritos da equipe.",                 icon: "📅", grupo: "PROJETOS" },
   { id: "brief",      view: "brief",      acao: "brief",        label: "Daily Brief",      titulo: "Daily Brief",          resumo: "Radar de editais e notícias com triagem por IA.",      icon: "📰", grupo: "CONHECIMENTO" },
   { id: "acervo",     view: "acervo",     acao: "acervo_busca", label: "Acervo Técnico",   titulo: "Acervo Técnico",       resumo: "Biblioteca de normas, fichas e precedentes da casa.",  icon: "📚", grupo: "CONHECIMENTO" },

@@ -551,7 +551,7 @@ function montarNav(){
   });
   $("#ap-nav").innerHTML=html;
   $("#ap-nav").querySelectorAll(".sidebar-item").forEach(function(b){b.onclick=function(){irPara(b.dataset.v)}});
-  var titles={hub:"Início",inicio:"Painel do Dia",lancar:"Lançar Horas",apont:"Apontamentos",pend:"Pendentes",projetos:"Projetos",showcase:"Vitrine de Projetos",vitrine:"Vitrine · Cases",agenda:"Agenda",cadastro:"Cadastro",escritorio:"Escritório de IA",comercial:"Comercial · CRM",brief:"Daily Brief",acervo:"Acervo Técnico",trilhas:"Trilhas",dna:"DNA & Ativos",permissoes:"Permissões",conhecimento:"Conhecimento",portfolio:"Portfólio",servicos:"Portfólio de Serviços",ficha:"Minha ficha",perfil:"Minha Conta",financeiro:"Financeiro"};
+  var titles={hub:"Início",inicio:"Painel do Dia",lancar:"Lançar Horas",apont:"Apontamentos",pend:"Pendentes",projetos:"Projetos",showcase:"Vitrine de Projetos",agenda:"Agenda",cadastro:"Cadastro",escritorio:"Escritório de IA",comercial:"Comercial · CRM",brief:"Daily Brief",acervo:"Acervo Técnico",trilhas:"Trilhas",dna:"DNA & Ativos",permissoes:"Permissões",conhecimento:"Conhecimento",portfolio:"Portfólio",servicos:"Portfólio de Serviços",ficha:"Minha ficha",perfil:"Minha Conta",financeiro:"Financeiro"};
   /* Título por papel (roteado pelo servidor via state.coord): Coordenação/Admin veem o
      Resumo Executivo no Início; Equipe mantém o Painel do Dia. Só apresentação. */
   var _tit=titles[state.view]||state.view;
@@ -651,7 +651,6 @@ function render(){
   else if(state.view==="trilhas"){viewTrilhas(el);return;}
   else if(state.view==="dna"){viewDna(el);return;}
   else if(state.view==="rh"){viewRh(el);return;}
-  else if(state.view==="vitrine"){viewVitrine(el);return;}
   else if(state.view==="ficha"){viewFicha(el);return;}
   else if(state.view==="servicos"){viewServicos(el);return;}
   else if(state.view==="perfil"){viewPerfil(el);return;}
@@ -1879,7 +1878,12 @@ function viewShowcase(el){
     var podeLiberar=!!state.coord;
     var hint=podeLiberar?'Use “Liberar ao cliente” em cada projeto para abrir a visão read-only ao papel Cliente associado.'
                         :'Visão interna da vitrine. A liberação ao cliente é feita pela Coordenação.';
-    el.innerHTML=head+'<p class="muted">'+esc(hint)+'</p>'+kpis+'<div id="scgrid">'+_scGrid(proj,prod,andam,podeLiberar,false)+'</div>';
+    var casesSec='<section style="margin:6px 0 26px"><h3 style="font-size:1.05rem;margin:0 0 2px">Cases em destaque</h3>'+
+      '<p class="muted" style="font-size:.84rem;margin:0 0 10px">Show-run dos trabalhos entregues: apresentação e produtos finais demonstráveis (pranchas, relatórios, modelos 3D). A gestão edita.</p>'+
+      '<div id="vt-box"><p class="muted" style="padding:4px 0">Carregando cases…</p></div></section>';
+    el.innerHTML=head+'<p class="muted">'+esc(hint)+'</p>'+casesSec+
+      '<h3 style="font-size:1.05rem;margin:18px 0 6px">Carteira de projetos concluídos</h3>'+kpis+'<div id="scgrid">'+_scGrid(proj,prod,andam,podeLiberar,false)+'</div>';
+    if(typeof _vtLoad==="function")_vtLoad();
     var g=$("#scgrid");
     if(g&&podeLiberar){
       g.addEventListener("click",function(e){
@@ -3082,20 +3086,15 @@ function _rhForm(c){
     api("rhset",payload).then(_rhLoad).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
   };
 }
-/* ===================== VITRINE · SHOW-RUN DE CASES =====================
-   Galeria navegável dos trabalhos entregues: cada case tem apresentação em HTML (corpo) e uma
-   galeria de PRODUTOS FINAIS demonstráveis (pranchas, relatórios, modelos 3D, apresentações,
-   imagens, links). Leitura = equipe (o servidor só manda publicados a quem não é gestão).
-   Edição = gestão (j.podeGerir). Produtos do acervo abrem via POST /vitrine/arquivo (chave no
-   servidor, nunca na URL); produtos 'url' são link externo direto. Sem valor monetário. */
+/* ===================== CASES EM DESTAQUE (show-run) — EMBUTIDO NA VITRINE DE PROJETOS =========
+   Galeria curada dos trabalhos entregues: cada case tem apresentação em HTML (corpo) e uma galeria
+   de PRODUTOS FINAIS demonstráveis (pranchas, relatórios, modelos 3D, apresentações, imagens,
+   links). NÃO é aba própria — é renderizada DENTRO de viewShowcase (bloco "Cases em destaque"),
+   só para interno (equipe+); a gestão (j.podeGerir) edita. Produtos do acervo abrem via POST
+   /vitrine/arquivo (chave no servidor, nunca na URL); produtos 'url' são link externo direto.
+   Sem valor monetário. Monta-se chamando _vtLoad() num container #vt-box já presente na página. */
 var _VT_TIPOS={prancha:["📐","Prancha"],relatorio:["📄","Relatório"],modelo3d:["🧊","Modelo 3D"],apresentacao:["📊","Apresentação"],imagem:["🖼️","Imagem"],link:["🔗","Link"]};
-var _VT_AREAS=["Água e efluentes · ETE","Hidráulica · ETA","Tratabilidade · Industrial","Biogás","Licenciamento ambiental","Diagnóstico & tratabilidade","Drenagem","SIG / Geoprocessamento","Modelagem 3D / CAD","Resíduos sólidos"];
-function viewVitrine(el){
-  el.innerHTML=viewHead("Projetos & Engenharia","Vitrine · Show-run de Cases",
-    "Os trabalhos que a casa entregou, rodando de verdade: cada case abre numa ficha com a apresentação e os produtos finais (pranchas, relatórios, modelos 3D, apresentações) para ver e demonstrar. A gestão edita; a equipe navega.")+
-    '<div id="vt-box"><p class="muted" style="padding:8px 0">Carregando cases…</p></div>';
-  _vtLoad();
-}
+var _VT_AREAS=["Água e efluentes · ETE","Hidráulica · ETA","Tratabilidade · Industrial","Tratabilidade · Mineração","Biogás","Processo térmico · Secagem","Licenciamento ambiental","Drenagem","SIG / Geoprocessamento","Modelagem 3D / CAD","Resíduos sólidos"];
 function _vtTipoChip(t){var m=_VT_TIPOS[t]||["📎",t];return '<span style="display:inline-block;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.74rem;margin:0 4px 4px 0">'+m[0]+' '+esc(m[1])+'</span>';}
 function _vtLoad(){
   api("vitrine").then(function(j){
