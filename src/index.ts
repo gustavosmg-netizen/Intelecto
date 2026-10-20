@@ -5052,19 +5052,24 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       sql: "SELECT cid, titulo, cliente_cc, area, resumo, corpo, capa, capa_fonte, publicado, ordem, atualizado, u FROM vitrine_case WHERE tenant_id = ? AND cid = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " LIMIT 1",
       args: [u.tenant_id, cid],
     });
-    if (!r.rows.length) throw new Error("Case não encontrado.");
-    const c = r.rows[0] as P;
+    // Produtos SEMPRE por cid (um projeto da carteira pode ter produtos sem case curado ainda).
     const pr = await sqlite.execute({
       sql: "SELECT id, tipo, titulo, legenda, fonte, ref, ordem FROM vitrine_produto WHERE tenant_id = ? AND cid = ? ORDER BY ordem, id",
       args: [u.tenant_id, cid],
     });
-    return { ok: true, caso: { ...c, publicado: Number(c.publicado) ? 1 : 0 }, produtos: pr.rows, podeGerir: gerir };
+    // Galeria unificada: um card de PROJETO (carteira) pode abrir a ficha sem case curado ainda.
+    // Nesse caso devolvemos caso=null (não erro) — o front mostra entregáveis/progresso do projeto
+    // e, p/ a gestão, o botão de adicionar apresentação/produtos (cria o case por cc).
+    const c = r.rows.length ? (r.rows[0] as P) : null;
+    return { ok: true, caso: c ? { ...c, publicado: Number(c.publicado) ? 1 : 0 } : null, produtos: pr.rows, podeGerir: gerir };
   }
 
   if (action === "vitrineSet") {
     const u = await auth(p);
     if (!u.coord) throw new Error("Apenas a Coordenação edita a Vitrine.");
-    let cid = String(p.cid || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 48);
+    // cid preserva pontos e caixa: na galeria unificada, o cid de um case ligado a projeto É o
+    // centro de custo do projeto (ex.: "1.25.2.9" ou "0174GG"), que precisa casar de volta.
+    let cid = String(p.cid || "").trim().replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64);
     if (!cid) cid = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const titulo = (String(p.titulo || "").trim() || "(sem título)").slice(0, 200);
     const cc = String(p.cliente_cc || "").slice(0, 60);
@@ -5101,8 +5106,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (!u.coord) throw new Error("Apenas a Coordenação edita os produtos da Vitrine.");
     const cid = String(p.cid || "").trim();
     if (!cid) throw new Error("Case não informado.");
-    const exists = await sqlite.execute({ sql: "SELECT 1 FROM vitrine_case WHERE tenant_id = ? AND cid = ? LIMIT 1", args: [u.tenant_id, cid] });
-    if (!exists.rows.length) throw new Error("Case não encontrado.");
+    // Galeria unificada: o cid pode ser o centro de custo de um projeto que ainda não tem case
+    // curado — o produto fica ligado ao cid de qualquer forma (a ficha mescla por cid). Por isso
+    // NÃO exigimos uma linha em vitrine_case aqui.
     let id = String(p.id || "").trim();
     if (!id) id = "vp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const TIPOS = ["prancha", "relatorio", "modelo3d", "apresentacao", "imagem", "link"];

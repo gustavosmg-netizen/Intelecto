@@ -1868,7 +1868,7 @@ function _scKpis(proj,prod){
 }
 function _scRefreshKpis(proj,prod){var k=$("#sckpis");if(k)k.outerHTML=_scKpis(proj,prod);}
 function viewShowcase(el){
-  var head=viewHead("Vitrine","Vitrine de Projetos","Galeria executiva de projetos e entregas por cliente e status.");
+  var head=viewHead("Vitrine","Vitrine de Projetos","Galeria única dos trabalhos entregues: cada card abre a mesma ficha — apresentação, produtos finais, entregáveis e andamento.");
   el.innerHTML=head+'<p class="muted" style="padding:10px 0">Carregando…</p>';
   api("showcase").then(function(j){
     var proj=(j.proj||[]).slice(), prod=j.prod||[], andam=j.andam||{};
@@ -1879,32 +1879,178 @@ function viewShowcase(el){
       el.innerHTML=hc+_scGrid(proj,prod,andam,false,true);
       return;
     }
-    /* Interno: galeria com KPIs; Coordenação/Admin ganham o controle de liberação. */
-    var kpis=_scKpis(proj,prod);
-    var podeLiberar=!!state.coord;
-    var hint=podeLiberar?'Use “Liberar ao cliente” em cada projeto para abrir a visão read-only ao papel Cliente associado.'
-                        :'Visão interna da vitrine. A liberação ao cliente é feita pela Coordenação.';
-    var casesSec='<section style="margin:6px 0 26px"><h3 style="font-size:1.05rem;margin:0 0 2px">Cases em destaque</h3>'+
-      '<p class="muted" style="font-size:.84rem;margin:0 0 10px">Show-run dos trabalhos entregues: apresentação e produtos finais demonstráveis (pranchas, relatórios, modelos 3D). A gestão edita.</p>'+
-      '<div id="vt-box"><p class="muted" style="padding:4px 0">Carregando cases…</p></div></section>';
-    el.innerHTML=head+'<p class="muted">'+esc(hint)+'</p>'+casesSec+
-      '<h3 style="font-size:1.05rem;margin:18px 0 6px">Carteira de projetos concluídos</h3>'+kpis+'<div id="scgrid">'+_scGrid(proj,prod,andam,podeLiberar,false)+'</div>';
-    if(typeof _vtLoad==="function")_vtLoad();
-    var g=$("#scgrid");
-    if(g&&podeLiberar){
-      g.addEventListener("click",function(e){
-        var b=e.target.closest?e.target.closest("[data-lib]"):null;if(!b)return;
-        var cc=b.getAttribute("data-lib"), on=b.getAttribute("data-on")==="1"?0:1;
-        b.disabled=true;
-        api("liberarcliente",{cc:cc,on:on}).then(function(){
-          var p=proj.find(function(x){return String(x.cc)===String(cc);});if(p)p.liberado_cliente=on;
-          toast(on?"Projeto liberado ao cliente.":"Liberação removida.");
-          var ng=$("#scgrid");if(ng)ng.innerHTML=_scGrid(proj,prod,andam,true,false);
-          _scRefreshKpis(proj,prod); /* recomputa os KPIs do topo NA HORA (mesma fonte do grid) */
-        }).catch(function(err){toast(err.message||"Falha ao liberar.");b.disabled=false;});
-      });
-    }
+    /* Interno: UMA galeria de CASES. Cada projeto concluído e cada case curado são o MESMO
+       modelo de card e abrem a MESMA ficha. Carrega os cases curados (ação vitrine) e mescla. */
+    api("vitrine").then(function(jv){
+      _SCV={proj:proj,prod:prod,andam:andam,cases:(jv.cases||[]),pode:!!jv.podeGerir,el:el,head:head};
+      _scvRender();
+    }).catch(function(e){
+      // Sem acesso à camada de cases: ao menos mostra os projetos (sem apresentação/produtos).
+      _SCV={proj:proj,prod:prod,andam:andam,cases:[],pode:!!state.coord,el:el,head:head};
+      _scvRender();
+    });
   }).catch(function(e){el.innerHTML=head+'<p class="err" style="padding:14px">Não foi possível carregar: '+esc(e.message||e)+'</p>';});
+}
+/* ===== VITRINE UNIFICADA (galeria única = projetos concluídos + cases curados, 1 modelo) ===== */
+var _SCV=null;
+function _scvCaseByKey(){var m={};(_SCV.cases||[]).forEach(function(c){m[String(c.cid)]=c;});return m;}
+function _scvItems(){
+  var byKey=_scvCaseByKey(), used={}, itens=[];
+  // 1) Projetos concluídos (carteira) — cada um é um case; enriquecido pelo case curado de mesmo cc.
+  (_SCV.proj||[]).forEach(function(p){
+    var c=byKey[String(p.cc)]; if(c)used[String(p.cc)]=1;
+    itens.push({key:String(p.cc),titulo:(c&&c.titulo)||p.projeto||p.cc,cc:p.cc,area:(c&&c.area)||p.tipo||"",
+      resumo:(c&&c.resumo)||"",isProj:true,proj:p,hasCase:!!c,publicado:c?Number(c.publicado):1,nprod:c?(c.produtos||0):0,ordem:c?(c.ordem||0):9999});
+  });
+  // 2) Cases curados sem projeto concluído correspondente (ex.: os cases-modelo da casa).
+  (_SCV.cases||[]).forEach(function(c){
+    if(used[String(c.cid)])return;
+    itens.push({key:String(c.cid),titulo:c.titulo||c.cid,cc:c.cliente_cc||"",area:c.area||"",resumo:c.resumo||"",
+      isProj:false,proj:null,hasCase:true,publicado:Number(c.publicado),nprod:c.produtos||0,ordem:c.ordem||0});
+  });
+  // Curados primeiro (por ordem), depois projetos (por cc).
+  itens.sort(function(a,b){
+    var ca=a.hasCase&&!a.isProj?0:1, cb=b.hasCase&&!b.isProj?0:1;
+    if(ca!==cb)return ca-cb;
+    if(ca===0)return (a.ordem||0)-(b.ordem||0);
+    return String(a.cc).localeCompare(String(b.cc),undefined,{numeric:true});
+  });
+  return itens;
+}
+function _scvCard(it){
+  var icon=it.isProj?'🗂️':'✨';
+  var capa='<div class="vt-capa" style="height:72px;border-radius:10px 10px 0 0;background:linear-gradient(135deg,var(--brand,#1f7a3d),var(--brand-d,#155c2d));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem">'+icon+'</div>';
+  var badge=_SCV.pode?(it.hasCase?(it.publicado?'<span class="tag s-APROVADO" style="font-size:.66rem">publicado</span>':'<span class="tag s-DEVOLVIDO" style="font-size:.66rem">rascunho</span>'):'<span class="tag" style="font-size:.66rem;opacity:.7">sem apresentação</span>'):'';
+  var statusPill=it.isProj?_pill(it.proj.status):'';
+  var chips='<div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap">'+(it.area?_vtTipoChipArea(it.area):'')+statusPill+badge+'</div>';
+  var sub=esc(it.cc||'—')+(it.nprod?(' · '+it.nprod+' produto(s)'):'');
+  return '<div class="card vt-card" style="padding:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column" data-key="'+esc(it.key)+'">'+capa+
+    '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;flex:1">'+chips+
+      '<div style="font-weight:700;font-size:1rem;line-height:1.25">'+esc(it.titulo)+'</div>'+
+      '<div class="muted" style="font-size:.76rem">'+sub+'</div>'+
+      (it.resumo?'<p class="muted" style="font-size:.84rem;margin:4px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">'+esc(it.resumo)+'</p>':'')+
+    '</div></div>';
+}
+function _scvRender(){
+  var el=_SCV.el, itens=_scvItems();
+  var hint=_SCV.pode?'Clique num card para abrir a ficha. A gestão adiciona apresentação e produtos finais a qualquer um, e libera ao cliente.'
+                    :'Clique num card para ver a apresentação, os produtos finais e o andamento.';
+  var grid=itens.length?('<div class="vt-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">'+itens.map(_scvCard).join("")+'</div>')
+                       :'<div class="card"><p class="muted" style="margin:0">Nenhum projeto concluído ou case ainda.</p></div>';
+  el.innerHTML=_SCV.head+'<p class="muted">'+esc(hint)+'</p><div id="scv-box">'+grid+'</div>';
+  var box=$("#scv-box");
+  if(box)box.querySelectorAll(".vt-card").forEach(function(card){card.onclick=function(){_scvFicha(card.getAttribute("data-key"));};});
+}
+function _scvFicha(key){
+  var el=_SCV.el; el.innerHTML=_SCV.head+'<p class="muted" style="padding:8px 0">Abrindo…</p>';
+  var proj=(_SCV.proj||[]).filter(function(p){return String(p.cc)===String(key);})[0]||null;
+  api("vitrineFicha",{cid:key}).then(function(j){
+    var caso=j.caso||null, prods=j.produtos||[], pode=!!j.podeGerir;
+    var titulo=(caso&&caso.titulo)||(proj&&(proj.projeto||proj.cc))||key;
+    var area=(caso&&caso.area)||(proj&&proj.tipo)||"";
+    var volta='<button class="btn sm sec" type="button" id="scv-voltar">← Voltar à vitrine</button>';
+    var pill=proj?_pill(proj.status):'';
+    var pubBadge=(pode&&caso)?(caso.publicado?' <span class="tag s-APROVADO" style="font-size:.66rem">publicado</span>':' <span class="tag s-DEVOLVIDO" style="font-size:.66rem">rascunho</span>'):'';
+    var meta='<div class="muted" style="font-size:.82rem;margin:2px 0 10px">'+esc(area)+((area&&key)?' · ':'')+esc(key)+'</div>';
+    // Ações de gestão
+    var acoes="";
+    if(pode){
+      var bts=[];
+      bts.push('<button class="btn sm sec" type="button" id="scv-edit">'+(caso?'Editar apresentação':'Adicionar apresentação')+'</button>');
+      if(caso)bts.push('<button class="btn sm" type="button" id="scv-pub">'+(caso.publicado?'Despublicar':'Publicar')+'</button>');
+      if(proj){var on=Number(proj.liberado_cliente)===1;bts.push('<button class="btn sm '+(on?'':'sec')+'" type="button" id="scv-lib" data-on="'+(on?1:0)+'">'+(on?'✓ Liberado — remover':'Liberar ao cliente')+'</button>');}
+      if(caso&&!proj)bts.push('<button class="btn sm danger" type="button" id="scv-del">Remover case</button>');
+      acoes='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px">'+bts.join("")+'</div>';
+    }
+    // Apresentação
+    var apres=caso&&caso.corpo?('<div class="card" style="padding:16px 18px;line-height:1.55">'+caso.corpo+'</div>')
+             :(pode?'<div class="card"><p class="muted" style="margin:0">Sem apresentação ainda. Use “'+(caso?'Editar':'Adicionar')+' apresentação”.</p></div>':'');
+    // Produtos finais
+    var galeria=prods.map(function(p){
+      var m=_VT_TIPOS[p.tipo]||["📎",p.tipo],acao;
+      if(p.fonte==="url"){acao=(p.tipo==="imagem")?'<a href="'+esc(p.ref)+'" target="_blank" rel="noopener"><img src="'+esc(p.ref)+'" alt="" style="max-width:100%;border-radius:8px;display:block"></a>':'<a class="btn sm sec" href="'+esc(p.ref)+'" target="_blank" rel="noopener">abrir ↗</a>';}
+      else{acao='<button class="btn sm sec scv-abrir" type="button" data-key="'+esc(key)+'" data-id="'+esc(p.id)+'">'+(p.tipo==="modelo3d"?"demonstrar ▶":p.tipo==="imagem"?"ver imagem":"abrir →")+'</button>';}
+      var ed=pode?'<button class="btn sm scv-ped" type="button" data-id="'+esc(p.id)+'" style="margin-left:6px">editar</button>':'';
+      var dl=pode?'<button class="btn sm danger scv-pdel" type="button" data-id="'+esc(p.id)+'" title="Remover" style="margin-left:6px">×</button>':'';
+      return '<div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;font-size:.92rem">'+m[0]+' '+esc(p.titulo)+'</div>'+(p.legenda?'<div class="muted" style="font-size:.8rem">'+esc(p.legenda)+'</div>':'')+'<div class="muted" style="font-size:.72rem">'+esc(m[1])+' · '+(p.fonte==="url"?"link externo":"acervo")+'</div><div style="margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">'+acao+ed+dl+'</div></div>';
+    }).join("");
+    var addProd=pode?'<div style="margin:10px 0"><button class="btn sm" type="button" id="scv-pnovo">+ Adicionar produto final</button></div>':'';
+    var galWrap='<h3 style="font-size:1.02rem;margin:18px 0 8px">Produtos finais</h3>'+addProd+
+      (prods.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">'+galeria+'</div>':'<p class="muted" style="margin:0">Nenhum produto final anexado ainda.'+(pode?' Use “Adicionar produto final”.':'')+'</p>');
+    // Entregáveis + andamento do projeto (quando é um projeto da carteira)
+    var projSec="";
+    if(proj){
+      var ent=_scEntreg(prod,String(proj.cc));
+      var entHtml=ent.length?('<div style="margin-top:6px">'+ent.map(function(x){return '<span class="tag tag-brand" style="margin:0 4px 4px 0;display:inline-block">'+esc(x.titulo||("#"+x.n))+'</span>';}).join("")+'</div>'):'<p class="muted" style="margin:0">Sem entregáveis catalogados.</p>';
+      var a=(_SCV.andam||{})[proj.cc],prog="";
+      if(a&&a.total>0){var pct=Math.round(a.etapa/a.total*100);if(pct>100)pct=100;if(pct<0)pct=0;
+        prog='<div style="margin-top:10px;max-width:420px"><div style="display:flex;justify-content:space-between;font-size:.74rem;color:var(--tx2)"><span>Etapa '+esc(a.etapa)+' de '+esc(a.total)+(a.detalhe?' · '+esc(a.detalhe):'')+'</span><span>'+pct+'%</span></div><div style="height:6px;background:var(--chart-track);border-radius:999px;margin-top:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:var(--brand)"></div></div></div>';}
+      projSec='<h3 style="font-size:1.02rem;margin:18px 0 8px">Entregáveis & andamento</h3>'+entHtml+prog;
+    }
+    el.innerHTML=_SCV.head+volta+'<h2 style="margin:14px 0 2px;font-size:1.4rem">'+esc(titulo)+pill+pubBadge+'</h2>'+meta+acoes+
+      (caso&&caso.resumo?'<p style="font-size:.95rem;margin:0 0 12px">'+esc(caso.resumo)+'</p>':(proj?'':''))+
+      apres+galWrap+projSec;
+    $("#scv-voltar").onclick=_scvRender;
+    el.querySelectorAll(".scv-abrir").forEach(function(b){b.onclick=function(){_vtAbrirProd(b.getAttribute("data-key"),b.getAttribute("data-id"),b);};});
+    if(pode){
+      $("#scv-edit").onclick=function(){_scvForm(key,caso,proj);};
+      if(caso){var pb=$("#scv-pub");if(pb)pb.onclick=function(){api("vitrineSet",Object.assign({},caso,{publicado:caso.publicado?0:1})).then(function(){_scvFicha(key);}).catch(function(e){alert(e.message||e);});};}
+      if(proj){var lb=$("#scv-lib");if(lb)lb.onclick=function(){var on=lb.getAttribute("data-on")==="1"?0:1;lb.disabled=true;api("liberarcliente",{cc:proj.cc,on:on}).then(function(){proj.liberado_cliente=on;toast(on?"Projeto liberado ao cliente.":"Liberação removida.");_scvFicha(key);}).catch(function(e){lb.disabled=false;alert(e.message||e);});};}
+      var db=$("#scv-del");if(db)db.onclick=function(){if(!confirm("Remover este case da vitrine? (Os arquivos do acervo não são apagados.)"))return;api("vitrineDel",{cid:key}).then(function(){_scvReloadCases(_scvRender);}).catch(function(e){alert(e.message||e);});};
+      var pn=$("#scv-pnovo");if(pn)pn.onclick=function(){_scvProdForm(key,null);};
+      el.querySelectorAll(".scv-ped").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");var pr=prods.filter(function(x){return x.id===id;})[0];_scvProdForm(key,pr||null);};});
+      el.querySelectorAll(".scv-pdel").forEach(function(b){b.onclick=function(){if(!confirm("Remover este produto?"))return;api("vitrineProdDel",{id:b.getAttribute("data-id")}).then(function(){_scvFicha(key);}).catch(function(e){alert(e.message||e);});};});
+    }
+  }).catch(function(e){var el2=_SCV.el;el2.innerHTML=_SCV.head+'<button class="btn sm sec" type="button" onclick="_scvRender()">← Voltar</button><p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+function _scvReloadCases(cb){api("vitrine").then(function(jv){_SCV.cases=jv.cases||[];_SCV.pode=!!jv.podeGerir;if(cb)cb();}).catch(function(){if(cb)cb();});}
+function _scvForm(key,caso,proj){
+  caso=caso||{};var el=_SCV.el;
+  var areaOpts=_VT_AREAS.map(function(a){return '<option value="'+esc(a)+'">'+esc(a)+'</option>';}).join("");
+  var titulo=caso.titulo||(proj&&(proj.projeto||proj.cc))||"";
+  var cc=caso.cliente_cc||(proj&&proj.cc)||key;
+  var area=caso.area||(proj&&proj.tipo)||"";
+  el.innerHTML=_SCV.head+'<div class="card"><div style="font-weight:700;margin-bottom:10px">'+(caso.cid?'Editar apresentação':'Apresentação do case')+'</div>'+
+    '<div class="field"><label>Título</label><input id="scv-f-tit" value="'+esc(titulo)+'"></div>'+
+    '<div class="field"><label>Cliente (centro de custo / código de contrato — nunca o nome real)</label><input id="scv-f-cc" value="'+esc(cc)+'"></div>'+
+    '<div class="field"><label>Área de atuação</label><input id="scv-f-area" list="scv-arealist" value="'+esc(area)+'"><datalist id="scv-arealist">'+areaOpts+'</datalist></div>'+
+    '<div class="field"><label>Resumo (capa do card)</label><textarea id="scv-f-res" rows="2" style="resize:vertical">'+esc(caso.resumo||"")+'</textarea></div>'+
+    '<div class="field"><label>Corpo da apresentação (HTML — títulos, parágrafos, listas, figuras)</label><textarea id="scv-f-corpo" rows="10" style="resize:vertical;font-family:var(--mono,monospace);font-size:.82rem">'+esc(caso.corpo||"")+'</textarea></div>'+
+    '<div class="row" style="gap:16px;align-items:center;flex-wrap:wrap"><div class="field" style="margin:0;max-width:140px"><label>Ordem</label><input id="scv-f-ord" type="number" min="0" value="'+esc(caso.ordem||0)+'"></div>'+
+      '<label class="pmchk" style="margin-top:18px"><input type="checkbox" id="scv-f-pub"'+((caso.cid?caso.publicado:1)?' checked':'')+'> Publicado (visível à equipe)</label></div>'+
+    '<div id="scv-f-msg" class="muted" style="font-size:.78rem;min-height:16px;margin:6px 0"></div>'+
+    '<div style="display:flex;gap:8px"><button class="btn sm" type="button" id="scv-f-salvar">Salvar</button><button class="btn sm sec" type="button" id="scv-f-cancel">Cancelar</button></div></div>';
+  $("#scv-f-cancel").onclick=function(){_scvFicha(key);};
+  $("#scv-f-salvar").onclick=function(){
+    var m=$("#scv-f-msg");if(m){m.textContent="Salvando…";m.classList.remove("err");}
+    var payload={cid:key,titulo:$("#scv-f-tit").value,cliente_cc:$("#scv-f-cc").value,area:$("#scv-f-area").value,
+      resumo:$("#scv-f-res").value,corpo:$("#scv-f-corpo").value,capa_fonte:"url",ordem:Number($("#scv-f-ord").value)||0,publicado:$("#scv-f-pub").checked?1:0};
+    if(!String(payload.titulo).trim()){if(m){m.textContent="Informe o título.";m.classList.add("err");}return;}
+    api("vitrineSet",payload).then(function(){_scvReloadCases(function(){_scvFicha(key);});}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
+  };
+}
+function _scvProdForm(key,p){
+  p=p||{};var el=_SCV.el;
+  var tipoOpts=Object.keys(_VT_TIPOS).map(function(t){return '<option value="'+t+'"'+(p.tipo===t?' selected':'')+'>'+_VT_TIPOS[t][0]+' '+esc(_VT_TIPOS[t][1])+'</option>';}).join("");
+  var fonte=p.fonte==="url"?"url":"acervo";
+  el.innerHTML=_SCV.head+'<div class="card"><div style="font-weight:700;margin-bottom:10px">'+(p.id?'Editar produto':'Adicionar produto final')+'</div>'+
+    '<div class="field"><label>Tipo</label><select id="scv-p-tipo">'+tipoOpts+'</select></div>'+
+    '<div class="field"><label>Título</label><input id="scv-p-tit" value="'+esc(p.titulo||"")+'" placeholder="Prancha executiva 01 — Planta geral"></div>'+
+    '<div class="field"><label>Legenda (opcional)</label><input id="scv-p-leg" value="'+esc(p.legenda||"")+'"></div>'+
+    '<div class="field"><label>Fonte</label><select id="scv-p-fonte"><option value="acervo"'+(fonte==="acervo"?" selected":"")+'>Arquivo do acervo (bucket ACERVO)</option><option value="url"'+(fonte==="url"?" selected":"")+'>Link externo (URL)</option></select></div>'+
+    '<div class="field"><label id="scv-p-reflabel">'+(fonte==="url"?"URL (http/https)":"Caminho no acervo (ex.: vitrine/0174GG/arquivo.pdf)")+'</label><input id="scv-p-ref" value="'+esc(p.ref||"")+'" placeholder="'+(fonte==="url"?"https://…":"pasta/arquivo.pdf")+'"></div>'+
+    '<div class="field" style="max-width:140px"><label>Ordem</label><input id="scv-p-ord" type="number" min="0" value="'+esc(p.ordem||0)+'"></div>'+
+    '<div id="scv-p-msg" class="muted" style="font-size:.78rem;min-height:16px;margin:6px 0"></div>'+
+    '<div style="display:flex;gap:8px"><button class="btn sm" type="button" id="scv-p-salvar">Salvar</button><button class="btn sm sec" type="button" id="scv-p-cancel">Cancelar</button></div></div>';
+  var reflbl=$("#scv-p-reflabel");
+  $("#scv-p-fonte").onchange=function(){var u=$("#scv-p-fonte").value==="url";if(reflbl)reflbl.textContent=u?"URL (http/https)":"Caminho no acervo (ex.: vitrine/0174GG/arquivo.pdf)";$("#scv-p-ref").placeholder=u?"https://…":"pasta/arquivo.pdf";};
+  $("#scv-p-cancel").onclick=function(){_scvFicha(key);};
+  $("#scv-p-salvar").onclick=function(){
+    var m=$("#scv-p-msg");if(m){m.textContent="Salvando…";m.classList.remove("err");}
+    var payload={cid:key,id:p.id||"",tipo:$("#scv-p-tipo").value,titulo:$("#scv-p-tit").value,legenda:$("#scv-p-leg").value,fonte:$("#scv-p-fonte").value,ref:$("#scv-p-ref").value,ordem:Number($("#scv-p-ord").value)||0};
+    if(!String(payload.ref).trim()){if(m){m.textContent="Informe o caminho no acervo ou a URL.";m.classList.add("err");}return;}
+    api("vitrineProdSet",payload).then(function(){_scvFicha(key);}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
+  };
 }
 
 /* E.C.T.P = empresa.cliente.tipo.projeto. Decompõe um centro de custo. */
@@ -3110,94 +3256,14 @@ function _rhForm(c){
     api("rhset",payload).then(_rhLoad).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
   };
 }
-/* ===================== CASES EM DESTAQUE (show-run) — EMBUTIDO NA VITRINE DE PROJETOS =========
-   Galeria curada dos trabalhos entregues: cada case tem apresentação em HTML (corpo) e uma galeria
-   de PRODUTOS FINAIS demonstráveis (pranchas, relatórios, modelos 3D, apresentações, imagens,
-   links). NÃO é aba própria — é renderizada DENTRO de viewShowcase (bloco "Cases em destaque"),
-   só para interno (equipe+); a gestão (j.podeGerir) edita. Produtos do acervo abrem via POST
-   /vitrine/arquivo (chave no servidor, nunca na URL); produtos 'url' são link externo direto.
-   Sem valor monetário. Monta-se chamando _vtLoad() num container #vt-box já presente na página. */
+/* ===== Helpers da VITRINE unificada (usados por _scv* em viewShowcase) =====
+   A galeria de cases NÃO é aba própria nem bloco separado — é a própria "Vitrine de Projetos"
+   (viewShowcase/_scv*), uma galeria única onde cada projeto concluído e cada case curado são o
+   MESMO card e abrem a MESMA ficha. Produtos do acervo abrem via POST /vitrine/arquivo (chave no
+   servidor, nunca na URL); produtos 'url' são link externo direto. Sem valor monetário. */
 var _VT_TIPOS={prancha:["📐","Prancha"],relatorio:["📄","Relatório"],modelo3d:["🧊","Modelo 3D"],apresentacao:["📊","Apresentação"],imagem:["🖼️","Imagem"],link:["🔗","Link"]};
 var _VT_AREAS=["Água e efluentes · ETE","Hidráulica · ETA","Tratabilidade · Industrial","Tratabilidade · Mineração","Biogás","Processo térmico · Secagem","Licenciamento ambiental","Drenagem","SIG / Geoprocessamento","Modelagem 3D / CAD","Resíduos sólidos"];
-function _vtTipoChip(t){var m=_VT_TIPOS[t]||["📎",t];return '<span style="display:inline-block;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.74rem;margin:0 4px 4px 0">'+m[0]+' '+esc(m[1])+'</span>';}
-function _vtLoad(){
-  api("vitrine").then(function(j){
-    var box=$("#vt-box");if(!box)return;
-    var cs=j.cases||[],pode=!!j.podeGerir;
-    var head=pode?'<div style="margin-bottom:12px;display:flex;gap:8px;align-items:center"><button class="btn sm" type="button" id="vt-novo">+ Novo case</button><span class="muted" style="font-size:.78rem">Você é gestão: vê rascunhos e edita. A equipe vê só os publicados.</span></div>':'';
-    if(!cs.length){box.innerHTML=head+'<div class="card"><p class="muted" style="margin:0">Nenhum case na vitrine ainda.'+(pode?' Clique em “Novo case” para começar.':'')+'</p></div>';if(pode)$("#vt-novo").onclick=function(){_vtForm(null);};return;}
-    var cards=cs.map(function(c){
-      var capa=c.capa?('<div class="vt-capa" style="height:120px;border-radius:10px 10px 0 0;overflow:hidden;background:var(--brand-light,#eef4f0) center/cover no-repeat'+(c.capa_fonte!=="acervo"?';background-image:url('+esc(c.capa).replace(/[()]/g,"")+')':'')+'"></div>'):'<div class="vt-capa" style="height:72px;border-radius:10px 10px 0 0;background:linear-gradient(135deg,var(--brand,#1f7a3d),var(--brand-d,#155c2d));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.6rem">✨</div>';
-      var tag=pode?(c.publicado?'<span class="tag s-APROVADO" style="font-size:.68rem">publicado</span>':'<span class="tag s-DEVOLVIDO" style="font-size:.68rem">rascunho</span>'):'';
-      var acoes=pode?'<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm sec" type="button" data-ed="'+esc(c.cid)+'">Editar</button><button class="btn sm danger" type="button" data-del="'+esc(c.cid)+'">Remover</button></div>':'';
-      return '<div class="card vt-card" style="padding:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column" data-cid="'+esc(c.cid)+'">'+capa+
-        '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;flex:1">'+
-          '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">'+(c.area?_vtTipoChipArea(c.area):'')+tag+'</div>'+
-          '<div style="font-weight:700;font-size:1rem;line-height:1.25">'+esc(c.titulo)+'</div>'+
-          '<div class="muted" style="font-size:.76rem">'+esc(c.cliente_cc||'—')+' · '+(c.produtos||0)+' produto(s)</div>'+
-          (c.resumo?'<p class="muted" style="font-size:.84rem;margin:4px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">'+esc(c.resumo)+'</p>':'')+
-          acoes+
-        '</div>'+
-      '</div>';
-    }).join("");
-    box.innerHTML=head+'<div class="vt-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">'+cards+'</div>';
-    box.querySelectorAll(".vt-card").forEach(function(card){card.onclick=function(e){if(e.target.closest("button"))return;_vtFicha(card.getAttribute("data-cid"));};});
-    if(pode){
-      $("#vt-novo").onclick=function(){_vtForm(null);};
-      box.querySelectorAll("[data-ed]").forEach(function(b){b.onclick=function(){_vtFichaThen(b.getAttribute("data-ed"),function(j){_vtForm(j.caso);});};});
-      box.querySelectorAll("[data-del]").forEach(function(b){b.onclick=function(){var cid=b.getAttribute("data-del");if(!confirm("Remover este case da vitrine? (Os arquivos do acervo não são apagados.)"))return;api("vitrineDel",{cid:cid}).then(_vtLoad).catch(function(e){alert(e.message||e);});};});
-    }
-  }).catch(function(e){var box=$("#vt-box");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
-}
 function _vtTipoChipArea(a){return '<span style="display:inline-block;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.72rem">'+esc(a)+'</span>';}
-function _vtFichaThen(cid,cb){api("vitrineFicha",{cid:cid}).then(cb).catch(function(e){alert(e.message||e);});}
-function _vtFicha(cid){
-  var box=$("#vt-box");if(!box)return;
-  box.innerHTML='<p class="muted" style="padding:8px 0">Abrindo case…</p>';
-  api("vitrineFicha",{cid:cid}).then(function(j){
-    if(!$("#vt-box"))return;var c=j.caso||{},prods=j.produtos||[],pode=!!j.podeGerir;
-    var volta='<button class="btn sm sec" type="button" id="vt-voltar">← Voltar à vitrine</button>';
-    var tag=pode?(c.publicado?' <span class="tag s-APROVADO" style="font-size:.68rem">publicado</span>':' <span class="tag s-DEVOLVIDO" style="font-size:.68rem">rascunho</span>'):'';
-    var meta='<div class="muted" style="font-size:.82rem;margin:2px 0 10px">'+esc(c.area||'')+(c.area&&c.cliente_cc?' · ':'')+esc(c.cliente_cc||'')+'</div>';
-    var acoesCase=pode?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px"><button class="btn sm sec" type="button" id="vt-edit">Editar case</button><button class="btn sm" type="button" id="vt-pub">'+(c.publicado?'Despublicar':'Publicar')+'</button></div>':'';
-    var corpo=c.corpo?('<div class="vt-corpo card" style="padding:16px 18px;line-height:1.55">'+c.corpo+'</div>'):'';
-    // Galeria de produtos finais
-    var galeria=prods.map(function(p){
-      var m=_VT_TIPOS[p.tipo]||["📎",p.tipo];
-      var acao;
-      if(p.fonte==="url"){
-        if(p.tipo==="imagem"){acao='<a href="'+esc(p.ref)+'" target="_blank" rel="noopener"><img src="'+esc(p.ref)+'" alt="" style="max-width:100%;border-radius:8px;display:block"></a>';}
-        else{acao='<a class="btn sm sec" href="'+esc(p.ref)+'" target="_blank" rel="noopener">abrir ↗</a>';}
-      }else{
-        acao='<button class="btn sm sec vt-abrir" type="button" data-cid="'+esc(cid)+'" data-id="'+esc(p.id)+'">'+(p.tipo==="modelo3d"?"demonstrar ▶":p.tipo==="imagem"?"ver imagem":"abrir →")+'</button>';
-      }
-      var del=pode?'<button class="btn sm danger vt-pdel" type="button" data-id="'+esc(p.id)+'" title="Remover produto" style="margin-left:6px">×</button>':'';
-      var edit=pode?'<button class="btn sm vt-ped" type="button" data-id="'+esc(p.id)+'" title="Editar" style="margin-left:6px">editar</button>':'';
-      return '<div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px">'+
-        '<div style="font-weight:650;font-size:.92rem">'+m[0]+' '+esc(p.titulo)+'</div>'+
-        (p.legenda?'<div class="muted" style="font-size:.8rem">'+esc(p.legenda)+'</div>':'')+
-        '<div class="muted" style="font-size:.72rem">'+esc(m[1])+' · '+(p.fonte==="url"?"link externo":"acervo")+'</div>'+
-        '<div style="margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">'+acao+edit+del+'</div>'+
-      '</div>';
-    }).join("");
-    var addProd=pode?'<div style="margin:10px 0"><button class="btn sm" type="button" id="vt-pnovo">+ Adicionar produto final</button></div>':'';
-    var galWrap='<h3 style="font-size:1.02rem;margin:18px 0 8px">Produtos finais</h3>'+addProd+
-      (prods.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">'+galeria+'</div>':'<p class="muted" style="margin:0">Nenhum produto final anexado ainda.'+(pode?' Use “Adicionar produto final”.':'')+'</p>');
-    box.innerHTML=volta+
-      '<h2 style="margin:14px 0 2px;font-size:1.4rem">'+esc(c.titulo)+tag+'</h2>'+meta+acoesCase+
-      (c.resumo?'<p style="font-size:.95rem;margin:0 0 12px">'+esc(c.resumo)+'</p>':'')+
-      corpo+galWrap;
-    $("#vt-voltar").onclick=_vtLoad;
-    box.querySelectorAll(".vt-abrir").forEach(function(b){b.onclick=function(){_vtAbrirProd(b.getAttribute("data-cid"),b.getAttribute("data-id"),b);};});
-    if(pode){
-      $("#vt-edit").onclick=function(){_vtForm(c);};
-      $("#vt-pub").onclick=function(){api("vitrineSet",Object.assign({},c,{publicado:c.publicado?0:1})).then(function(){_vtFicha(cid);}).catch(function(e){alert(e.message||e);});};
-      $("#vt-pnovo").onclick=function(){_vtProdForm(cid,null);};
-      box.querySelectorAll(".vt-ped").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");var pr=prods.filter(function(x){return x.id===id;})[0];_vtProdForm(cid,pr||null);};});
-      box.querySelectorAll(".vt-pdel").forEach(function(b){b.onclick=function(){if(!confirm("Remover este produto do case?"))return;api("vitrineProdDel",{id:b.getAttribute("data-id")}).then(function(){_vtFicha(cid);}).catch(function(e){alert(e.message||e);});};});
-    }
-  }).catch(function(e){var box=$("#vt-box");if(box)box.innerHTML='<button class="btn sm sec" type="button" onclick="_vtLoad()">← Voltar</button><p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
-}
 /* Abre/demonstra um produto do acervo: POST autenticado → blob → nova aba (chave fica no servidor). */
 function _vtAbrirProd(cid,id,btn){
   var txt=btn?btn.textContent:"";if(btn){btn.textContent="abrindo…";btn.disabled=true;}
@@ -3206,58 +3272,6 @@ function _vtAbrirProd(cid,id,btn){
     .then(function(b){var u=URL.createObjectURL(b);window.open(u,"_blank","noopener");setTimeout(function(){URL.revokeObjectURL(u);},60000);})
     .catch(function(e){alert("Não foi possível abrir: "+(e.message||e));})
     .then(function(){if(btn){btn.textContent=txt||"abrir →";btn.disabled=false;}});
-}
-function _vtForm(c){
-  c=c||{};var box=$("#vt-box");if(!box)return;
-  var areaOpts=_VT_AREAS.map(function(a){return '<option value="'+esc(a)+'">'+esc(a)+'</option>';}).join("");
-  box.innerHTML='<div class="card"><div style="font-weight:700;margin-bottom:10px">'+(c.cid?'Editar case':'Novo case')+'</div>'+
-    '<div class="field"><label>Título</label><input id="vt-f-tit" value="'+esc(c.titulo||"")+'" placeholder="Projeto executivo de ETE compacta"></div>'+
-    '<div class="field"><label>Cliente (centro de custo — nunca o nome real)</label><input id="vt-f-cc" value="'+esc(c.cliente_cc||"")+'" placeholder="E.24.03.01"></div>'+
-    '<div class="field"><label>Área de atuação</label><input id="vt-f-area" list="vt-arealist" value="'+esc(c.area||"")+'" placeholder="Água e efluentes · ETE"><datalist id="vt-arealist">'+areaOpts+'</datalist></div>'+
-    '<div class="field"><label>Resumo (capa do card)</label><textarea id="vt-f-res" rows="2" style="resize:vertical">'+esc(c.resumo||"")+'</textarea></div>'+
-    '<div class="field"><label>Corpo da apresentação (HTML — títulos, parágrafos, listas, figuras)</label><textarea id="vt-f-corpo" rows="10" style="resize:vertical;font-family:var(--mono,monospace);font-size:.82rem">'+esc(c.corpo||"")+'</textarea></div>'+
-    '<div class="field"><label>Capa (URL de imagem — opcional)</label><input id="vt-f-capa" value="'+esc(c.capa||"")+'" placeholder="https://…/capa.jpg"></div>'+
-    '<div class="row" style="gap:16px;align-items:center;flex-wrap:wrap">'+
-      '<div class="field" style="margin:0;max-width:140px"><label>Ordem</label><input id="vt-f-ord" type="number" min="0" value="'+esc(c.ordem||0)+'"></div>'+
-      '<label class="pmchk" style="margin-top:18px"><input type="checkbox" id="vt-f-pub"'+(c.publicado?' checked':'')+'> Publicado (visível à equipe)</label>'+
-    '</div>'+
-    '<div id="vt-f-msg" class="muted" style="font-size:.78rem;min-height:16px;margin:6px 0"></div>'+
-    '<div style="display:flex;gap:8px"><button class="btn sm" type="button" id="vt-f-salvar">Salvar</button><button class="btn sm sec" type="button" id="vt-f-cancel">Cancelar</button></div>'+
-  '</div>';
-  $("#vt-f-cancel").onclick=function(){if(c.cid)_vtFicha(c.cid);else _vtLoad();};
-  $("#vt-f-salvar").onclick=function(){
-    var m=$("#vt-f-msg");if(m){m.textContent="Salvando…";m.classList.remove("err");}
-    var payload={cid:c.cid||"",titulo:$("#vt-f-tit").value,cliente_cc:$("#vt-f-cc").value,area:$("#vt-f-area").value,
-      resumo:$("#vt-f-res").value,corpo:$("#vt-f-corpo").value,capa:$("#vt-f-capa").value,capa_fonte:"url",
-      ordem:Number($("#vt-f-ord").value)||0,publicado:$("#vt-f-pub").checked?1:0};
-    if(!String(payload.titulo).trim()){if(m){m.textContent="Informe o título.";m.classList.add("err");}return;}
-    api("vitrineSet",payload).then(function(r){_vtFicha(r.cid);}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
-  };
-}
-function _vtProdForm(cid,p){
-  p=p||{};var box=$("#vt-box");if(!box)return;
-  var tipoOpts=Object.keys(_VT_TIPOS).map(function(t){return '<option value="'+t+'"'+(p.tipo===t?' selected':'')+'>'+_VT_TIPOS[t][0]+' '+esc(_VT_TIPOS[t][1])+'</option>';}).join("");
-  var fonte=p.fonte==="url"?"url":"acervo";
-  box.innerHTML='<div class="card"><div style="font-weight:700;margin-bottom:10px">'+(p.id?'Editar produto':'Adicionar produto final')+'</div>'+
-    '<div class="field"><label>Tipo</label><select id="vt-p-tipo">'+tipoOpts+'</select></div>'+
-    '<div class="field"><label>Título</label><input id="vt-p-tit" value="'+esc(p.titulo||"")+'" placeholder="Prancha executiva 01 — Planta geral"></div>'+
-    '<div class="field"><label>Legenda (opcional)</label><input id="vt-p-leg" value="'+esc(p.legenda||"")+'" placeholder="O que o produto mostra"></div>'+
-    '<div class="field"><label>Fonte</label><select id="vt-p-fonte"><option value="acervo"'+(fonte==="acervo"?" selected":"")+'>Arquivo do acervo (bucket ACERVO)</option><option value="url"'+(fonte==="url"?" selected":"")+'>Link externo (URL)</option></select></div>'+
-    '<div class="field"><label id="vt-p-reflabel">'+(fonte==="url"?"URL (http/https)":"Caminho no acervo (ex.: 0174GG/pranchas/00071.pdf)")+'</label><input id="vt-p-ref" value="'+esc(p.ref||"")+'" placeholder="'+(fonte==="url"?"https://…":"pasta/arquivo.pdf")+'"></div>'+
-    '<div class="field" style="max-width:140px"><label>Ordem</label><input id="vt-p-ord" type="number" min="0" value="'+esc(p.ordem||0)+'"></div>'+
-    '<div id="vt-p-msg" class="muted" style="font-size:.78rem;min-height:16px;margin:6px 0"></div>'+
-    '<div style="display:flex;gap:8px"><button class="btn sm" type="button" id="vt-p-salvar">Salvar</button><button class="btn sm sec" type="button" id="vt-p-cancel">Cancelar</button></div>'+
-  '</div>';
-  var reflbl=$("#vt-p-reflabel");
-  $("#vt-p-fonte").onchange=function(){var isUrl=$("#vt-p-fonte").value==="url";if(reflbl)reflbl.textContent=isUrl?"URL (http/https)":"Caminho no acervo (ex.: 0174GG/pranchas/00071.pdf)";$("#vt-p-ref").placeholder=isUrl?"https://…":"pasta/arquivo.pdf";};
-  $("#vt-p-cancel").onclick=function(){_vtFicha(cid);};
-  $("#vt-p-salvar").onclick=function(){
-    var m=$("#vt-p-msg");if(m){m.textContent="Salvando…";m.classList.remove("err");}
-    var payload={cid:cid,id:p.id||"",tipo:$("#vt-p-tipo").value,titulo:$("#vt-p-tit").value,legenda:$("#vt-p-leg").value,
-      fonte:$("#vt-p-fonte").value,ref:$("#vt-p-ref").value,ordem:Number($("#vt-p-ord").value)||0};
-    if(!String(payload.ref).trim()){if(m){m.textContent="Informe o caminho no acervo ou a URL.";m.classList.add("err");}return;}
-    api("vitrineProdSet",payload).then(function(){_vtFicha(cid);}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
-  };
 }
 function viewPermissoes(el){
   var head=viewHead("Administração","Permissões",
