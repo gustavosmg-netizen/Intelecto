@@ -1833,12 +1833,18 @@ function _scCard(p,prod,andam,podeLiberar,modoCliente){
                :'<div class="muted" style="font-size:.72rem;margin-top:12px">Não liberado ao cliente.</div>';
     }
   }
-  return '<div class="card" style="padding:14px 16px">'+
-    '<div style="display:flex;align-items:flex-start;gap:8px">'+
-      '<div style="flex:1;min-width:0"><div style="font-weight:600;line-height:1.3">'+esc(p.projeto||p.cc)+'</div>'+
-        '<div class="muted" style="font-size:.76rem;margin-top:2px">'+esc(p.cc)+(p.tipo?' · '+esc(p.tipo):'')+'</div></div>'+
-      _pill(p.status)+
-    '</div>'+prog+entHtml+rodape+'</div>';
+  /* Mesmo modelo visual do bloco "Cases em destaque" (vt-card): faixa de capa + chips + título +
+     linha muted de cc, depois progresso/entregáveis/rodapé. Padroniza a Vitrine de ponta a ponta. */
+  var capa='<div class="vt-capa" style="height:72px;border-radius:10px 10px 0 0;background:linear-gradient(135deg,var(--brand,#1f7a3d),var(--brand-d,#155c2d));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem">🗂️</div>';
+  var chips='<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">'+(p.tipo?_vtTipoChipArea(p.tipo):'')+_pill(p.status)+'</div>';
+  return '<div class="card vt-card" style="padding:0;overflow:hidden;display:flex;flex-direction:column">'+capa+
+    '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;flex:1">'+
+      chips+
+      '<div style="font-weight:700;font-size:1rem;line-height:1.25">'+esc(p.projeto||p.cc)+'</div>'+
+      '<div class="muted" style="font-size:.76rem">'+esc(p.cc)+'</div>'+
+      prog+entHtml+rodape+
+    '</div>'+
+  '</div>';
 }
 function _scGrid(proj,prod,andam,podeLiberar,modoCliente){
   var grupos={};
@@ -1846,7 +1852,7 @@ function _scGrid(proj,prod,andam,podeLiberar,modoCliente){
   var chaves=Object.keys(grupos).sort();
   return chaves.map(function(c){
     var cards=grupos[c].map(function(p){return _scCard(p,prod,andam,podeLiberar,modoCliente);}).join("");
-    return '<div class="lib-group-label">'+esc(c)+'</div><div class="hub-grid">'+cards+'</div>';
+    return '<div class="lib-group-label">'+esc(c)+'</div><div class="vt-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:8px">'+cards+'</div>';
   }).join("");
 }
 /* KPIs da vitrine interna — MESMA fonte do grid (proj/prod). Extraído para que o toggle
