@@ -12,3 +12,4 @@ gen_seed_local.py
 seed_local*.sql
 seed_t5*.sql
 devlog*.txt
+dist-check/

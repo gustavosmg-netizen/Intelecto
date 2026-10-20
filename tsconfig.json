@@ -1,0 +1,19 @@
+{
+  "//": "Typecheck de verificação (Onda 0). Lerá o Worker sem emitir código. Strict está desligado de propósito: o src/index.ts nunca passou por tipagem e será tipado por etapas; aqui o objetivo é pegar erro de sintaxe e engano grosseiro, não impor strict ao código legado de uma vez.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
+    "strict": false,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowJs": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}
