@@ -2503,14 +2503,40 @@ function _finCapacidade(){
    auditada. Nasce vazia; a casa lança o que é real. */
 function _finFluxo(){
   api("fluxoList").then(function(j){
-    var box=$("#fin-fx");if(!box)return;var xs=j.fluxos||[],rs=j.resumo||{};
-    var sPCor=(rs.saldoPrev||0)<0?"var(--crit)":"var(--ok,#1f7a3d)",sRCor=(rs.saldoReal||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
-    var topo='<div class="card" style="display:flex;gap:22px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px">'+
-      '<div><div class="muted" style="font-size:.72rem">Entradas prev.</div><div style="font-weight:700">'+fmtBRL(rs.entradaPrev)+'</div></div>'+
-      '<div><div class="muted" style="font-size:.72rem">Saídas prev.</div><div style="font-weight:700">'+fmtBRL(rs.saidaPrev)+'</div></div>'+
-      '<div><div class="muted" style="font-size:.72rem">Saldo previsto</div><div style="font-weight:700;color:'+sPCor+'">'+fmtBRL(rs.saldoPrev)+'</div></div>'+
-      '<div><div class="muted" style="font-size:.72rem">Saldo realizado</div><div style="font-weight:700;color:'+sRCor+'">'+fmtBRL(rs.saldoReal)+'</div></div>'+
-    '</div>';
+    var box=$("#fin-fx");if(!box)return;var xs=j.fluxos||[];
+    if(!window.__fxFilt)window.__fxFilt={q:"",tipo:"",cat:"",st:"",de:"",ate:"",ord:"data_desc"};
+    var F=window.__fxFilt;
+    var cats=Array.from(new Set(xs.map(function(x){return x.categoria||"";}).filter(Boolean))).sort();
+    var ef=function(x){return x.data_real||x.data_prev||"";};
+    function filtrar(){
+      var q=(F.q||"").toLowerCase();
+      return xs.filter(function(x){
+        if(F.tipo && x.tipo!==F.tipo) return false;
+        if(F.cat && (x.categoria||"")!==F.cat) return false;
+        if(F.st && x.status!==F.st) return false;
+        var d=ef(x);
+        if(F.de && d && d<F.de) return false;
+        if(F.ate && d && d>F.ate) return false;
+        if(q){ var hay=((x.descricao||"")+" "+(x.categoria||"")+" "+(x.cc||"")).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+        return true;
+      }).sort(function(a,b){
+        if(F.ord==="valor_desc") return (Number(b.valor)||0)-(Number(a.valor)||0);
+        if(F.ord==="valor_asc") return (Number(a.valor)||0)-(Number(b.valor)||0);
+        if(F.ord==="data_asc") return String(ef(a)).localeCompare(String(ef(b)));
+        return String(ef(b)).localeCompare(String(ef(a)));
+      });
+    }
+    var opt=function(sel,arr){return arr.map(function(o){return '<option value="'+esc(o[0])+'"'+(sel===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join("");};
+    var barra='<div class="card" style="padding:10px 12px;margin-bottom:12px"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
+      '<div class="field" style="margin:0;flex:1;min-width:150px"><label style="font-size:.7rem">Busca</label><input class="sm" id="fxf-q" placeholder="descrição, categoria, cc, banco" value="'+esc(F.q)+'"></div>'+
+      '<div class="field" style="margin:0"><label style="font-size:.7rem">Tipo</label><select class="sm" id="fxf-tipo">'+opt(F.tipo,[["","Todos"],["entrada","Entrada"],["saida","Saída"]])+'</select></div>'+
+      '<div class="field" style="margin:0;max-width:200px"><label style="font-size:.7rem">Categoria</label><select class="sm" id="fxf-cat"><option value="">Todas</option>'+cats.map(function(c){return '<option value="'+esc(c)+'"'+(F.cat===c?' selected':'')+'>'+esc(c)+'</option>';}).join("")+'</select></div>'+
+      '<div class="field" style="margin:0"><label style="font-size:.7rem">Status</label><select class="sm" id="fxf-st">'+opt(F.st,[["","Todos"],["previsto","Previsto"],["realizado","Realizado"],["cancelado","Cancelado"]])+'</select></div>'+
+      '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">De</label><input class="sm" id="fxf-de" type="date" value="'+esc(F.de)+'"></div>'+
+      '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">Até</label><input class="sm" id="fxf-ate" type="date" value="'+esc(F.ate)+'"></div>'+
+      '<div class="field" style="margin:0"><label style="font-size:.7rem">Ordenar</label><select class="sm" id="fxf-ord">'+opt(F.ord,[["data_desc","Data ↓"],["data_asc","Data ↑"],["valor_desc","Valor ↓"],["valor_asc","Valor ↑"]])+'</select></div>'+
+      '<button class="btn sm sec" type="button" id="fxf-limpar">Limpar</button>'+
+    '</div></div>';
     var form='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;font-size:.9rem;margin-bottom:8px">Novo lançamento</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
         '<div class="field" style="margin:0;max-width:110px"><label style="font-size:.7rem">Tipo</label><select class="sm" id="fx-tipo"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div>'+
@@ -2524,65 +2550,102 @@ function _finFluxo(){
         '<button class="btn sm" type="button" id="fx-add">Lançar</button>'+
       '</div><div id="fx-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div></div>';
     var td='padding:6px 10px;font-size:.82rem',tdr='padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.82rem';
-    var linhas=xs.map(function(x){
-      var ent=x.tipo==='entrada';var cor=ent?"var(--ok,#1f7a3d)":"var(--crit)";var sig=ent?'+':'−';
-      var can=x.status==='cancelado';
-      return '<tr style="border-top:1px solid var(--line)'+(can?';opacity:.5':'')+'">'+
-        '<td style="'+td+'"><div style="font-weight:600">'+esc(x.descricao)+'</div><div class="muted" style="font-size:.72rem">'+esc(x.categoria||'')+(x.cc?' · '+esc(x.cc):'')+'</div></td>'+
-        '<td style="'+td+'">'+(ent?'Entrada':'Saída')+'</td>'+
-        '<td style="'+tdr+';color:'+cor+';font-weight:600">'+sig+fmtBRL(x.valor)+'</td>'+
-        '<td style="'+td+'">'+esc(x.data_prev||'—')+'</td>'+
-        '<td style="'+td+'">'+esc(x.data_real||'—')+'</td>'+
-        '<td style="'+td+'">'+esc(x.status)+'</td>'+
-        '<td style="'+td+';text-align:right"><button class="linkbtn fx-del" data-id="'+esc(x.id)+'" style="font-size:.72rem">excluir</button></td></tr>';
-    }).join("");
-    var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Lançamento</th><th style="'+td+';text-align:left">Tipo</th><th style="'+tdr+'">Valor</th><th style="'+td+';text-align:left">Prevista</th><th style="'+td+';text-align:left">Realizada</th><th style="'+td+';text-align:left">Status</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum lançamento ainda. Base pronta — lance a primeira entrada ou saída acima.</p></div>';
-    box.innerHTML=topo+form+tabela;
+    box.innerHTML=barra+form+'<div id="fx-list"></div>';
     var m=$("#fx-msg");var msg=function(t,err){if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
+    function render(){
+      var fx=filtrar();
+      var ep=0,sp=0,er=0,sr=0;
+      fx.forEach(function(x){var v=Number(x.valor)||0,ent=x.tipo==='entrada';if(x.status==='realizado'){ent?er+=v:sr+=v;}else if(x.status==='previsto'){ent?ep+=v:sp+=v;}});
+      var sPCor=(ep-sp)<0?"var(--crit)":"var(--ok,#1f7a3d)",sRCor=(er-sr)<0?"var(--crit)":"var(--ok,#1f7a3d)";
+      var topo='<div class="card" style="display:flex;gap:20px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px">'+
+        '<div><div class="muted" style="font-size:.72rem">Lançamentos (filtro)</div><div style="font-weight:700">'+fx.length+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Entradas prev.</div><div style="font-weight:700">'+fmtBRL(ep)+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Saídas prev.</div><div style="font-weight:700">'+fmtBRL(sp)+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Saldo previsto</div><div style="font-weight:700;color:'+sPCor+'">'+fmtBRL(ep-sp)+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Saldo realizado</div><div style="font-weight:700;color:'+sRCor+'">'+fmtBRL(er-sr)+'</div></div>'+
+      '</div>';
+      var linhas=fx.map(function(x){
+        var ent=x.tipo==='entrada',cor=ent?"var(--ok,#1f7a3d)":"var(--crit)",sig=ent?'+':'−',can=x.status==='cancelado';
+        return '<tr style="border-top:1px solid var(--line)'+(can?';opacity:.5':'')+'">'+
+          '<td style="'+td+'"><div style="font-weight:600">'+esc(x.descricao)+'</div><div class="muted" style="font-size:.72rem">'+esc(x.categoria||'')+(x.cc?' · '+esc(x.cc):'')+'</div></td>'+
+          '<td style="'+td+'">'+(ent?'Entrada':'Saída')+'</td>'+
+          '<td style="'+tdr+';color:'+cor+';font-weight:600">'+sig+fmtBRL(x.valor)+'</td>'+
+          '<td style="'+td+'">'+esc(x.data_prev||'—')+'</td>'+
+          '<td style="'+td+'">'+esc(x.data_real||'—')+'</td>'+
+          '<td style="'+td+'">'+esc(x.status)+'</td>'+
+          '<td style="'+td+';text-align:right"><button class="linkbtn fx-del" data-id="'+esc(x.id)+'" style="font-size:.72rem">excluir</button></td></tr>';
+      }).join("");
+      var tabela=fx.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Lançamento</th><th style="'+td+';text-align:left">Tipo</th><th style="'+tdr+'">Valor</th><th style="'+td+';text-align:left">Prevista</th><th style="'+td+';text-align:left">Realizada</th><th style="'+td+';text-align:left">Status</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">'+(xs.length?'Nenhum lançamento no filtro.':'Nenhum lançamento ainda. Lance a primeira entrada ou saída acima.')+'</p></div>';
+      var lst=$("#fx-list");if(lst)lst.innerHTML=topo+tabela;
+      (lst||box).querySelectorAll(".fx-del").forEach(function(b){b.onclick=function(){
+        if(!confirm("Excluir este lançamento do fluxo de caixa?"))return;
+        api("fluxoDel",{id:b.getAttribute("data-id")}).then(function(){_finFluxo();_finResumo();}).catch(function(e){alert(e.message||"Erro");});
+      };});
+    }
+    var setf=function(id,k,ev){var e=$(id);if(e)e[ev]=function(){F[k]=e.value;render();};};
+    setf("#fxf-q","q","oninput");setf("#fxf-tipo","tipo","onchange");setf("#fxf-cat","cat","onchange");setf("#fxf-st","st","onchange");setf("#fxf-de","de","onchange");setf("#fxf-ate","ate","onchange");setf("#fxf-ord","ord","onchange");
+    var lp=$("#fxf-limpar");if(lp)lp.onclick=function(){window.__fxFilt={q:"",tipo:"",cat:"",st:"",de:"",ate:"",ord:"data_desc"};_finFluxo();};
     var gv=function(id){var e=$(id);return e?e.value:"";};
     var add=$("#fx-add");if(add)add.onclick=function(){
       var desc=gv("#fx-desc");if(!desc||desc.length<2){msg("Informe a descrição.",true);return;}
-      var val=Number(gv("#fx-val"))||0;
       msg("Salvando…");
-      api("fluxoSet",{tipo:gv("#fx-tipo"),descricao:desc,categoria:gv("#fx-cat"),valor:val,cc:gv("#fx-cc"),data_prev:gv("#fx-dp"),data_real:gv("#fx-dr"),status:gv("#fx-st")})
+      api("fluxoSet",{tipo:gv("#fx-tipo"),descricao:desc,categoria:gv("#fx-cat"),valor:Number(gv("#fx-val"))||0,cc:gv("#fx-cc"),data_prev:gv("#fx-dp"),data_real:gv("#fx-dr"),status:gv("#fx-st")})
         .then(function(){_finFluxo();_finResumo();}).catch(function(e){msg(e.message||"Erro",true);});
     };
-    box.querySelectorAll(".fx-del").forEach(function(b){b.onclick=function(){
-      if(!confirm("Excluir este lançamento do fluxo de caixa?"))return;
-      api("fluxoDel",{id:b.getAttribute("data-id")}).then(function(){_finFluxo();_finResumo();}).catch(function(e){msg(e.message||"Erro",true);});
-    };});
+    render();
   }).catch(function(e){var box=$("#fin-fx");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 function _finCarteira(){
   api("financeiro").then(function(j){
-    var box=$("#fin-cart");if(!box)return;var ps=j.projetos||[],t=j.total||{};
+    var box=$("#fin-cart");if(!box)return;var ps=j.projetos||[];
     if(!ps.length){box.innerHTML='<div class="card"><p class="muted" style="margin:0">Nenhum projeto com contrato/custo informado ainda. Abra um projeto na Carteira (ou clique aqui depois de preencher) e informe o bloco <b>Financeiro</b>; cadastre o custo/hora dos colaboradores na aba ao lado.</p></div>';return;}
-    var totCor=(t.margem||0)<0?"var(--crit)":"var(--ok,#1f7a3d)";
-    var topo='<div class="card" style="display:flex;gap:22px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px">'+
-      '<div><div class="muted" style="font-size:.72rem">Contratado (total)</div><div style="font-weight:700">'+fmtBRL(t.contratado)+'</div></div>'+
-      '<div><div class="muted" style="font-size:.72rem">Custo total</div><div style="font-weight:700">'+fmtBRL(t.custoTotal)+'</div></div>'+
-      '<div><div class="muted" style="font-size:.72rem">Margem</div><div style="font-weight:700;color:'+totCor+'">'+fmtBRL(t.margem)+'</div></div>'+
-    '</div>';
-    var th='padding:8px 10px;text-align:right;font-size:.74rem',th0='padding:8px 10px;text-align:left;font-size:.74rem';
-    var linhas=ps.map(function(p){
-      var cor=p.margem<0?"var(--crit)":"var(--ok,#1f7a3d)",td='padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.84rem';
-      var mut='padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--muted,#888)';
-      return '<tr data-cc="'+esc(p.cc)+'" style="cursor:pointer;border-top:1px solid var(--line)">'+
-        '<td style="padding:7px 10px"><div style="font-weight:600;font-size:.85rem">'+esc(p.projeto)+'</div><div class="muted" style="font-size:.72rem">'+esc(p.cc)+(p.cliente?' · '+esc(p.cliente):'')+'</div></td>'+
-        '<td style="'+td+'">'+fmtBRL(p.contratado)+'</td>'+
-        '<td style="'+mut+'">'+fmtBRL(p.moCusto)+'</td>'+
-        '<td style="'+mut+'">'+((p.consumiveis||0)?fmtBRL(p.consumiveis):'—')+'</td>'+
-        '<td style="'+mut+'">'+((p.terceiros||0)?fmtBRL(p.terceiros):'—')+'</td>'+
-        '<td style="'+mut+'">'+((p.rateioFix||0)?fmtBRL(p.rateioFix):'—')+'</td>'+
-        '<td style="'+td+'">'+fmtBRL(p.custoTotal)+'</td>'+
-        '<td style="'+td+';color:'+cor+';font-weight:600">'+fmtBRL(p.margem)+'</td>'+
-        '<td style="'+td+';color:'+cor+'">'+(p.margemPct==null?'—':(p.margemPct+'%'))+'</td></tr>';
-    }).join("");
-    box.innerHTML=topo+'<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse">'+
-      '<thead><tr style="background:var(--surface2)"><th style="'+th0+'">Projeto</th><th style="'+th+'">Contratado</th><th style="'+th+'">MO</th><th style="'+th+'">Consum.</th><th style="'+th+'">Terceiros</th><th style="'+th+'">Overhead</th><th style="'+th+'">Custo</th><th style="'+th+'">Margem</th><th style="'+th+'">%</th></tr></thead>'+
-      '<tbody>'+linhas+'</tbody></table></div>'+
-      '<p class="muted" style="font-size:.74rem;margin-top:8px">Clique num projeto para ver a decomposição e editar o contrato. Ordenado da menor margem (prejuízo) para a maior.</p>';
-    box.querySelectorAll("tr[data-cc]").forEach(function(tr){tr.onclick=function(){openProjDetail(tr.getAttribute("data-cc"));};});
+    if(!window.__caF)window.__caF={q:"",sort:"margem",dir:"asc"};
+    var F=window.__caF;
+    var COLS=[["projeto","Projeto","s"],["contratado","Contratado","n"],["moCusto","MO","n"],["consumiveis","Consum.","n"],["terceiros","Terceiros","n"],["rateioFix","Overhead","n"],["custoTotal","Custo","n"],["margem","Margem","n"],["margemPct","%","n"]];
+    var th='padding:8px 10px;text-align:right;font-size:.74rem;cursor:pointer;user-select:none',th0='padding:8px 10px;text-align:left;font-size:.74rem;cursor:pointer;user-select:none';
+    var td='padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.84rem';
+    var mut='padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.78rem;color:var(--muted,#888)';
+    var barra='<div class="card" style="padding:10px 12px;margin-bottom:12px"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
+      '<div class="field" style="margin:0;flex:1;min-width:180px"><label style="font-size:.7rem">Busca</label><input class="sm" id="caf-q" placeholder="projeto, centro de custo, cliente" value="'+esc(F.q)+'"></div>'+
+      '<button class="btn sm sec" type="button" id="caf-limpar">Limpar</button></div></div>';
+    box.innerHTML=barra+'<div id="ca-list"></div>';
+    function render(){
+      var q=(F.q||"").toLowerCase();
+      var fp=ps.filter(function(p){ if(!q)return true; return ((p.projeto||"")+" "+(p.cc||"")+" "+(p.cliente||"")).toLowerCase().indexOf(q)>=0; });
+      fp.sort(function(a,b){ var k=F.sort,s; if(k==="projeto"){s=String(a.projeto||"").localeCompare(String(b.projeto||""));} else {s=(Number(a[k])||0)-(Number(b[k])||0);} return F.dir==="desc"?-s:s; });
+      var t={contratado:0,custoTotal:0,margem:0}; fp.forEach(function(p){t.contratado+=Number(p.contratado)||0;t.custoTotal+=Number(p.custoTotal)||0;t.margem+=Number(p.margem)||0;});
+      var totCor=t.margem<0?"var(--crit)":"var(--ok,#1f7a3d)";
+      var topo='<div class="card" style="display:flex;gap:22px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px">'+
+        '<div><div class="muted" style="font-size:.72rem">Projetos (filtro)</div><div style="font-weight:700">'+fp.length+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Contratado</div><div style="font-weight:700">'+fmtBRL(t.contratado)+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Custo total</div><div style="font-weight:700">'+fmtBRL(t.custoTotal)+'</div></div>'+
+        '<div><div class="muted" style="font-size:.72rem">Margem</div><div style="font-weight:700;color:'+totCor+'">'+fmtBRL(t.margem)+'</div></div>'+
+      '</div>';
+      var arrow=function(k){return F.sort===k?(F.dir==="desc"?" ↓":" ↑"):"";};
+      var head=COLS.map(function(c,i){return '<th data-k="'+c[0]+'" style="'+(i===0?th0:th)+'">'+esc(c[1])+arrow(c[0])+'</th>';}).join("");
+      var linhas=fp.map(function(p){
+        var cor=p.margem<0?"var(--crit)":"var(--ok,#1f7a3d)";
+        return '<tr data-cc="'+esc(p.cc)+'" style="cursor:pointer;border-top:1px solid var(--line)">'+
+          '<td style="padding:7px 10px"><div style="font-weight:600;font-size:.85rem">'+esc(p.projeto)+'</div><div class="muted" style="font-size:.72rem">'+esc(p.cc)+(p.cliente?' · '+esc(p.cliente):'')+'</div></td>'+
+          '<td style="'+td+'">'+fmtBRL(p.contratado)+'</td>'+
+          '<td style="'+mut+'">'+fmtBRL(p.moCusto)+'</td>'+
+          '<td style="'+mut+'">'+((p.consumiveis||0)?fmtBRL(p.consumiveis):'—')+'</td>'+
+          '<td style="'+mut+'">'+((p.terceiros||0)?fmtBRL(p.terceiros):'—')+'</td>'+
+          '<td style="'+mut+'">'+((p.rateioFix||0)?fmtBRL(p.rateioFix):'—')+'</td>'+
+          '<td style="'+td+'">'+fmtBRL(p.custoTotal)+'</td>'+
+          '<td style="'+td+';color:'+cor+';font-weight:600">'+fmtBRL(p.margem)+'</td>'+
+          '<td style="'+td+';color:'+cor+'">'+(p.margemPct==null?'—':(p.margemPct+'%'))+'</td></tr>';
+      }).join("");
+      var lst=$("#ca-list");if(!lst)return;
+      lst.innerHTML=topo+'<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse">'+
+        '<thead><tr style="background:var(--surface2)">'+head+'</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+        '<p class="muted" style="font-size:.74rem;margin-top:8px">Clique num projeto para a decomposição e edição; clique num cabeçalho para ordenar.</p>';
+      lst.querySelectorAll("tr[data-cc]").forEach(function(tr){tr.onclick=function(){openProjDetail(tr.getAttribute("data-cc"));};});
+      lst.querySelectorAll("th[data-k]").forEach(function(h){h.onclick=function(){var k=h.getAttribute("data-k");if(F.sort===k){F.dir=F.dir==="asc"?"desc":"asc";}else{F.sort=k;F.dir=(k==="projeto")?"asc":"desc";}render();};});
+    }
+    var qi=$("#caf-q");if(qi)qi.oninput=function(){F.q=qi.value;render();};
+    var lp=$("#caf-limpar");if(lp)lp.onclick=function(){window.__caF={q:"",sort:"margem",dir:"asc"};_finCarteira();};
+    render();
   }).catch(function(e){var box=$("#fin-cart");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 function _finCustoHora(){
