@@ -1513,6 +1513,25 @@ async function impostoPadrao(tenant: string): Promise<number> {
     return r.rows.length ? Math.max(0, Math.min(100, Number(r.rows[0].v) || 0)) : 0;
   } catch (_) { return 0; }
 }
+/** REGRA DE STATUS (Onda 1): um projeto CONCLUÍDO ou CANCELADO não recebe horas. Bloqueia o
+ *  lançamento/edição na fonte (não só na tela) — é o que impede a recorrência de "concluído com
+ *  horas novas". CC sem projeto cadastrado (reunião, ausência, treinamento) passa, como hoje. */
+async function bloqueiaSeFechado(cc: string, tenant: string): Promise<void> {
+  const r = await sqlite.execute({ sql: "SELECT status FROM proj WHERE cc = ? AND tenant_id = ?", args: [cc, tenant] });
+  if (!r.rows.length) return;
+  const st = String((r.rows[0] as P).status || "").toUpperCase();
+  if (st.indexOf("CONCLU") >= 0 || st.indexOf("CANCEL") >= 0) {
+    throw new Error("Projeto " + st.toLowerCase() + " não recebe horas. Peça à Coordenação para reabrir o status antes de lançar.");
+  }
+}
+/** ANDAMENTO ÚNICO (Onda 1): o progresso DERIVA dos marcos (etapa atual ÷ total), não de um campo
+ *  manual. Devolve o % 0-100 quando há total de etapas; null quando ainda não há marcos (aí a tela
+ *  cai no campo manual projx.progresso como fallback). */
+function pctEtapa(atual: number, total: number): number | null {
+  const a = Number(atual) || 0; const t = Number(total) || 0;
+  if (t <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((a / t) * 100)));
+}
 /** VALOR CONTRATADO por CC, do CONTRATO (dono único do valor) — Onda 1. Soma os contratos
  *  CONFIRMADOS de cada CC em cc_contrato (base + aditivos). Enquanto um CC não tiver contrato
  *  confirmado, o valor cai no fallback projx.contratado dentro de decompoeFin (transição). */
@@ -3032,6 +3051,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       if (!ultimoDetalhe && a.detalhe) { ultimoDetalhe = String(a.detalhe); ultimaData = String(a.d); }
       if ((Number(a.total) || 0) > 0 || (Number(a.etapa) || 0) > 0) { etapaAtual = Number(a.etapa) || 0; etapaTotal = Number(a.total) || 0; break; }
     }
+    // CONTRATOS + PARCELAS do CC (só para quem vê o Financeiro) — para o painel Contrato & parcelas.
+    // E uma amostra das ENTRADAS de caixa sem CC (para baixar uma parcela e conciliar o recebimento).
+    let contratos: P[] = []; let caixaSemCc: P[] = [];
+    if (podeFin) {
+      const cr = await sqlite.execute({ sql: "SELECT id, titulo, valor, assinado, status, tipo, deal_id, obs FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+      const pcr = await sqlite.execute({ sql: "SELECT id, contrato_id, numero, valor, venc_prev, recebido_em, fluxo_id, status, obs FROM contrato_parcela WHERE tenant_id = ? AND cc = ? ORDER BY numero, venc_prev", args: [u.tenant_id, cc] });
+      const byCt: Record<string, P[]> = {};
+      for (const pc of pcr.rows as P[]) { (byCt[String(pc.contrato_id)] = byCt[String(pc.contrato_id)] || []).push(pc); }
+      contratos = (cr.rows as P[]).map((c) => ({ ...c, parcelas: byCt[String(c.id)] || [] }));
+      const csc = await sqlite.execute({ sql: "SELECT id, descricao, valor, data_real, data_prev FROM fluxo WHERE tenant_id = ? AND tipo = 'entrada' AND COALESCE(cc,'') = '' ORDER BY COALESCE(NULLIF(data_real,''), data_prev, criado) DESC LIMIT 40", args: [u.tenant_id] });
+      caixaSemCc = csc.rows as P[];
+    }
     return {
       ok: true, coord: u.coord, cc,
       proj: {
@@ -3055,9 +3086,16 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         } : {}),
       },
       horas: { gastas, previstas: prev, restantes, consumo, estouro: prev > 0 && gastas > prev },
-      etapa: { atual: etapaAtual, total: etapaTotal, ultimoDetalhe, ultimaData },
+      // ANDAMENTO ÚNICO: progresso DERIVADO dos marcos (etapa/total). `progresso` em projx vira
+      // fallback/override quando ainda não há marcos. `divergente` sinaliza quando os dois não batem.
+      etapa: {
+        atual: etapaAtual, total: etapaTotal, ultimoDetalhe, ultimaData,
+        progressoDerivado: pctEtapa(etapaAtual, etapaTotal),
+        divergente: (() => { const d = pctEtapa(etapaAtual, etapaTotal); return d != null && Math.abs(d - (Number(px.progresso) || 0)) > 10; })(),
+      },
       andam, prevf: pf.rows, lancs,
       colab, podeFin, fin,
+      ...(podeFin ? { contratos, caixaSemCc } : {}),
     };
   }
   /* APONTAMENTOS DE OUTRO COLABORADOR (seletor da aba Horas): histórico COMPLETO de um colega,
@@ -4703,6 +4741,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "add") {
     const u = await auth(p);
     const e = validEntry(p.entry);
+    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
     const id = crypto.randomUUID().slice(0, 8);
     await sqlite.execute({
       sql: "INSERT INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id) VALUES (?,?,?,?,?,?,'PENDENTE','','',?,?,?)",
@@ -4717,6 +4756,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (cur.slug !== u.slug && !u.coord) throw new Error("Só é possível editar o próprio lançamento.");
     if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO") throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
+    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
     await sqlite.execute({
       sql: "UPDATE lanc SET d=?, cc=?, h=?, t=?, s='PENDENTE', m='', a='', u=? WHERE id=? AND tenant_id=?",
       args: [e.d, e.cc, e.h, e.t, now, String(p.id), u.tenant_id],

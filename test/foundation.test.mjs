@@ -85,6 +85,24 @@ test("migração 0002 cria colunas de contrato e parcelas", () => {
   assert.match(sql, /CREATE TABLE IF NOT EXISTS contrato_parcela/);
 });
 
+test("Onda 1: regra de status (concluído/cancelado não recebe horas) + andamento derivado", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /async function bloqueiaSeFechado/);
+  assert.match(ts, /não recebe horas/);
+  // o bloqueio roda no lançar e no editar.
+  assert.match(ts, /await bloqueiaSeFechado\(e\.cc, u\.tenant_id\)/);
+  // progresso derivado dos marcos.
+  assert.match(ts, /function pctEtapa/);
+  assert.match(ts, /progressoDerivado: pctEtapa/);
+});
+
+test("UI: painel Contrato & parcelas no detalhe do projeto", () => {
+  const html = read("public/index.html");
+  assert.match(html, /function _contratoBloco/);
+  assert.match(html, /function _contratoLiga/);
+  assert.match(html, /_finBloco\(j\)\+_contratoBloco\(j\)/);
+});
+
 test("Onda 1: conciliação do caixa (fila paginada + baixa que preenche o CC)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /action === "conciliacao"/);

@@ -1091,6 +1091,45 @@ function _finBloco(j){
     '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora embute os encargos da mão de obra. Imposto (sobre o contratado), consumíveis, terceiros, outros e o rateio dos custos fixos (overhead, por horas apontadas) entram no custo real, antes da margem.</div>'+
     '</div>';
 }
+/* Painel CONTRATO & PARCELAS (só dono/financeiro): o contrato é o dono do valor; as parcelas são o
+   plano de recebimento e a base da conciliação do caixa. Dados vêm de j.contratos (projdetalhe). */
+function _contratoBloco(j){
+  if(!j.podeFin||!j.coord)return "";
+  var cts=j.contratos||[];
+  var stBadge=function(s){var c=s==='confirmado'?'var(--ok,#1f7a3d)':(s==='cancelado'?'var(--crit)':'var(--muted,#888)');return '<span class="tag" style="font-size:.64rem;background:'+c+';color:#fff">'+esc((s||'rascunho').toUpperCase())+'</span>';};
+  var pSt=function(s){var c=s==='recebida'?'var(--ok,#1f7a3d)':'var(--muted,#888)';return '<span style="font-size:.66rem;color:'+c+';font-weight:600">'+esc((s||'prevista').toUpperCase())+'</span>';};
+  var entradaOpts=(j.caixaSemCc||[]).map(function(e){return '<option value="'+esc(e.id)+'">'+esc((e.data_real||e.data_prev||''))+' · '+esc((e.descricao||'').slice(0,40))+' · '+fmtBRL(e.valor)+'</option>';}).join("");
+  var ctHtml=cts.map(function(c){
+    var parc=(c.parcelas||[]);
+    var somaP=parc.reduce(function(s,p){return s+(Number(p.valor)||0);},0);
+    var dif=(Number(c.valor)||0)-somaP;
+    var plinhas=parc.map(function(p){
+      var baixa=(p.status!=='recebida')?('<select class="sm pc-baixa" data-pid="'+esc(p.id)+'" style="max-width:220px"><option value="">— baixar com entrada do caixa —</option>'+entradaOpts+'</select>'):('<button class="linkbtn pc-desfaz" data-pid="'+esc(p.id)+'" style="font-size:.72rem">desfazer baixa</button>'+(p.recebido_em?' <span class="muted" style="font-size:.7rem">em '+esc(p.recebido_em)+'</span>':''));
+      return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.8rem;padding:3px 0;border-top:1px dashed var(--line)"><span style="min-width:28px">#'+esc(p.numero)+'</span><span style="font-variant-numeric:tabular-nums;min-width:90px">'+fmtBRL(p.valor)+'</span><span class="muted" style="min-width:86px">'+esc(p.venc_prev||'sem venc.')+'</span>'+pSt(p.status)+'<span style="margin-left:auto">'+baixa+'</span></div>';
+    }).join("");
+    var addParc='<div class="row" style="gap:6px;align-items:flex-end;flex-wrap:wrap;margin:6px 0 0">'+
+      '<div class="field" style="margin:0;max-width:70px"><label style="font-size:.68rem">Nº</label><input class="sm" id="pc-n-'+esc(c.id)+'" type="number" min="1" step="1" value="'+(parc.length+1)+'"></div>'+
+      '<div class="field" style="margin:0;max-width:120px"><label style="font-size:.68rem">Valor (R$)</label><input class="sm" id="pc-v-'+esc(c.id)+'" type="number" min="0" step="0.01"></div>'+
+      '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.68rem">Vencimento</label><input class="sm" id="pc-d-'+esc(c.id)+'" type="date"></div>'+
+      '<button class="btn sec sm pc-add" data-cid="'+esc(c.id)+'">+ parcela</button></div>';
+    return '<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:.86rem">'+esc(c.titulo||('Contrato '+c.tipo))+'</b> '+stBadge(c.status)+'<span class="muted" style="font-size:.7rem">'+esc(c.tipo||'base')+(c.assinado?' · assinado '+esc(c.assinado):'')+'</span>'+
+        '<span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">'+fmtBRL(c.valor)+'</span></div>'+
+      (c.status!=='confirmado'?'<div style="margin-top:4px"><button class="btn sm ct-conf" data-cid="'+esc(c.id)+'">Confirmar contrato</button> <span class="muted" style="font-size:.7rem">só contrato confirmado vira o valor do Financeiro</span></div>':'')+
+      '<div style="margin-top:6px"><div class="muted" style="font-size:.72rem">Parcelas · previsto '+fmtBRL(somaP)+(Math.abs(dif)>0.01?' · <span style="color:'+(dif>0?'var(--crit)':'var(--muted)')+'">falta '+fmtBRL(dif)+'</span>':' · fecha com o contrato')+'</div>'+(plinhas||'<div class="muted" style="font-size:.78rem">Sem parcelas.</div>')+addParc+'</div>'+
+    '</div>';
+  }).join("");
+  var novo='<div style="border-top:1px dashed var(--line);margin-top:6px;padding-top:8px"><div class="row" style="gap:6px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
+    '<div class="field" style="margin:0;flex:1;min-width:120px"><label style="font-size:.68rem">Novo contrato — título</label><input class="sm" id="ct-tit" maxlength="120" placeholder="ex.: Contrato base"></div>'+
+    '<div class="field" style="margin:0;max-width:130px"><label style="font-size:.68rem">Valor (R$)</label><input class="sm" id="ct-val" type="number" min="0" step="0.01"></div>'+
+    '<div class="field" style="margin:0;max-width:110px"><label style="font-size:.68rem">Tipo</label><select class="sm" id="ct-tipo"><option value="base">base</option><option value="aditivo">aditivo</option></select></div>'+
+    '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.68rem">Assinado em</label><input class="sm" id="ct-ass" type="date"></div>'+
+    '<button class="btn sm ct-novo">+ contrato</button></div></div>';
+  return '<div style="background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px">'+
+    '<div style="font-size:.82rem;font-weight:600;margin-bottom:8px">📄 Contrato &amp; parcelas</div>'+
+    (ctHtml||'<p class="muted" style="font-size:.8rem;margin:0 0 4px">Nenhum contrato neste centro de custo. O valor contratado ainda vem do campo antigo (fallback) até um contrato ser confirmado.</p>')+
+    novo+'<div id="ct-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>';
+}
 function _funcLabel(code){var c=(state.data&&state.data.catFuncoes)||[];for(var i=0;i<c.length;i++){if(c[i][0]===code)return c[i][1];}return code;}
 function _pjRender(){
   var j=PJDET;if(!j)return;var m=_pjModal();
@@ -1110,7 +1149,10 @@ function _pjRender(){
   var gutBloco='<div style="display:flex;gap:18px;flex-wrap:wrap;margin:0 0 12px">'+
     '<div><div class="muted" style="font-size:.72rem;margin-bottom:3px">Prioridade (1–100)</div>'+_gutChip(_prio)+
       ((x.gravidade||x.impacto)?'<span class="muted" style="font-size:.72rem;margin-left:6px">G'+(x.gravidade||0)+'·U'+(x.urgencia||0)+'·T'+(x.tendencia||0)+' · Imp'+(x.impacto||0)+'·Esf'+(x.esforco||0)+'</span>':'')+'</div>'+
-    '<div style="flex:1;min-width:160px"><div class="muted" style="font-size:.72rem;margin-bottom:3px">Progresso</div>'+_progBar(x.progresso)+'</div>'+
+    '<div style="flex:1;min-width:160px"><div class="muted" style="font-size:.72rem;margin-bottom:3px">Progresso</div>'+
+      _progBar((et&&et.progressoDerivado!=null)?et.progressoDerivado:(x.progresso||0))+
+      '<div class="muted" style="font-size:.68rem;margin-top:2px">'+((et&&et.progressoDerivado!=null)?('derivado dos marcos ('+et.atual+'/'+et.total+')'+(et.divergente?' · <span style="color:var(--crit)">campo manual diz '+(x.progresso||0)+'%</span>':'')):'informado manualmente — registre marcos abaixo para derivar')+'</div>'+
+    '</div>'+
   '</div>';
   /* etapa atual/total + andamento */
   var etTxt=et.total?("Etapa "+et.atual+" de "+et.total):(et.atual?("Etapa "+et.atual):"");
@@ -1145,7 +1187,7 @@ function _pjRender(){
     corpo=_pjEditForm(j);
   }else{
     corpo='<div style="padding:14px 16px">'+
-      horasBloco+_finBloco(j)+gutBloco+
+      horasBloco+_finBloco(j)+_contratoBloco(j)+gutBloco+
       '<div class="grid2" style="gap:0 18px">'+
         '<div>'+_rw("Empresa",p.empresa)+_rw("Cliente",p.cliente)+_rw("Tipo",p.tipo)+_rw("Subtipo",p.subtipo)+_rw("Responsável",x.resp?nomeDe(x.resp):"")+_rw("Setor",x.setor)+'</div>'+
         '<div>'+_rw("Início",p.inicio)+_rw("Previsto",p.previsto)+_rw("Fim",p.fim)+_rw("Situação comercial",x.com)+_rw("Assinatura",x.assin)+'</div>'+
@@ -1190,8 +1232,34 @@ function _pjRender(){
         .then(function(nj){PJDET=nj;PJDET.edit=false;_pjRender();toast("Registro excluído.");})
         .catch(function(e){alert(e.message||"Erro ao excluir.");});
     };});
+    _contratoLiga(j);
   }
   if(j.edit)_pjEditLiga(j);
+}
+/* Fiação do painel Contrato & parcelas: criar/confirmar contrato, criar/baixar parcela. Cada ação
+   re-busca o projdetalhe e re-renderiza (mesmo padrão do andamento). */
+function _contratoLiga(j){
+  var cc=j.cc; var V=function(id){var e=$("#"+id);return e?e.value:"";};
+  var msg=function(t,err){var m=$("#ct-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
+  var reload=function(ok){return api("projdetalhe",{cc:cc}).then(function(nj){PJDET=nj;PJDET.edit=false;_pjRender();if(ok)toast(ok);});};
+  var nv=document.querySelector(".ct-novo");if(nv)nv.onclick=function(){
+    var val=Number(V("ct-val"))||0; if(!(val>0)){msg("Informe o valor do contrato.",true);return;}
+    msg("Salvando…");api("contratoSet",{cc:cc,titulo:V("ct-tit"),valor:val,tipo:V("ct-tipo"),assinado:V("ct-ass"),status:"rascunho"}).then(function(){return reload("Contrato criado.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };
+  document.querySelectorAll(".ct-conf").forEach(function(b){b.onclick=function(){
+    if(!confirm("Confirmar o contrato? O valor confirmado passa a ser o valor do Financeiro deste projeto."))return;
+    msg("Confirmando…");api("contratoSet",{id:b.getAttribute("data-cid"),cc:cc,status:"confirmado"}).then(function(){return reload("Contrato confirmado.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
+  document.querySelectorAll(".pc-add").forEach(function(b){b.onclick=function(){
+    var cid=b.getAttribute("data-cid");var val=Number(V("pc-v-"+cid))||0;if(!(val>0)){msg("Informe o valor da parcela.",true);return;}
+    msg("Salvando…");api("parcelaSet",{contrato_id:cid,numero:Number(V("pc-n-"+cid))||1,valor:val,venc_prev:V("pc-d-"+cid)}).then(function(){return reload("Parcela adicionada.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
+  document.querySelectorAll(".pc-baixa").forEach(function(s){s.onchange=function(){
+    if(!s.value)return;msg("Baixando…");api("parcelaBaixar",{parcela_id:s.getAttribute("data-pid"),fluxo_id:s.value}).then(function(){return reload("Parcela baixada; centro de custo preenchido no caixa.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
+  document.querySelectorAll(".pc-desfaz").forEach(function(b){b.onclick=function(){
+    msg("Desfazendo…");api("parcelaBaixar",{parcela_id:b.getAttribute("data-pid"),fluxo_id:""}).then(function(){return reload("Baixa desfeita.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
 }
 function _opt(list,sel){return list.map(function(o){var v=Array.isArray(o)?o[0]:o,l=Array.isArray(o)?o[1]:o;return '<option value="'+esc(v)+'"'+(String(sel)===String(v)?" selected":"")+'>'+esc(l)+'</option>';}).join("");}
 function _pjEditForm(j){
