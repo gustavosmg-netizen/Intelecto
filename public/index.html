@@ -2508,9 +2508,14 @@ function _finCapacidade(){
 function _finFluxo(){
   api("fluxoList").then(function(j){
     var box=$("#fin-fx");if(!box)return;var xs=j.fluxos||[];
-    if(!window.__fxFilt)window.__fxFilt={q:"",tipo:"",cat:"",st:"",de:"",ate:"",ord:"data_desc"};
-    var F=window.__fxFilt;
+    if(!window.__fxFilt)window.__fxFilt={q:"",tipo:"",cat:"",st:"",de:"",ate:"",cc:"",ord:"data_desc"};
+    var F=window.__fxFilt; if(F.cc===undefined)F.cc="";
     var cats=Array.from(new Set(xs.map(function(x){return x.categoria||"";}).filter(Boolean))).sort();
+    var ccsUsados=Array.from(new Set(xs.map(function(x){return x.cc||"";}).filter(Boolean))).sort();
+    var projs=(state.data&&state.data.proj)||[];
+    var projLabel={}; projs.forEach(function(p){projLabel[p.cc]=p.cliente||p.projeto||p.cc;});
+    var projOpts=projs.map(function(p){return [p.cc,(p.cc+' — '+(p.cliente||p.projeto||''))];}).sort(function(a,b){return String(a[1]).localeCompare(String(b[1]));});
+    var projSel=function(id,cur,extra){return '<select class="sm" id="'+id+'"'+(extra||'')+'><option value="">— sem centro de custo —</option>'+projOpts.map(function(o){return '<option value="'+esc(o[0])+'"'+(cur===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join("")+'</select>';};
     var ef=function(x){return x.data_real||x.data_prev||"";};
     function filtrar(){
       var q=(F.q||"").toLowerCase();
@@ -2518,6 +2523,7 @@ function _finFluxo(){
         if(F.tipo && x.tipo!==F.tipo) return false;
         if(F.cat && (x.categoria||"")!==F.cat) return false;
         if(F.st && x.status!==F.st) return false;
+        if(F.cc==="__sem__"){ if(x.cc) return false; } else if(F.cc){ if((x.cc||"")!==F.cc) return false; }
         var d=ef(x);
         if(F.de && d && d<F.de) return false;
         if(F.ate && d && d>F.ate) return false;
@@ -2536,6 +2542,7 @@ function _finFluxo(){
       '<div class="field" style="margin:0"><label style="font-size:.7rem">Tipo</label><select class="sm" id="fxf-tipo">'+opt(F.tipo,[["","Todos"],["entrada","Entrada"],["saida","Saída"]])+'</select></div>'+
       '<div class="field" style="margin:0;max-width:200px"><label style="font-size:.7rem">Categoria</label><select class="sm" id="fxf-cat"><option value="">Todas</option>'+cats.map(function(c){return '<option value="'+esc(c)+'"'+(F.cat===c?' selected':'')+'>'+esc(c)+'</option>';}).join("")+'</select></div>'+
       '<div class="field" style="margin:0"><label style="font-size:.7rem">Status</label><select class="sm" id="fxf-st">'+opt(F.st,[["","Todos"],["previsto","Previsto"],["realizado","Realizado"],["cancelado","Cancelado"]])+'</select></div>'+
+      '<div class="field" style="margin:0;max-width:180px"><label style="font-size:.7rem">Centro de custo</label><select class="sm" id="fxf-cc"><option value="">Todos</option><option value="__sem__"'+(F.cc==="__sem__"?" selected":"")+'>— sem cc —</option>'+ccsUsados.map(function(c){return "<option value=\""+esc(c)+"\""+(F.cc===c?" selected":"")+">"+esc(c)+(projLabel[c]?" · "+esc(projLabel[c]):"")+"</option>";}).join("")+'</select></div>'+
       '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">De</label><input class="sm" id="fxf-de" type="date" value="'+esc(F.de)+'"></div>'+
       '<div class="field" style="margin:0;max-width:140px"><label style="font-size:.7rem">Até</label><input class="sm" id="fxf-ate" type="date" value="'+esc(F.ate)+'"></div>'+
       '<div class="field" style="margin:0"><label style="font-size:.7rem">Ordenar</label><select class="sm" id="fxf-ord">'+opt(F.ord,[["data_desc","Data ↓"],["data_asc","Data ↑"],["valor_desc","Valor ↓"],["valor_asc","Valor ↑"]])+'</select></div>'+
@@ -2571,7 +2578,7 @@ function _finFluxo(){
       var linhas=fx.map(function(x){
         var ent=x.tipo==='entrada',cor=ent?"var(--ok,#1f7a3d)":"var(--crit)",sig=ent?'+':'−',can=x.status==='cancelado';
         return '<tr style="border-top:1px solid var(--line)'+(can?';opacity:.5':'')+'">'+
-          '<td style="'+td+'"><div style="font-weight:600">'+esc(x.descricao)+'</div><div class="muted" style="font-size:.72rem">'+esc(x.categoria||'')+(x.cc?' · '+esc(x.cc):'')+'</div></td>'+
+          '<td style="'+td+'"><div style="font-weight:600">'+esc(x.descricao)+'</div><div class="muted" style="font-size:.72rem">'+esc(x.categoria||'')+' · '+(window.__fxCcRow===x.id?projSel("fxrow-cc",(x.cc||""),'data-id="'+esc(x.id)+'"'):('cc: '+(x.cc?esc(x.cc)+(projLabel[x.cc]?' ('+esc(projLabel[x.cc])+')':''):'—')+' <button class="linkbtn fx-ccedit" data-id="'+esc(x.id)+'" style="font-size:.7rem">✎</button>'))+'</div></td>'+
           '<td style="'+td+'">'+(ent?'Entrada':'Saída')+'</td>'+
           '<td style="'+tdr+';color:'+cor+';font-weight:600">'+sig+fmtBRL(x.valor)+'</td>'+
           '<td style="'+td+'">'+esc(x.data_prev||'—')+'</td>'+
@@ -2580,15 +2587,26 @@ function _finFluxo(){
           '<td style="'+td+';text-align:right"><button class="linkbtn fx-del" data-id="'+esc(x.id)+'" style="font-size:.72rem">excluir</button></td></tr>';
       }).join("");
       var tabela=fx.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Lançamento</th><th style="'+td+';text-align:left">Tipo</th><th style="'+tdr+'">Valor</th><th style="'+td+';text-align:left">Prevista</th><th style="'+td+';text-align:left">Realizada</th><th style="'+td+';text-align:left">Status</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">'+(xs.length?'Nenhum lançamento no filtro.':'Nenhum lançamento ainda. Lance a primeira entrada ou saída acima.')+'</p></div>';
-      var lst=$("#fx-list");if(lst)lst.innerHTML=topo+tabela;
+      var bulk=fx.length?('<div class="card" style="padding:10px 12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+        '<div class="field" style="margin:0;flex:1;min-width:220px"><label style="font-size:.7rem">Atribuir centro de custo aos '+fx.length+' lançamentos do filtro</label>'+projSel("fx-bulkcc","")+'</div>'+
+        '<button class="btn sm" type="button" id="fx-bulkap">Aplicar a '+fx.length+'</button></div>'):'';
+      var lst=$("#fx-list");if(lst)lst.innerHTML=topo+bulk+tabela;
       (lst||box).querySelectorAll(".fx-del").forEach(function(b){b.onclick=function(){
         if(!confirm("Excluir este lançamento do fluxo de caixa?"))return;
         api("fluxoDel",{id:b.getAttribute("data-id")}).then(function(){_finFluxo();_finResumo();}).catch(function(e){alert(e.message||"Erro");});
       };});
+      (lst||box).querySelectorAll(".fx-ccedit").forEach(function(b){b.onclick=function(){window.__fxCcRow=b.getAttribute("data-id");render();};});
+      var rowsel=$("#fxrow-cc");if(rowsel)rowsel.onchange=function(){var id=rowsel.getAttribute("data-id");msg("Salvando…");api("fluxoCc",{id:id,cc:rowsel.value}).then(function(){window.__fxCcRow=null;_finFluxo();_finResumo();}).catch(function(e){msg(e.message||"Erro",true);});};
+      var bap=$("#fx-bulkap");if(bap)bap.onclick=function(){
+        var ccv=($("#fx-bulkcc")||{}).value||"";var ids=fx.map(function(x){return x.id;});
+        if(!confirm("Atribuir o centro de custo "+(ccv||"(limpar)")+" a "+ids.length+" lançamento(s) do filtro?"))return;
+        msg("Atribuindo…");
+        (function chunk(i){ if(i>=ids.length){_finFluxo();_finResumo();return;} api("fluxoCc",{ids:ids.slice(i,i+500),cc:ccv}).then(function(){chunk(i+500);}).catch(function(e){msg(e.message||"Erro",true);}); })(0);
+      };
     }
     var setf=function(id,k,ev){var e=$(id);if(e)e[ev]=function(){F[k]=e.value;render();};};
-    setf("#fxf-q","q","oninput");setf("#fxf-tipo","tipo","onchange");setf("#fxf-cat","cat","onchange");setf("#fxf-st","st","onchange");setf("#fxf-de","de","onchange");setf("#fxf-ate","ate","onchange");setf("#fxf-ord","ord","onchange");
-    var lp=$("#fxf-limpar");if(lp)lp.onclick=function(){window.__fxFilt={q:"",tipo:"",cat:"",st:"",de:"",ate:"",ord:"data_desc"};_finFluxo();};
+    setf("#fxf-q","q","oninput");setf("#fxf-tipo","tipo","onchange");setf("#fxf-cat","cat","onchange");setf("#fxf-st","st","onchange");setf("#fxf-cc","cc","onchange");setf("#fxf-de","de","onchange");setf("#fxf-ate","ate","onchange");setf("#fxf-ord","ord","onchange");
+    var lp=$("#fxf-limpar");if(lp)lp.onclick=function(){window.__fxFilt={q:"",tipo:"",cat:"",st:"",de:"",ate:"",cc:"",ord:"data_desc"};window.__fxCcRow=null;_finFluxo();};
     var gv=function(id){var e=$(id);return e?e.value:"";};
     var add=$("#fx-add");if(add)add.onclick=function(){
       var desc=gv("#fx-desc");if(!desc||desc.length<2){msg("Informe a descrição.",true);return;}

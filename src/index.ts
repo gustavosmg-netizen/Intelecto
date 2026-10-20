@@ -1666,7 +1666,7 @@ const MIN: Record<string, Papel> = {
   // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
-  fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao",
+  fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
   capacidade: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
@@ -3177,6 +3177,23 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "DELETE FROM fluxo WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] });
     await audit("fluxo", u.slug, "excluiu " + id, ip);
     return { ok: true };
+  }
+  /* FLUXO DE CAIXA — atribuir CENTRO DE CUSTO a um ou vários lançamentos (liga o caixa ao projeto).
+     Atualiza só o cc (não mexe nos demais campos). cc vazio = desliga. Auditado. Manual: o vínculo
+     é definido pela gestão, nunca inferido. Aceita id (um) ou ids[] (lote, até 500 por chamada). */
+  if (action === "fluxoCc") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const cc = String(p.cc || "").trim();
+    if (cc && !/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
+    let ids: string[] = [];
+    if (Array.isArray(p.ids)) ids = (p.ids as any[]).map((x) => String(x || "").trim()).filter(Boolean);
+    else if (p.id) ids = [String(p.id).trim()];
+    ids = Array.from(new Set(ids)).slice(0, 500);
+    if (!ids.length) throw new Error("Nenhum lançamento informado.");
+    const now = new Date().toISOString();
+    await sqlite.execute({ sql: "UPDATE fluxo SET cc = ?, u = ?, atualizado = ? WHERE tenant_id = ? AND id IN (" + ids.map(() => "?").join(",") + ")", args: [cc, u.slug, now, u.tenant_id, ...ids] });
+    await audit("fluxo", u.slug, "cc=" + (cc || "(limpo)") + " em " + ids.length + " lançamento(s)", ip);
+    return { ok: true, n: ids.length, cc };
   }
 
   /* ===== ACERVO — navegar pastas do bucket-fonte (abrir arquivo é a rota POST /acervo/arquivo) ===== */
