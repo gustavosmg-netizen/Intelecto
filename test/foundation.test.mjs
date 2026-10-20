@@ -69,6 +69,14 @@ test("Onda 1: Contrato é o dono do valor (helper + override)", () => {
   assert.match(ts, /action === "contratoSet"/);
 });
 
+test("Onda 1: imposto é sobre o contrato (faturamento), não sobre horas, com padrão da empresa", () => {
+  const ts = read("src/index.ts");
+  // alíquota efetiva = override do projeto OU padrão da empresa; imposto = pct × contratado.
+  assert.match(ts, /const imposto = arred2\(\(pctImp \/ 100\) \* contratado\)/);
+  assert.match(ts, /async function impostoPadrao/);
+  assert.match(ts, /action === "impostoPadraoSet"/);
+});
+
 test("migração 0002 cria colunas de contrato e parcelas", () => {
   const sql = read("migrations/0002_contrato.sql");
   for (const c of ["status", "tipo", "deal_id"]) {

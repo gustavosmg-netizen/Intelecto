@@ -1462,13 +1462,20 @@ async function horasCustoPorColab(cc: string, tenant: string): Promise<{ slug: s
 /** Dado px (linha projx com campos fin) + custo de mão de obra (R$) + rateio de fixos (R$),
  * devolve a decomposição. `rateioFixIn` = parcela do pool de custos fixos (overhead) alocada a
  * este CC por participação de horas (ver rateioFixosCarteira); entra no custo real. */
-function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0, contratadoOverride?: number): P {
+function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0, contratadoOverride?: number, impostoPctDefaultIn?: number): P {
   const moCusto = arred2(Number(moCustoIn) || 0);
   // Valor contratado: o CONTRATO é o dono (contratadoOverride = soma dos contratos confirmados do
   // CC, via valorContratadoMap). projx.contratado permanece como fallback de transição, enquanto os
   // contratos não forem materializados — assim a troca é gradual e nada quebra para quem já usa.
   const contratado = arred2((contratadoOverride != null && !Number.isNaN(contratadoOverride)) ? contratadoOverride : (Number(px.contratado) || 0));
-  const imposto = arred2(((Number(px.pct_imposto) || 0) / 100) * contratado);
+  // IMPOSTO sobre o FATURAMENTO (valor contratado), NUNCA sobre as horas — é tributo de serviço
+  // (ISS/PIS/COFINS ou Simples), que incide sobre a receita. Alíquota efetiva = override do projeto
+  // (px.pct_imposto) quando informado; senão o PADRÃO DA EMPRESA (regime tributário do tenant,
+  // config `imposto_padrao`). Esse padrão é o que torna o modelo reaproveitável: cada empresa define
+  // a alíquota uma vez e todo projeto a herda, com exceção pontual por projeto.
+  const pctImpProj = Number(px.pct_imposto) || 0;
+  const pctImp = pctImpProj > 0 ? pctImpProj : (Number(impostoPctDefaultIn) || 0);
+  const imposto = arred2((pctImp / 100) * contratado);
   const rateio = arred2(((Number(px.pct_rateio) || 0) / 100) * moCusto); // legado: pct — não entra no custo
   const rateioFix = arred2(Number(rateioFixIn) || 0); // overhead rateado por horas (Onda 2)
   const outros = arred2(Number(px.outros) || 0);
@@ -1490,9 +1497,19 @@ function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0, contrata
   const naoMO = arred2(imposto + rateioFix + outros + consumiveis + terceiros);
   return {
     contratado, moCusto, imposto, rateio, rateioFix, outros, consumiveis, terceiros, naoMO, custoTotal, margem, margemPct, lucroAlvo,
-    pct_imposto: Number(px.pct_imposto) || 0, pct_rateio: Number(px.pct_rateio) || 0, pct_lucro: Number(px.pct_lucro) || 0,
+    // pct_imposto = alíquota EFETIVA aplicada (override do projeto ou padrão da empresa); pct_imposto_proj
+    // = só o override do projeto (0 = usa o padrão), para o editor distinguir os dois.
+    pct_imposto: pctImp, pct_imposto_proj: pctImpProj, pct_rateio: Number(px.pct_rateio) || 0, pct_lucro: Number(px.pct_lucro) || 0,
     configurado, prejuizo: configurado && contratado > 0 && margem < 0,
   };
+}
+/** Alíquota de imposto PADRÃO da empresa (regime tributário do tenant), em %. Config `imposto_padrao`,
+ *  tenant-scoped. É o que faz o modelo reaproveitável: cada empresa define uma vez; o projeto herda. */
+async function impostoPadrao(tenant: string): Promise<number> {
+  try {
+    const r = await sqlite.execute({ sql: "SELECT v FROM config WHERE k = 'imposto_padrao' AND tenant_id = ?", args: [tenant] });
+    return r.rows.length ? Math.max(0, Math.min(100, Number(r.rows[0].v) || 0)) : 0;
+  } catch (_) { return 0; }
 }
 /** VALOR CONTRATADO por CC, do CONTRATO (dono único do valor) — Onda 1. Soma os contratos
  *  CONFIRMADOS de cada CC em cc_contrato (base + aditivos). Enquanto um CC não tiver contrato
@@ -1583,9 +1600,10 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   const prr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [tenant] });
   const rf = await rateioFixosCarteira(tenant);
   const vcMap = await valorContratadoMap(tenant); // valor do Contrato (dono); fallback projx
+  const impPad = await impostoPadrao(tenant); // alíquota padrão da empresa
   let contratado = 0, custoTotal = 0, margem = 0, nProj = 0, nPrej = 0;
   for (const pr of prr.rows as P[]) {
-    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0, vcMap[String(pr.cc)]);
+    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0, vcMap[String(pr.cc)], impPad);
     if (d.contratado <= 0) continue;
     contratado += d.contratado; custoTotal += d.custoTotal; margem += d.margem; nProj++;
     if (d.margem < 0) nPrej++;
@@ -1705,7 +1723,7 @@ const MIN: Record<string, Papel> = {
   // (so o dono) DENTRO de cada branch e em modulosLiberados. Unico lugar do portal com valor
   // monetario. acervo_list/acervo_arquivo ficam no piso de acervo (equipe + grant), nao aqui.
   financeiro: "coordenacao", custohoraList: "coordenacao", custohoraSet: "coordenacao", custohoraDel: "coordenacao", projfinSet: "coordenacao",
-  contratoList: "coordenacao", contratoSet: "coordenacao",
+  contratoList: "coordenacao", contratoSet: "coordenacao", impostoPadraoSet: "coordenacao",
   // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
@@ -2988,7 +3006,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       : (await horasPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h }));
     const rfp = podeFin ? await rateioFixosCarteira(u.tenant_id) : { fixosTotal: 0, byCc: {} as Record<string, number>, horasBase: 0 };
     const vcCc = podeFin ? (await valorContratadoMap(u.tenant_id))[cc] : undefined; // valor do Contrato (dono)
-    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0, vcCc) : null;
+    const impPad = podeFin ? await impostoPadrao(u.tenant_id) : 0; // alíquota padrão da empresa
+    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0, vcCc, impPad) : null;
     // CUSTO REAL POR COLABORADOR (D-3): além da mão de obra direta (horas × custo/hora c/ encargos),
     // cada colaborador absorve sua fatia do custo não-MO do projeto (imposto + overhead + outros +
     // consumíveis + terceiros), rateada pelas horas que lançou. Dá o custo real carregado por pessoa.
@@ -3154,16 +3173,17 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const prr = await sqlite.execute({ sql: "SELECT cc, projeto, cliente, status FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [u.tenant_id] });
     const rf = await rateioFixosCarteira(u.tenant_id);
     const vcMap = await valorContratadoMap(u.tenant_id); // valor do Contrato (dono); fallback projx
+    const impPad = await impostoPadrao(u.tenant_id); // alíquota padrão da empresa (herdada pelo projeto)
     const rows: P[] = [];
     for (const pr of prr.rows as P[]) {
       const cc = String(pr.cc); const px = pxByCc[cc] || {};
-      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0, vcMap[cc]);
+      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0, vcMap[cc], impPad);
       if (d.contratado <= 0) continue; // carteira = só projetos com valor contratado informado
       rows.push({ cc, projeto: pr.projeto, cliente: pr.cliente || "", status: pr.status || "", ...d });
     }
     rows.sort((a: any, b: any) => (a.margem - b.margem)); // prejuízo/menor margem primeiro
     const tot = rows.reduce((s: any, r: any) => ({ contratado: s.contratado + r.contratado, custoTotal: s.custoTotal + r.custoTotal, margem: s.margem + r.margem }), { contratado: 0, custoTotal: 0, margem: 0 });
-    return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) }, overhead: { total: rf.fixosTotal, horasBase: rf.horasBase } };
+    return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) }, overhead: { total: rf.fixosTotal, horasBase: rf.horasBase }, impostoPadrao: impPad };
   }
   /* CUSTOS FIXOS / OVERHEAD — pool editável rateado por horas (Onda 2). Leitura restrita. */
   if (action === "custoFixoList") {
@@ -3171,7 +3191,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const r = await sqlite.execute({ sql: "SELECT id, categoria, descricao, valor, u, criado, atualizado FROM custo_fixo WHERE tenant_id = ? ORDER BY categoria, criado", args: [u.tenant_id] });
     const total = (r.rows as P[]).reduce((s, x) => s + (Number(x.valor) || 0), 0);
     const rf = await rateioFixosCarteira(u.tenant_id);
-    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase };
+    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase, impostoPadrao: await impostoPadrao(u.tenant_id) };
   }
   if (action === "custoFixoSet") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
@@ -3188,6 +3208,16 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     });
     await audit("custo_fixo", u.slug, (isNew ? "novo " : "edit ") + id + " " + categoria + " " + valor, ip);
     return { ok: true, id, isNew };
+  }
+  /* IMPOSTO PADRÃO DA EMPRESA (regime tributário do tenant) — alíquota % sobre o faturamento que
+     todo projeto herda (override por projeto em projx.pct_imposto). É a peça que torna o modelo de
+     custo reaproveitável: cada empresa define uma vez. Gate financeiro.editar. Confidencial. */
+  if (action === "impostoPadraoSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const pct = Math.max(0, Math.min(100, Number(p.pct) || 0));
+    await sqlite.execute({ sql: "INSERT INTO config (k, v, tenant_id) VALUES ('imposto_padrao', ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", args: [String(pct), u.tenant_id] });
+    await audit("imposto_padrao", u.slug, "pct=" + pct, ip);
+    return { ok: true, pct };
   }
   if (action === "custoFixoDel") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");

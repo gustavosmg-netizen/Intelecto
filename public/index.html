@@ -1230,9 +1230,10 @@ function _pjEditForm(j){
         '<div class="field"><label>Consumíveis (R$)</label><input id="ed-consumiveis" type="number" min="0" step="0.01" value="'+esc(x.consumiveis||0)+'"></div>'+
         '<div class="field"><label>Terceiros / contratações (R$)</label><input id="ed-terceiros" type="number" min="0" step="0.01" value="'+esc(x.terceiros||0)+'"></div>'+
         '<div class="field"><label>Outros custos (R$)</label><input id="ed-outros" type="number" min="0" step="0.01" value="'+esc(x.outros||0)+'"></div>'+
+        '<div class="field"><label>Imposto (% s/ contratado — vazio = padrão da empresa)</label><input id="ed-imposto" type="number" min="0" max="100" step="0.01" placeholder="'+esc((j.fin&&j.fin.pct_imposto&&!(x.pct_imposto>0))?('padrão '+j.fin.pct_imposto+'%'):'padrão da empresa')+'" value="'+esc(x.pct_imposto>0?x.pct_imposto:"")+'"></div>'+
         '<div class="field"><label>Lucro-alvo (% s/ contratado)</label><input id="ed-luc" type="number" min="0" max="100" step="0.1" value="'+esc(x.pct_lucro||0)+'"></div>'+
       '</div>'+
-      '<p class="muted" style="font-size:.72rem;margin:0 0 4px">Mão de obra = horas × custo/hora de cada colaborador (que já inclui impostos, rateio e encargos). Some aqui só consumíveis e terceiros.</p></div>'
+      '<p class="muted" style="font-size:.72rem;margin:0 0 4px">Mão de obra = horas × custo/hora de cada colaborador (custo/hora = só a MO com seus encargos). <b>Imposto</b> incide sobre o valor contratado (faturamento), não sobre as horas — deixe em branco para herdar a alíquota padrão da empresa. Consumíveis, terceiros, outros e o overhead entram à parte.</p></div>'
     ):'')+
     '<div id="ed-msg" class="muted" style="font-size:.8rem;min-height:18px"></div>'+
     '<div style="display:flex;gap:8px;justify-content:flex-end">'+
@@ -1262,7 +1263,7 @@ function _pjEditLiga(j){
         if(!j.podeFin||!$("#ed-contratado"))return;
         return api("projfinSet",{cc:cc,contratado:Number(v("ed-contratado"))||0,outros:Number(v("ed-outros"))||0,
           consumiveis:Number(v("ed-consumiveis"))||0,terceiros:Number(v("ed-terceiros"))||0,
-          pct_lucro:Number(v("ed-luc"))||0});
+          pct_imposto:Number(v("ed-imposto"))||0,pct_lucro:Number(v("ed-luc"))||0});
       })
       .then(function(){
         toast("Gestão do projeto atualizada.");
@@ -2606,7 +2607,11 @@ function _finCustoFixo(){
         '<td style="'+td+';text-align:right"><button class="linkbtn cf-del" data-id="'+esc(x.id)+'">excluir</button></td></tr>';
     }).join("");
     var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Categoria</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor (pool)</th><th></th></tr></thead><tbody>'+linhas+'<tr style="border-top:2px solid var(--line);font-weight:700"><td style="'+td+'" colspan="2">Total do overhead</td><td style="'+td+';text-align:right">'+fmtBRL(j.total)+'</td><td></td></tr></tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum custo fixo cadastrado. Enquanto estiver vazio, a margem usa só mão de obra + consumíveis — nenhum overhead é inventado.</p></div>';
-    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). O portal rateia este total sobre os projetos contratados <b>por horas apontadas</b> — cada projeto absorve <code>total × (horas do projeto ÷ horas da carteira)</code> — somando ao custo real antes da margem. Base de horas da carteira: <b>'+fmtH(j.horasBase||0)+'</b>. Comece por onde tiver número real.</p>'+form+tabela;
+    var impBox='<div class="card" style="margin-bottom:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Imposto padrão da empresa</div>'+
+      '<p class="muted" style="font-size:.72rem;margin:0 0 8px">Alíquota sobre o <b>faturamento (valor contratado)</b> — o regime tributário da casa (ex.: Simples, Presumido). Todo projeto herda este percentual; dá para ajustar caso a caso no detalhe do projeto. Não incide sobre as horas.</p>'+
+      '<div style="display:flex;gap:8px;align-items:center"><input id="imp-pad" type="number" min="0" max="100" step="0.01" value="'+esc(j.impostoPadrao||0)+'" style="max-width:120px"><span class="muted" style="font-size:.8rem">% sobre o contratado</span><button id="imp-save" class="btn sec sm">Salvar</button><span id="imp-msg" class="muted" style="font-size:.78rem"></span></div></div>';
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). O portal rateia este total sobre os projetos contratados <b>por horas apontadas</b> — cada projeto absorve <code>total × (horas do projeto ÷ horas da carteira)</code> — somando ao custo real antes da margem. Base de horas da carteira: <b>'+fmtH(j.horasBase||0)+'</b>. Comece por onde tiver número real.</p>'+impBox+form+tabela;
+    var imps=$("#imp-save");if(imps)imps.onclick=function(){var im=$("#imp-msg");if(im)im.textContent="Salvando…";api("impostoPadraoSet",{pct:Number($("#imp-pad").value)||0}).then(function(){if(im){im.textContent="Salvo.";im.classList.remove("err");}_finResumo();_finCarteira();}).catch(function(e){if(im){im.textContent=e.message||"Erro";im.classList.add("err");}});};
     var m=$("#cf-msg");var msg=function(t,err){if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
     var add=$("#cf-add");if(add)add.onclick=function(){
       var val=Number($("#cf-val").value)||0;
