@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-20a";
+const SCHEMA_VER = "2026-10-20b";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -679,6 +679,8 @@ function ensureSchema(): Promise<void> {
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS contrato_parcela_ct ON contrato_parcela (tenant_id, contrato_id)"); } catch (_) {}
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS contrato_parcela_cc ON contrato_parcela (tenant_id, cc, status)"); } catch (_) {}
     } catch (_) { /* já existe */ }
+    // Índice da FILA DE CONCILIAÇÃO: o caixa sem CC consultado por tenant (ver ação `conciliacao`).
+    try { await sqlite.execute("CREATE INDEX IF NOT EXISTS fluxo_cc ON fluxo (tenant_id, cc)"); } catch (_) {}
     // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute encargos da MO;
     // o custo real do projeto = MO + imposto + consumíveis + terceiros + outros + overhead (Onda 1, D-3).
     try { await sqlite.execute("ALTER TABLE projx ADD COLUMN consumiveis REAL DEFAULT 0"); } catch (_) { /* já existe */ }
@@ -1728,6 +1730,7 @@ const MIN: Record<string, Papel> = {
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
+  conciliacao: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
   capacidade: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
@@ -3311,6 +3314,89 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "UPDATE fluxo SET cc = ?, u = ?, atualizado = ? WHERE tenant_id = ? AND id IN (" + ids.map(() => "?").join(",") + ")", args: [cc, u.slug, now, u.tenant_id, ...ids] });
     await audit("fluxo", u.slug, "cc=" + (cc || "(limpo)") + " em " + ids.length + " lançamento(s)", ip);
     return { ok: true, n: ids.length, cc };
+  }
+  /* FILA DE CONCILIAÇÃO (Onda 1) — os movimentos de caixa SEM centro de custo, paginados no servidor
+     (princípio de escala: nunca devolver a base inteira). É a lista de trabalho para ligar cada
+     entrada/saída a um projeto. Entradas podem ser baixadas contra uma parcela de contrato
+     (parcelaBaixar), que preenche o CC sozinho. Gate financeiro.ver. */
+  if (action === "conciliacao") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const limit = Math.max(1, Math.min(200, Math.floor(Number(p.limit) || 50)));
+    const offset = Math.max(0, Math.floor(Number(p.offset) || 0));
+    const tipo = String(p.tipo || "") === "entrada" ? "entrada" : (String(p.tipo || "") === "saida" ? "saida" : "");
+    const wh = "tenant_id = ? AND COALESCE(cc,'') = ''" + (tipo ? " AND tipo = ?" : "");
+    const argsBase: any[] = tipo ? [u.tenant_id, tipo] : [u.tenant_id];
+    const tot = await sqlite.execute({ sql: "SELECT COUNT(*) n, COALESCE(SUM(valor),0) v FROM fluxo WHERE " + wh, args: argsBase });
+    const r = await sqlite.execute({
+      sql: "SELECT id, tipo, categoria, descricao, valor, data_prev, data_real, status, origem FROM fluxo WHERE " + wh
+        + " ORDER BY COALESCE(NULLIF(data_real,''), data_prev, criado) DESC LIMIT ? OFFSET ?",
+      args: [...argsBase, limit, offset],
+    });
+    const n = Number((tot.rows[0] as P).n) || 0;
+    return { ok: true, fila: r.rows, total: n, valorPendente: arred2(Number((tot.rows[0] as P).v) || 0), limit, offset, temMais: offset + limit < n };
+  }
+  /* PARCELAS DO CONTRATO (Onda 1) — plano de recebimento de um contrato (base da conciliação).
+     Lista por contrato OU por CC. Gate financeiro.ver. */
+  if (action === "parcelaList") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const cid = String(p.contrato_id || "").trim(); const cc = String(p.cc || "").trim();
+    if (!cid && !cc) throw new Error("Informe o contrato ou o centro de custo.");
+    const wh = cid ? "tenant_id = ? AND contrato_id = ?" : "tenant_id = ? AND cc = ?";
+    const r = await sqlite.execute({ sql: "SELECT id, contrato_id, cc, numero, valor, venc_prev, recebido_em, fluxo_id, status, obs FROM contrato_parcela WHERE " + wh + " ORDER BY numero, venc_prev", args: [u.tenant_id, cid || cc] });
+    const rows = r.rows as P[];
+    const prev = rows.reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    const receb = rows.filter((x) => String(x.status) === "recebida").reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    return { ok: true, parcelas: rows, totalPrevisto: arred2(prev), totalRecebido: arred2(receb) };
+  }
+  if (action === "parcelaSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const contrato_id = String(p.contrato_id || "").trim(); if (!contrato_id) throw new Error("Contrato ausente.");
+    const ct = await sqlite.execute({ sql: "SELECT cc FROM cc_contrato WHERE id = ? AND tenant_id = ?", args: [contrato_id, u.tenant_id] });
+    if (!ct.rows.length) throw new Error("Contrato não encontrado.");
+    const cc = String((ct.rows[0] as P).cc || "");
+    let id = String(p.id || "").trim(); const isNew = !id;
+    if (isNew) id = "PC-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const numero = Math.max(1, Math.floor(Number(p.numero) || 1));
+    const valor = Math.max(0, Number(p.valor) || 0);
+    const venc = (() => { const s = String(p.venc_prev || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; })();
+    const obs = String(p.obs || "").slice(0, 300);
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO contrato_parcela (id,tenant_id,contrato_id,cc,numero,valor,venc_prev,status,obs,criado,u) VALUES (?,?,?,?,?,?,?, 'prevista', ?,?,?) "
+        + "ON CONFLICT(id) DO UPDATE SET numero=excluded.numero,valor=excluded.valor,venc_prev=excluded.venc_prev,obs=excluded.obs,u=excluded.u",
+      args: [id, u.tenant_id, contrato_id, cc, numero, valor, venc, obs, now, u.slug],
+    });
+    await audit("parcela", u.slug, (isNew ? "nova " : "edit ") + id + " ct=" + contrato_id + " valor=" + valor, ip);
+    return { ok: true, id, cc, isNew };
+  }
+  /* BAIXA DE PARCELA (conciliação da entrada) — liga um recebimento do caixa (fluxo entrada) a uma
+     parcela do contrato: marca a parcela como recebida e PREENCHE o CC do movimento com o CC do
+     contrato. É a conciliação que fecha o buraco "caixa sem centro de custo" para os recebimentos.
+     Gate financeiro.editar. Auditado. Passe fluxo_id='' para desfazer a baixa. */
+  if (action === "parcelaBaixar") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const pid = String(p.parcela_id || "").trim(); if (!pid) throw new Error("Parcela ausente.");
+    const pr = await sqlite.execute({ sql: "SELECT id, cc, fluxo_id FROM contrato_parcela WHERE id = ? AND tenant_id = ?", args: [pid, u.tenant_id] });
+    if (!pr.rows.length) throw new Error("Parcela não encontrada.");
+    const parc = pr.rows[0] as P; const cc = String(parc.cc || "");
+    const fluxo_id = String(p.fluxo_id || "").trim();
+    const now = new Date().toISOString();
+    if (!fluxo_id) {
+      // desfaz a baixa: volta a parcela a prevista; o CC do movimento não é apagado (decisão humana).
+      await sqlite.execute({ sql: "UPDATE contrato_parcela SET status = 'prevista', recebido_em = '', fluxo_id = '' WHERE id = ? AND tenant_id = ?", args: [pid, u.tenant_id] });
+      await audit("parcela", u.slug, "desfez baixa " + pid, ip);
+      return { ok: true, id: pid, baixada: false };
+    }
+    const fr = await sqlite.execute({ sql: "SELECT id, tipo, data_real, data_prev FROM fluxo WHERE id = ? AND tenant_id = ?", args: [fluxo_id, u.tenant_id] });
+    if (!fr.rows.length) throw new Error("Movimento de caixa não encontrado.");
+    const fx = fr.rows[0] as P;
+    if (String(fx.tipo) !== "entrada") throw new Error("Só uma entrada (recebimento) baixa uma parcela.");
+    const receb = String(fx.data_real || fx.data_prev || now.slice(0, 10)).slice(0, 10);
+    await sqlite.execute({ sql: "UPDATE contrato_parcela SET status = 'recebida', recebido_em = ?, fluxo_id = ? WHERE id = ? AND tenant_id = ?", args: [receb, fluxo_id, pid, u.tenant_id] });
+    // preenche o CC do movimento com o do contrato (conciliação) — não sobrescreve um CC já definido.
+    await sqlite.execute({ sql: "UPDATE fluxo SET cc = ?, u = ?, atualizado = ? WHERE id = ? AND tenant_id = ? AND COALESCE(cc,'') = ''", args: [cc, u.slug, now, fluxo_id, u.tenant_id] });
+    await audit("parcela", u.slug, "baixou " + pid + " com " + fluxo_id + " cc=" + cc, ip);
+    return { ok: true, id: pid, baixada: true, cc, fluxo_id };
   }
 
   /* ===== ACERVO — navegar pastas do bucket-fonte (abrir arquivo é a rota POST /acervo/arquivo) ===== */

@@ -2533,6 +2533,7 @@ function viewFinanceiro(el){
       '<button class="subnav-btn" data-tab="fin-tab-ch" type="button">Custo/hora por colaborador</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cf" type="button">Custos fixos &amp; overhead</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cap" type="button">Capacidade × apontado</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-conc" type="button">Conciliação</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-fx" type="button">Fluxo de caixa</button>'+
     '</nav>'+
     '<section class="tabpanel" id="fin-tab-res"><div id="fin-res"><p class="muted" style="padding:8px 0">Carregando resumo…</p></div></section>'+
@@ -2540,9 +2541,10 @@ function viewFinanceiro(el){
     '<section class="tabpanel hidden" id="fin-tab-ch"><div id="fin-ch"><p class="muted" style="padding:8px 0">Carregando custos…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cf"><div id="fin-cf"><p class="muted" style="padding:8px 0">Carregando custos fixos…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cap"><div id="fin-cap"><p class="muted" style="padding:8px 0">Carregando capacidade…</p></div></section>'+
+    '<section class="tabpanel hidden" id="fin-tab-conc"><div id="fin-conc"><p class="muted" style="padding:8px 0">Carregando conciliação…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-fx"><div id="fin-fx"><p class="muted" style="padding:8px 0">Carregando fluxo de caixa…</p></div></section>'+
     '</div>';
-  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finCapacidade();_finFluxo();
+  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finCapacidade();_finConciliacao();_finFluxo();
 }
 /* RESUMO EXECUTIVO — consolidado ao vivo + materialização (snapshot datado). Tudo derivado do
    D1 (sem número inventado): financeiro da carteira, pipeline do CRM, horas e fluxo de caixa. */
@@ -2663,6 +2665,44 @@ function _finCapacidade(){
 }
 /* FLUXO DE CAIXA — base de lançamentos (entrada/saída, previsto × realizado), editável e
    auditada. Nasce vazia; a casa lança o que é real. */
+/* CONCILIAÇÃO — fila dos movimentos de caixa SEM centro de custo, paginada no servidor. Atribuir o
+   CC aqui liga o caixa ao projeto (resolve o "1.831 movimentos, 0 com centro de custo"). Entradas
+   que correspondem a uma parcela de contrato são baixadas no detalhe do contrato (preenche o CC só). */
+function _finConciliacao(){
+  if(window.__concOffset==null)window.__concOffset=0; if(!window.__concTipo)window.__concTipo="";
+  var LIM=50;
+  api("conciliacao",{limit:LIM,offset:window.__concOffset,tipo:window.__concTipo}).then(function(j){
+    var box=$("#fin-conc");if(!box)return;var fila=j.fila||[];
+    var projs=(state.data&&state.data.proj)||[];
+    var projOpts=projs.map(function(p){return [p.cc,(p.cc+' — '+(p.cliente||p.projeto||''))];}).sort(function(a,b){return String(a[1]).localeCompare(String(b[1]));});
+    var sel=function(id){return '<select class="sm conc-cc" id="'+id+'" data-id="'+id.slice(3)+'"><option value="">— escolher centro de custo —</option>'+projOpts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("")+'</select>';};
+    var td='padding:7px 8px;border-bottom:1px solid var(--line);font-size:.82rem';
+    if(j.total===0){box.innerHTML='<div class="card"><p style="margin:0">✅ Todos os movimentos de caixa têm centro de custo. Nada na fila de conciliação.</p></div>';return;}
+    var filtro='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px"><span class="muted" style="font-size:.78rem">Mostrar:</span>'+
+      ['','entrada','saida'].map(function(t){var lbl=t===''?'Tudo':(t==='entrada'?'Entradas':'Saídas');return '<button class="btn '+(window.__concTipo===t?'':'sec')+' sm conc-f" data-t="'+t+'">'+lbl+'</button>';}).join('')+'</div>';
+    var ini=j.total?(j.offset+1):0, fim=Math.min(j.offset+LIM,j.total);
+    var linhas=fila.map(function(x){
+      var dtt=x.data_real||x.data_prev||"";
+      var sinal=x.tipo==='entrada'?'+':'−';var cor=x.tipo==='entrada'?'var(--ok,#1f7a3d)':'var(--crit)';
+      return '<tr><td style="'+td+'">'+esc(dtt)+'</td><td style="'+td+'">'+esc(x.descricao||'')+(x.categoria?' <span class="muted" style="font-size:.72rem">· '+esc(x.categoria)+'</span>':'')+'</td>'+
+        '<td style="'+td+';text-align:right;color:'+cor+';font-variant-numeric:tabular-nums">'+sinal+fmtBRL(x.valor)+'</td>'+
+        '<td style="'+td+'">'+sel('cc-'+x.id)+'</td></tr>';
+    }).join("");
+    box.innerHTML='<div class="card" style="margin-bottom:10px;border-color:var(--crit)"><b>'+j.total+'</b> movimento(s) de caixa sem centro de custo · <span class="muted">'+fmtBRL(j.valorPendente)+' pendente de conciliação</span>'+
+      '<div class="muted" style="font-size:.72rem;margin-top:4px">Escolha o projeto de cada movimento para ligar o caixa ao centro de custo. O vínculo é manual (nunca inferido) e fica na auditoria.</div></div>'+
+      filtro+
+      '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Data</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor</th><th style="'+td+';text-align:left">Centro de custo</th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:.8rem"><span class="muted">'+ini+'–'+fim+' de '+j.total+'</span><span><button class="btn sec sm conc-prev"'+(j.offset<=0?' disabled':'')+'>← anteriores</button> <button class="btn sec sm conc-next"'+(j.temMais?'':' disabled')+'>próximos →</button></span></div>'+
+      '<div id="conc-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div>';
+    box.querySelectorAll(".conc-f").forEach(function(b){b.onclick=function(){window.__concTipo=b.getAttribute("data-t");window.__concOffset=0;_finConciliacao();};});
+    var pv=box.querySelector(".conc-prev");if(pv)pv.onclick=function(){window.__concOffset=Math.max(0,window.__concOffset-LIM);_finConciliacao();};
+    var nx=box.querySelector(".conc-next");if(nx)nx.onclick=function(){window.__concOffset=window.__concOffset+LIM;_finConciliacao();};
+    box.querySelectorAll(".conc-cc").forEach(function(s){s.onchange=function(){
+      if(!s.value)return;var m=$("#conc-msg");if(m)m.textContent="Conciliando…";
+      api("fluxoCc",{id:s.getAttribute("data-id"),cc:s.value}).then(function(){if(m)m.textContent="Conciliado.";_finConciliacao();_finResumo();_finCarteira();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
+    };});
+  }).catch(function(e){var box=$("#fin-conc");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
 function _finFluxo(){
   api("fluxoList").then(function(j){
     var box=$("#fin-fx");if(!box)return;var xs=j.fluxos||[];

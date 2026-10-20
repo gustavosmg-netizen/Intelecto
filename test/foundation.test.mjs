@@ -85,6 +85,17 @@ test("migração 0002 cria colunas de contrato e parcelas", () => {
   assert.match(sql, /CREATE TABLE IF NOT EXISTS contrato_parcela/);
 });
 
+test("Onda 1: conciliação do caixa (fila paginada + baixa que preenche o CC)", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /action === "conciliacao"/);
+  assert.match(ts, /action === "parcelaBaixar"/);
+  // a baixa só preenche o CC quando o movimento ainda não tem um (não sobrescreve decisão humana).
+  assert.match(ts, /UPDATE fluxo SET cc = \?, u = \?, atualizado = \? WHERE id = \? AND tenant_id = \? AND COALESCE\(cc,''\) = ''/);
+  // só uma entrada (recebimento) baixa uma parcela.
+  assert.match(ts, /Só uma entrada \(recebimento\) baixa uma parcela/);
+  assert.match(read("migrations/0003_conciliacao.sql"), /CREATE INDEX IF NOT EXISTS fluxo_cc/);
+});
+
 test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   const files = readdirSync(join(root, "migrations")).filter((f) => f.endsWith(".sql"));
   assert.ok(files.length >= 1, "nenhuma migração");

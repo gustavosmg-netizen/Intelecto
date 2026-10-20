@@ -47,6 +47,16 @@ SELECT 'C4b' rule, 'medio' sev, COUNT(*) n, 'Financeiro' dono, 'Projeto 360 › 
 FROM projx x WHERE x.contratado > 0
   AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc = x.cc AND c.tenant_id = x.tenant_id AND c.status = 'confirmado');
 
+-- C13 · contrato confirmado sem parcelas  [medio · Financeiro · Projeto 360 › Contrato]
+-- Um contrato confirmado deveria ter o plano de recebimento (parcelas) para conciliar o caixa.
+SELECT 'C13' rule, 'medio' sev, COUNT(*) n, 'Financeiro' dono, 'Projeto 360 › Contrato' atalho
+FROM cc_contrato c WHERE c.status = 'confirmado'
+  AND NOT EXISTS (SELECT 1 FROM contrato_parcela pp WHERE pp.contrato_id = c.id AND pp.tenant_id = c.tenant_id);
+
+-- C14 · parcela prevista vencida e não recebida  [alto · Financeiro · Financeiro › Conciliação]
+SELECT 'C14' rule, 'alto' sev, COUNT(*) n, 'Financeiro' dono, 'Financeiro › Conciliação' atalho
+FROM contrato_parcela WHERE status = 'prevista' AND venc_prev <> '' AND venc_prev < date('now');
+
 -- C5 · andamento divergente (> 10 p.p.) entre Carteira e último registro de andamento  [alto · Projetos · Projeto 360 › Visão]  [base: 39]
 SELECT 'C5' rule, 'alto' sev, COUNT(*) n, 'Projetos' dono, 'Projeto 360 › Visão' atalho
 FROM projx x
