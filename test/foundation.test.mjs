@@ -56,6 +56,27 @@ test("src/index.ts ainda declara SCHEMA_VER (contrato do caminho atual)", () => 
   assert.match(ts, /const SCHEMA_VER = "/);
 });
 
+test("Onda 1: imposto entra no custo real (correção do D-3)", () => {
+  const ts = read("src/index.ts");
+  // decompoeFin soma o imposto no custoTotal (antes ficava de fora).
+  assert.match(ts, /const custoTotal = arred2\(moCusto \+ imposto \+/);
+});
+
+test("Onda 1: Contrato é o dono do valor (helper + override)", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /async function valorContratadoMap/);
+  assert.match(ts, /contratadoOverride\?: number/);
+  assert.match(ts, /action === "contratoSet"/);
+});
+
+test("migração 0002 cria colunas de contrato e parcelas", () => {
+  const sql = read("migrations/0002_contrato.sql");
+  for (const c of ["status", "tipo", "deal_id"]) {
+    assert.match(sql, new RegExp("ALTER TABLE cc_contrato ADD COLUMN " + c));
+  }
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS contrato_parcela/);
+});
+
 test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   const files = readdirSync(join(root, "migrations")).filter((f) => f.endsWith(".sql"));
   assert.ok(files.length >= 1, "nenhuma migração");

@@ -1047,7 +1047,7 @@ function _colabBloco(j){
   var cs=j.colab||[];if(!cs.length)return '<div style="margin-top:10px"><div class="muted" style="font-size:.76rem;margin-bottom:4px">Horas por colaborador</div><p class="muted" style="font-size:.82rem;margin:0">Sem horas efetivas (aprovadas/lançadas) neste projeto.</p></div>';
   var tot=cs.reduce(function(s,c){return s+(Number(c.h)||0);},0);
   var linhas=cs.map(function(c){
-    var dir=j.podeFin?('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span><span class="muted" style="font-size:.74rem;margin-left:8px">× '+fmtBRL(c.custoHora||0)+'/h = <b>'+fmtBRL(c.custo||0)+'</b></span>'):('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span>');
+    var dir=j.podeFin?('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span><span class="muted" style="font-size:.74rem;margin-left:8px">× '+fmtBRL(c.custoHora||0)+'/h = <b>'+fmtBRL(c.custo||0)+'</b>'+(c.custoReal!=null?' · real c/ rateio <b>'+fmtBRL(c.custoReal)+'</b>':'')+'</span>'):('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span>');
     return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:.84rem;padding:2px 0;border-bottom:1px dashed var(--line)"><span>'+esc(c.nome||c.slug)+'</span><span>'+dir+'</span></div>';
   }).join("");
   return '<div style="margin-top:12px"><div class="muted" style="font-size:.76rem;margin-bottom:4px">Horas por colaborador <span style="font-size:.72rem">· total '+fmtH(tot)+'</span></div>'+linhas+'</div>';
@@ -1079,15 +1079,16 @@ function _finBloco(j){
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:.82rem;font-weight:600">💰 Financeiro (dono)'+badge+'</span>'+
       (j.coord?'<button id="pjfin" class="btn sec sm">Editar contrato</button>':'')+'</div>'+
     linha("Mão de obra (horas × custo/hora, c/ encargos)",fmtBRL(f.moCusto))+
+    ((f.imposto||0)?linha("Imposto ("+(f.pct_imposto||0)+"% sobre o contratado)",fmtBRL(f.imposto)):"")+
     linha("Consumíveis",fmtBRL(f.consumiveis||0))+
     linha("Terceiros / contratações",fmtBRL(f.terceiros||0))+
     linha("Outros",fmtBRL(f.outros))+
     (f.rateioFix?linha("Rateio de fixos (overhead, por horas)",fmtBRL(f.rateioFix)):"")+
-    linha("Custo total",fmtBRL(f.custoTotal),true)+
+    linha("Custo real total",fmtBRL(f.custoTotal),true)+
     linha("Valor contratado",temContrato?fmtBRL(f.contratado):"— não informado")+
     '<div style="display:flex;justify-content:space-between;gap:10px;font-size:.9rem;padding:6px 0 0;margin-top:4px;border-top:2px solid '+cor+';font-weight:700"><span>Margem (lucro real)</span><span style="color:'+cor+';font-variant-numeric:tabular-nums">'+(temContrato?fmtBRL(f.margem):"—")+'</span></div>'+
     (temContrato&&f.lucroAlvo?'<div class="muted" style="font-size:.72rem;margin-top:4px">Lucro-alvo ('+f.pct_lucro+'% do contratado): '+fmtBRL(f.lucroAlvo)+'</div>':'')+
-    '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora embute encargos da mão de obra. Consumíveis, terceiros e o rateio dos custos fixos (overhead, por horas apontadas) entram à parte, antes da margem.</div>'+
+    '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora embute os encargos da mão de obra. Imposto (sobre o contratado), consumíveis, terceiros, outros e o rateio dos custos fixos (overhead, por horas apontadas) entram no custo real, antes da margem.</div>'+
     '</div>';
 }
 function _funcLabel(code){var c=(state.data&&state.data.catFuncoes)||[];for(var i=0;i<c.length;i++){if(c[i][0]===code)return c[i][1];}return code;}

@@ -19,23 +19,33 @@ SELECT 'C1' rule, 'crit' sev, COUNT(*) n, 'Financeiro' dono, 'Financeiro › Cai
 FROM fluxo WHERE COALESCE(cc,'') = '';
 -- detalhe: SELECT id, data_prev, data_real, tipo, categoria, descricao, valor FROM fluxo WHERE COALESCE(cc,'')='' ORDER BY COALESCE(data_real,data_prev) DESC;
 
--- C2 · contrato assinado sem valor no Financeiro  [crit · Comercial+Financeiro · Projeto 360 › Financeiro]  [base: 1]
+-- C2 · deal assinado sem CONTRATO confirmado  [crit · Comercial+Financeiro · Projeto 360 › Financeiro]  [base: 8 (contratos ainda não materializados)]
+-- Onda 1: o valor contratado é dono do CONTRATO (cc_contrato confirmado). Um deal assinado deve ter
+-- um contrato confirmado no CC. Até a materialização/backfill (0003) todos aparecem como pendentes.
 SELECT 'C2' rule, 'crit' sev, COUNT(*) n, 'Comercial+Financeiro' dono, 'Projeto 360 › Financeiro' atalho
-FROM crm_deal d LEFT JOIN projx x ON x.cc = d.cc AND x.tenant_id = d.tenant_id
-WHERE d.signeddate <> '' AND d.cc <> '' AND COALESCE(x.contratado,0) = 0;
--- detalhe: SELECT d.id, d.co, d.cc, d.val FROM crm_deal d LEFT JOIN projx x ON x.cc=d.cc WHERE d.signeddate<>'' AND d.cc<>'' AND COALESCE(x.contratado,0)=0;
+FROM crm_deal d
+WHERE d.signeddate <> '' AND d.cc <> ''
+  AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc = d.cc AND c.tenant_id = d.tenant_id AND c.status = 'confirmado');
+-- detalhe: SELECT d.id, d.co, d.cc, d.val FROM crm_deal d WHERE d.signeddate<>'' AND d.cc<>'' AND d.cc NOT IN (SELECT cc FROM cc_contrato WHERE status='confirmado');
 
--- C3 · valor do contrato divergente entre CRM e Financeiro (> R$1)  [crit · Comercial+Financeiro · Projeto 360 › Financeiro]  [base: 3]
+-- C3 · valor do CONTRATO divergente do deal assinado (> R$1)  [crit · Comercial+Financeiro · Projeto 360 › Financeiro]
+-- Compara o valor assinado no CRM com a soma dos contratos confirmados do CC (base + aditivos).
 SELECT 'C3' rule, 'crit' sev, COUNT(*) n, 'Comercial+Financeiro' dono, 'Projeto 360 › Financeiro' atalho
-FROM crm_deal d JOIN projx x ON x.cc = d.cc AND x.tenant_id = d.tenant_id
-WHERE d.signeddate <> '' AND x.contratado > 0 AND ABS(x.contratado - d.val) > 1;
--- detalhe: SELECT d.cc, d.co, d.val crm, x.contratado fin, (x.contratado-d.val) dif FROM crm_deal d JOIN projx x ON x.cc=d.cc WHERE d.signeddate<>'' AND x.contratado>0 AND ABS(x.contratado-d.val)>1;
+FROM crm_deal d
+JOIN (SELECT cc, tenant_id, SUM(valor) v FROM cc_contrato WHERE status = 'confirmado' GROUP BY cc, tenant_id) c
+  ON c.cc = d.cc AND c.tenant_id = d.tenant_id
+WHERE d.signeddate <> '' AND ABS(c.v - d.val) > 1;
 
--- C4 · valor contratado no Financeiro sem deal assinado de origem  [alto · Financeiro · Projeto 360 › Financeiro]  [base: 1]
+-- C4 · CONTRATO confirmado sem deal assinado de origem  [alto · Financeiro · Projeto 360 › Financeiro]
 SELECT 'C4' rule, 'alto' sev, COUNT(*) n, 'Financeiro' dono, 'Projeto 360 › Financeiro' atalho
+FROM (SELECT DISTINCT cc, tenant_id FROM cc_contrato WHERE status = 'confirmado') c
+WHERE NOT EXISTS (SELECT 1 FROM crm_deal d WHERE d.cc = c.cc AND d.tenant_id = c.tenant_id AND d.signeddate <> '');
+
+-- C4b · valor contratado ainda só em projx (fallback de transição, sem contrato)  [medio · Financeiro · Projeto 360 › Financeiro]  [base: 7]
+-- Mede a dívida de migração: projetos cujo valor ainda vive em projx.contratado e não num contrato.
+SELECT 'C4b' rule, 'medio' sev, COUNT(*) n, 'Financeiro' dono, 'Projeto 360 › Financeiro' atalho
 FROM projx x WHERE x.contratado > 0
-  AND NOT EXISTS (SELECT 1 FROM crm_deal d WHERE d.cc = x.cc AND d.tenant_id = x.tenant_id AND d.signeddate <> '');
--- detalhe: SELECT cc, contratado FROM projx WHERE contratado>0 AND cc NOT IN (SELECT cc FROM crm_deal WHERE signeddate<>'' AND cc<>'');
+  AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc = x.cc AND c.tenant_id = x.tenant_id AND c.status = 'confirmado');
 
 -- C5 · andamento divergente (> 10 p.p.) entre Carteira e último registro de andamento  [alto · Projetos · Projeto 360 › Visão]  [base: 39]
 SELECT 'C5' rule, 'alto' sev, COUNT(*) n, 'Projetos' dono, 'Projeto 360 › Visão' atalho

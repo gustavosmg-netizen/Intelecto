@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19h";
+const SCHEMA_VER = "2026-10-20a";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -662,8 +662,25 @@ function ensureSchema(): Promise<void> {
         d TEXT DEFAULT '', tipo TEXT DEFAULT '', detalhe TEXT DEFAULT '',
         u TEXT DEFAULT '', criado TEXT DEFAULT '')`,
     ].map((sql) => ({ sql, args: [] })));
-    // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute impostos,
-    // rateio e encargos de mão de obra; o custo real do projeto = MO + consumíveis + terceiros + outros.
+    // CONTRATO (Onda 1) — o CONTRATO é o dono único do valor contratado. cc_contrato nasceu em
+    // 2026-10 com (id,cc,titulo,valor,assinado,obs); ganha agora status/tipo/deal_id para funcionar
+    // como dono do valor (confirmado vs rascunho; base vs aditivo; ligação ao deal de origem).
+    // ALTER idempotente. Ver migrations/0002_contrato.sql (caminho novo, versionado).
+    for (const col of ["status TEXT DEFAULT 'rascunho'", "tipo TEXT DEFAULT 'base'", "deal_id TEXT DEFAULT ''"]) {
+      try { await sqlite.execute("ALTER TABLE cc_contrato ADD COLUMN " + col); } catch (_) { /* já existe */ }
+    }
+    try { await sqlite.execute("CREATE INDEX IF NOT EXISTS cc_contrato_cc ON cc_contrato (tenant_id, cc, status)"); } catch (_) {}
+    // Parcelas do contrato (base da conciliação com o caixa — a fila liga fluxo.cc ↔ parcela).
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS contrato_parcela (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', contrato_id TEXT NOT NULL, cc TEXT DEFAULT '',
+        numero INTEGER DEFAULT 1, valor REAL DEFAULT 0, venc_prev TEXT DEFAULT '', recebido_em TEXT DEFAULT '',
+        fluxo_id TEXT DEFAULT '', status TEXT DEFAULT 'prevista', obs TEXT DEFAULT '', criado TEXT DEFAULT '', u TEXT DEFAULT '')`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS contrato_parcela_ct ON contrato_parcela (tenant_id, contrato_id)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS contrato_parcela_cc ON contrato_parcela (tenant_id, cc, status)"); } catch (_) {}
+    } catch (_) { /* já existe */ }
+    // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute encargos da MO;
+    // o custo real do projeto = MO + imposto + consumíveis + terceiros + outros + overhead (Onda 1, D-3).
     try { await sqlite.execute("ALTER TABLE projx ADD COLUMN consumiveis REAL DEFAULT 0"); } catch (_) { /* já existe */ }
     try { await sqlite.execute("ALTER TABLE projx ADD COLUMN terceiros REAL DEFAULT 0"); } catch (_) { /* já existe */ }
     // projx ganhou setor e responsável do projeto depois de criada: acrescenta se faltar.
@@ -1445,27 +1462,51 @@ async function horasCustoPorColab(cc: string, tenant: string): Promise<{ slug: s
 /** Dado px (linha projx com campos fin) + custo de mão de obra (R$) + rateio de fixos (R$),
  * devolve a decomposição. `rateioFixIn` = parcela do pool de custos fixos (overhead) alocada a
  * este CC por participação de horas (ver rateioFixosCarteira); entra no custo real. */
-function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0): P {
+function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0, contratadoOverride?: number): P {
   const moCusto = arred2(Number(moCustoIn) || 0);
-  const contratado = arred2(Number(px.contratado) || 0);
+  // Valor contratado: o CONTRATO é o dono (contratadoOverride = soma dos contratos confirmados do
+  // CC, via valorContratadoMap). projx.contratado permanece como fallback de transição, enquanto os
+  // contratos não forem materializados — assim a troca é gradual e nada quebra para quem já usa.
+  const contratado = arred2((contratadoOverride != null && !Number.isNaN(contratadoOverride)) ? contratadoOverride : (Number(px.contratado) || 0));
   const imposto = arred2(((Number(px.pct_imposto) || 0) / 100) * contratado);
   const rateio = arred2(((Number(px.pct_rateio) || 0) / 100) * moCusto); // legado: pct — não entra no custo
   const rateioFix = arred2(Number(rateioFixIn) || 0); // overhead rateado por horas (Onda 2)
   const outros = arred2(Number(px.outros) || 0);
   const consumiveis = arred2(Number(px.consumiveis) || 0);
   const terceiros = arred2(Number(px.terceiros) || 0);
-  // Custo real = mão de obra (o custo/hora JÁ inclui encargos da MO) + consumíveis + terceiros +
-  // outros + rateio dos fixos (overhead). O pct_rateio legado fica fora da soma (não dobrar).
-  const custoTotal = arred2(moCusto + consumiveis + terceiros + outros + rateioFix);
+  // Custo real (D-3, decisão dos sócios 2026-10-19 — imposto e overhead SEPARADOS):
+  //   = mão de obra (o custo/hora JÁ inclui encargos da MO)
+  //   + IMPOSTO sobre o faturamento contratado   <-- antes era calculado e NÃO somado (corrigido)
+  //   + consumíveis + terceiros + outros
+  //   + rateio dos fixos (overhead das áreas não técnicas, por horas apontadas).
+  // O pct_rateio legado fica fora da soma (não dobrar com o overhead por horas).
+  const custoTotal = arred2(moCusto + imposto + consumiveis + terceiros + outros + rateioFix);
   const margem = arred2(contratado - custoTotal);
   const margemPct = contratado > 0 ? Math.round((margem / contratado) * 1000) / 10 : null;
   const lucroAlvo = arred2(((Number(px.pct_lucro) || 0) / 100) * contratado);
   const configurado = contratado > 0 || moCusto > 0 || outros > 0 || consumiveis > 0 || terceiros > 0 || rateioFix > 0;
+  // Custo NÃO-mão-de-obra do projeto (imposto + overhead + outros + consumíveis + terceiros). Serve
+  // para ratear o custo real por colaborador por horas (ver projdetalhe → colab.custoReal).
+  const naoMO = arred2(imposto + rateioFix + outros + consumiveis + terceiros);
   return {
-    contratado, moCusto, imposto, rateio, rateioFix, outros, consumiveis, terceiros, custoTotal, margem, margemPct, lucroAlvo,
+    contratado, moCusto, imposto, rateio, rateioFix, outros, consumiveis, terceiros, naoMO, custoTotal, margem, margemPct, lucroAlvo,
     pct_imposto: Number(px.pct_imposto) || 0, pct_rateio: Number(px.pct_rateio) || 0, pct_lucro: Number(px.pct_lucro) || 0,
     configurado, prejuizo: configurado && contratado > 0 && margem < 0,
   };
+}
+/** VALOR CONTRATADO por CC, do CONTRATO (dono único do valor) — Onda 1. Soma os contratos
+ *  CONFIRMADOS de cada CC em cc_contrato (base + aditivos). Enquanto um CC não tiver contrato
+ *  confirmado, o valor cai no fallback projx.contratado dentro de decompoeFin (transição). */
+async function valorContratadoMap(tenant: string): Promise<Record<string, number>> {
+  const m: Record<string, number> = {};
+  try {
+    const r = await sqlite.execute({
+      sql: "SELECT cc, COALESCE(SUM(valor),0) v FROM cc_contrato WHERE tenant_id = ? AND status = 'confirmado' GROUP BY cc",
+      args: [tenant],
+    });
+    for (const x of r.rows as P[]) { const v = Number(x.v) || 0; if (v > 0) m[String(x.cc)] = arred2(v); }
+  } catch (_) { /* coluna status recém-criada ou tabela ausente: sem override, usa o fallback */ }
+  return m;
 }
 /** RATEIO DOS CUSTOS FIXOS (overhead) sobre a carteira bilhável, POR HORAS APONTADAS (decisão do
  * dono — pool total editável). O pool = soma de custo_fixo; a base = horas (APROVADO/LANÇADO) dos
@@ -1541,9 +1582,10 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
   const prr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [tenant] });
   const rf = await rateioFixosCarteira(tenant);
+  const vcMap = await valorContratadoMap(tenant); // valor do Contrato (dono); fallback projx
   let contratado = 0, custoTotal = 0, margem = 0, nProj = 0, nPrej = 0;
   for (const pr of prr.rows as P[]) {
-    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0);
+    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0, vcMap[String(pr.cc)]);
     if (d.contratado <= 0) continue;
     contratado += d.contratado; custoTotal += d.custoTotal; margem += d.margem; nProj++;
     if (d.margem < 0) nPrej++;
@@ -1663,6 +1705,7 @@ const MIN: Record<string, Papel> = {
   // (so o dono) DENTRO de cada branch e em modulosLiberados. Unico lugar do portal com valor
   // monetario. acervo_list/acervo_arquivo ficam no piso de acervo (equipe + grant), nao aqui.
   financeiro: "coordenacao", custohoraList: "coordenacao", custohoraSet: "coordenacao", custohoraDel: "coordenacao", projfinSet: "coordenacao",
+  contratoList: "coordenacao", contratoSet: "coordenacao",
   // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
@@ -2944,7 +2987,19 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       ? (await horasCustoPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h, custoHora: chMap[c.slug] || 0, custo: c.custo }))
       : (await horasPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h }));
     const rfp = podeFin ? await rateioFixosCarteira(u.tenant_id) : { fixosTotal: 0, byCc: {} as Record<string, number>, horasBase: 0 };
-    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0) : null;
+    const vcCc = podeFin ? (await valorContratadoMap(u.tenant_id))[cc] : undefined; // valor do Contrato (dono)
+    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0, vcCc) : null;
+    // CUSTO REAL POR COLABORADOR (D-3): além da mão de obra direta (horas × custo/hora c/ encargos),
+    // cada colaborador absorve sua fatia do custo não-MO do projeto (imposto + overhead + outros +
+    // consumíveis + terceiros), rateada pelas horas que lançou. Dá o custo real carregado por pessoa.
+    if (podeFin && fin) {
+      const somaH = (colab as any[]).reduce((s, c) => s + (Number(c.h) || 0), 0);
+      const naoMO = Number((fin as P).naoMO) || 0;
+      for (const c of colab as any[]) {
+        const fatia = somaH > 0 ? arred2(naoMO * ((Number(c.h) || 0) / somaH)) : 0;
+        c.custoReal = arred2((Number(c.custo) || 0) + fatia);
+      }
+    }
     // HISTÓRICO DE HORAS do projeto: cada apontamento efetivo (aprovado/lançado) com o que foi
     // feito (lanc.t). Em importados o `t` costuma vir vazio — o front exibe "—" quando não houver.
     const lcr = await sqlite.execute({ sql: "SELECT d, slug, h, t FROM lanc WHERE cc = ? AND tenant_id = ? AND s IN ('APROVADO','LANÇADO') ORDER BY d DESC LIMIT 300", args: [cc, u.tenant_id] });
@@ -3057,6 +3112,37 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await audit("projfin", u.slug, cc + " contratado=" + contratado, ip);
     return { ok: true, cc };
   }
+  /* CONTRATO (Onda 1) — o CONTRATO é o dono único do valor contratado. Lista/cria/confirma os
+     contratos de um CC (base + aditivos). Enquanto um CC não tiver contrato confirmado, o valor
+     cai no fallback projx.contratado (transição). Gate: dono ou financeiro.editar. Confidencial (R$). */
+  if (action === "contratoList") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
+    const r = await sqlite.execute({ sql: "SELECT id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u, criado, atualizado FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+    const conf = (r.rows as P[]).filter((x) => String(x.status) === "confirmado").reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    return { ok: true, cc, contratos: r.rows, valorContratado: arred2(conf) };
+  }
+  if (action === "contratoSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição de contrato restrita à direção ou coordenação financeira.");
+    const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
+    let id = String(p.id || "").trim(); const isNew = !id;
+    if (isNew) id = "CT-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const valor = Math.max(0, Number(p.valor) || 0);
+    const titulo = String(p.titulo || "").slice(0, 200);
+    const assinado = (() => { const s = String(p.assinado || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; })();
+    let tipo = String(p.tipo || "base").trim().toLowerCase(); if (tipo !== "base" && tipo !== "aditivo") tipo = "base";
+    let status = String(p.status || "rascunho").trim().toLowerCase(); if (status !== "rascunho" && status !== "confirmado" && status !== "cancelado") status = "rascunho";
+    const deal_id = String(p.deal_id || "").slice(0, 60);
+    const obs = String(p.obs || "").slice(0, 2000);
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO cc_contrato (id,tenant_id,cc,titulo,valor,assinado,status,tipo,deal_id,obs,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        + "ON CONFLICT(id) DO UPDATE SET cc=excluded.cc,titulo=excluded.titulo,valor=excluded.valor,assinado=excluded.assinado,status=excluded.status,tipo=excluded.tipo,deal_id=excluded.deal_id,obs=excluded.obs,u=excluded.u,atualizado=excluded.atualizado",
+      args: [id, u.tenant_id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u.slug, now, now],
+    });
+    await audit("contrato", u.slug, (isNew ? "novo " : "edit ") + id + " cc=" + cc + " " + status + " valor=" + valor, ip);
+    return { ok: true, id, cc, isNew };
+  }
   if (action === "financeiro") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     // mão de obra por cc: cada apontamento × a taxa de custo/hora VIGENTE na sua data (histórico preservado).
@@ -3067,10 +3153,11 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
     const prr = await sqlite.execute({ sql: "SELECT cc, projeto, cliente, status FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [u.tenant_id] });
     const rf = await rateioFixosCarteira(u.tenant_id);
+    const vcMap = await valorContratadoMap(u.tenant_id); // valor do Contrato (dono); fallback projx
     const rows: P[] = [];
     for (const pr of prr.rows as P[]) {
       const cc = String(pr.cc); const px = pxByCc[cc] || {};
-      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0);
+      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0, vcMap[cc]);
       if (d.contratado <= 0) continue; // carteira = só projetos com valor contratado informado
       rows.push({ cc, projeto: pr.projeto, cliente: pr.cliente || "", status: pr.status || "", ...d });
     }
