@@ -115,4 +115,31 @@ carrega.
 
 | Data | Ambiente | Backup (gerado_em) | Linhas | Divergências | RTO medido | Operador | Obs. |
 |---|---|---|---|---|---|---|---|
-| _(pendente — rodar após deploy de staging)_ | | | | | | | |
+| 2026-10-21 | staging (D1 vazio) | d1/portal-intelecto-2026-10-19.json (2026-10-19T06:00Z) | 6.608 em 29 tabelas | nenhuma (audit +1 = a própria linha do restore) | ~19 s (apply) | Gustavo (conta de teste descartável) | 3 defeitos encontrados e corrigidos (ver §8). amb_registro/amb_agg corretamente fora. Staging zerado após o drill (sem dado/segredo de produção). |
+
+## 8. Achados do primeiro drill (2026-10-21)
+
+O drill cumpriu seu papel: ao exercitar o caminho real pela primeira vez, revelou **três
+defeitos** que os testes estáticos não pegavam. Todos corrigidos e revalidados no mesmo drill.
+
+1. **PBKDF2 a 150000 iterações quebrava o login.** O runtime do Cloudflare Workers não deriva
+   PBKDF2 acima de 100000 iterações; `hashSenhaNova` gravava 150000, então toda senha criada/
+   redefinida pelo app (fluxo H2) ficava impossível de verificar. Corrigido para 100000;
+   `verificaSenha` passou a tratar hash legado >100000 como não-verificável (sem estourar).
+2. **Restauração estourava o limite de variáveis do D1.** Lotes de INSERT com 40 linhas × colunas
+   passavam de ~100 variáveis vinculadas por statement (`too many SQL variables`); só tabelas
+   pequenas restauravam. Lote passou a ser dimensionado pelo nº de colunas (linhas×colunas ≤ ~90).
+3. **Restauração inteira num único request era cortada.** Centenas de `execute` em sequência
+   deixavam o request lento e o Worker era terminado (projx/sess ficavam incompletos). Passou a
+   usar D1 `batch()` (~20 statements/round-trip): a restauração completa caiu de >200 s (cortada)
+   para **~19 s**.
+
+**Observações operacionais (não-bloqueantes, para acompanhamento):**
+- **Frescor do backup:** no dia do drill o backup mais recente no R2 era de **2026-10-19** (2 objetos),
+  ou seja ~48 h atrás — não havia backup de 20 nem 21/10. O RPO real depende do cron diário de
+  produção estar de fato rodando; convém confirmar o cron `0 6 * * *` em produção (ou rodar
+  `backup_now`) e vigiar a idade do backup mais recente.
+- **Segredos no backup:** restaurar um backup de produção traz a tabela `config` inteira, que inclui
+  hashes de senha (`pin:`), tokens (`mcptokh:`) e e-mails — além de PII do CRM. Em staging isso foi
+  transitório (ambiente com Cloudflare Access) e **zerado logo após o drill**. Para drills recorrentes,
+  considerar um ambiente isolado descartável ou uma opção de scrub de segredos na restauração.
