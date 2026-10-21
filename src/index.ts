@@ -1806,7 +1806,7 @@ const MIN: Record<string, Papel> = {
   setstatus: "coordenacao", catset: "coordenacao", catinfo: "coordenacao",
   mcptoken: "coordenacao", mcptokens: "coordenacao", mcprevoke: "coordenacao",
   // permissoes confidenciais e concessao de acervo (aba do dono) — admin
-  perms: "coordenacao", permset: "coordenacao", acset: "coordenacao",
+  perms: "coordenacao", permset: "coordenacao", acset: "coordenacao", consistencia: "coordenacao",
   // FINANCEIRO — painel de lucro/prejuizo em R$. Piso 'admin' no guard; recorte fino isOwner
   // (so o dono) DENTRO de cada branch e em modulosLiberados. Unico lugar do portal com valor
   // monetario. acervo_list/acervo_arquivo ficam no piso de acervo (equipe + grant), nao aqui.
@@ -5065,6 +5065,53 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, hits: data.map((d: any) => ({ arquivo: d.filename, score: d.score, trecho: ((d.content || []).map((c: any) => c.text).join("\n")).slice(0, 1200) })) };
   }
 
+  /* PAINEL DE CONSISTÊNCIA (Onda 0.2) — roda as regras de integridade entre módulos (as mesmas de
+     consistency/rules.sql) e devolve a contagem de violações por regra, com dono e atalho. SOMENTE
+     LEITURA. Gate: direção (sistema.config). É o que torna a bagunça MENSURÁVEL na própria tela. */
+  if (action === "consistencia") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "sistema.config"))) throw new Error("Painel de Consistência restrito à direção (Sócios).");
+    const T = u.tenant_id;
+    const regras: { rule: string; titulo: string; sev: string; dono: string; atalho: string; sql: string; args: any[] }[] = [
+      { rule: "C1", titulo: "Caixa sem centro de custo", sev: "crit", dono: "Financeiro", atalho: "Financeiro › Conciliação",
+        sql: "SELECT COUNT(*) n FROM fluxo WHERE tenant_id = ? AND COALESCE(cc,'') = ''", args: [T] },
+      { rule: "C2", titulo: "Deal assinado sem contrato confirmado", sev: "crit", dono: "Comercial+Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM crm_deal d WHERE d.tenant_id = ? AND d.signeddate <> '' AND d.cc <> '' AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc = d.cc AND c.tenant_id = d.tenant_id AND c.status = 'confirmado')", args: [T] },
+      { rule: "C3", titulo: "Valor do contrato divergente do deal", sev: "crit", dono: "Comercial+Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM crm_deal d JOIN (SELECT cc, tenant_id, SUM(valor) v FROM cc_contrato WHERE status='confirmado' GROUP BY cc, tenant_id) c ON c.cc=d.cc AND c.tenant_id=d.tenant_id WHERE d.tenant_id = ? AND d.signeddate <> '' AND ABS(c.v - d.val) > 1", args: [T] },
+      { rule: "C4", titulo: "Contrato confirmado sem deal assinado", sev: "alto", dono: "Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT cc, tenant_id FROM cc_contrato WHERE status='confirmado') c WHERE c.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM crm_deal d WHERE d.cc=c.cc AND d.tenant_id=c.tenant_id AND d.signeddate <> '')", args: [T] },
+      { rule: "C4b", titulo: "Valor só em projx (sem contrato — dívida de migração)", sev: "medio", dono: "Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM projx x WHERE x.tenant_id = ? AND x.contratado > 0 AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc=x.cc AND c.tenant_id=x.tenant_id AND c.status='confirmado')", args: [T] },
+      { rule: "C5", titulo: "Andamento divergente (>10 p.p.)", sev: "alto", dono: "Projetos", atalho: "Projeto 360 › Visão",
+        sql: "SELECT COUNT(*) n FROM projx x JOIN (SELECT cc, MAX(d) md FROM andam WHERE tenant_id = ? GROUP BY cc) a ON a.cc=x.cc JOIN andam an ON an.cc=a.cc AND an.d=a.md WHERE x.tenant_id = ? AND an.total>0 AND ABS(ROUND(100.0*an.etapa/an.total)-x.progresso)>10", args: [T, T] },
+      { rule: "C6", titulo: "Concluído com horas nos últimos 30 dias", sev: "alto", dono: "Projetos", atalho: "Projeto 360 › Visão",
+        sql: "SELECT COUNT(*) n FROM proj WHERE tenant_id = ? AND status='CONCLUÍDO' AND EXISTS (SELECT 1 FROM lanc l WHERE l.cc=proj.cc AND l.tenant_id=proj.tenant_id AND l.d>=date('now','-30 day'))", args: [T] },
+      { rule: "C7", titulo: "Em andamento sem horas há 60 dias", sev: "medio", dono: "Projetos", atalho: "Projeto 360 › Visão",
+        sql: "SELECT COUNT(*) n FROM proj p WHERE p.tenant_id = ? AND p.status='EM ANDAMENTO' AND NOT EXISTS (SELECT 1 FROM lanc l WHERE l.cc=p.cc AND l.tenant_id=p.tenant_id AND l.d>=date('now','-60 day'))", args: [T] },
+      { rule: "C8", titulo: "Hora em centro de custo sem projeto", sev: "alto", dono: "Horas", atalho: "Lançar horas",
+        sql: "SELECT COUNT(*) n FROM lanc l WHERE l.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM proj p WHERE p.cc=l.cc AND p.tenant_id=l.tenant_id)", args: [T] },
+      { rule: "C10", titulo: "Custo/hora legado preenchido (fonte é custohora_vig)", sev: "medio", dono: "Financeiro", atalho: "Financeiro › Custo/hora",
+        sql: "SELECT COUNT(*) n FROM custohora WHERE tenant_id = ? AND valor > 0", args: [T] },
+      { rule: "C11", titulo: "Pessoa ativa com horas e sem custo/hora", sev: "alto", dono: "Financeiro", atalho: "Financeiro › Custo/hora",
+        sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM custohora_vig v WHERE v.slug=a.slug AND v.tenant_id = ?)", args: [T, T] },
+      { rule: "C13", titulo: "Contrato confirmado sem parcelas", sev: "medio", dono: "Financeiro", atalho: "Projeto 360 › Contrato",
+        sql: "SELECT COUNT(*) n FROM cc_contrato c WHERE c.tenant_id = ? AND c.status='confirmado' AND NOT EXISTS (SELECT 1 FROM contrato_parcela pp WHERE pp.contrato_id=c.id AND pp.tenant_id=c.tenant_id)", args: [T] },
+      { rule: "C14", titulo: "Parcela prevista vencida e não recebida", sev: "alto", dono: "Financeiro", atalho: "Financeiro › Conciliação",
+        sql: "SELECT COUNT(*) n FROM contrato_parcela WHERE tenant_id = ? AND status='prevista' AND venc_prev <> '' AND venc_prev < date('now')", args: [T] },
+      { rule: "C15", titulo: "Pessoa com horas e sem capacidade cadastrada", sev: "medio", dono: "RH", atalho: "Financeiro › Capacidade",
+        sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug=a.slug AND c.tenant_id = ?)", args: [T, T] },
+      { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
+        sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
+    ];
+    const out: P[] = [];
+    for (const r of regras) {
+      let n = -1;
+      try { const q = await sqlite.execute({ sql: r.sql, args: r.args }); n = Number((q.rows[0] as P).n) || 0; } catch (_) { n = -1; }
+      out.push({ rule: r.rule, titulo: r.titulo, sev: r.sev, dono: r.dono, atalho: r.atalho, n });
+    }
+    const crit = out.filter((x) => x.sev === "crit" && (x.n as number) > 0).length;
+    return { ok: true, regras: out, em: new Date().toISOString(), criticosAbertos: crit };
+  }
   if (action === "perms") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "sistema.config"))) throw new Error("Acesso às permissões restrito à direção (Sócios).");
     const r = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE tenant_id = ? AND (k LIKE 'perm:%' OR k LIKE 'acgrant:%')", args: [TENANT_INTELECTO] });

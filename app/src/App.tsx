@@ -7,6 +7,8 @@ import { PipelineBoard, ProjetosBoardLoader } from "./boards";
 import { CronogramaLoader } from "./cronograma";
 import { MeuTrabalho } from "./meutrabalho";
 import { Financeiro } from "./financeiro";
+import { Pessoas } from "./pessoas";
+import { Administracao } from "./admin";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
@@ -64,6 +66,10 @@ export function App() {
           <><h1>{area.label}</h1><p className="sub">Lance e acompanhe as suas horas.</p><MeuTrabalho /></>
         ) : area.id === "financeiro" ? (
           <><h1>{area.label}</h1><p className="sub">Resultado por projeto, caixa e conciliação.</p><Financeiro /></>
+        ) : area.id === "pessoas" ? (
+          <><h1>{area.label}</h1><p className="sub">Equipe e cargos da casa.</p><Pessoas /></>
+        ) : area.id === "admin" ? (
+          <><h1>{area.label}</h1><p className="sub">Painel de Consistência e administração.</p><Administracao /></>
         ) : area.id === "inicio" ? (
           <><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Cockpit /></>
         ) : (

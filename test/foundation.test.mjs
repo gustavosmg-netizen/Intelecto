@@ -163,6 +163,23 @@ test("Onda 2: Meu trabalho e Financeiro migrados para a casca nova", () => {
   assert.match(app, /area\.id === "financeiro"/);
 });
 
+test("Onda 2: Pessoas e Administração (Painel de Consistência operacional)", () => {
+  const ts = read("src/index.ts");
+  // ação que roda as regras de consistência (read-only, gated admin).
+  assert.match(ts, /action === "consistencia"/);
+  assert.match(ts, /Painel de Consistência restrito/);
+  assert.match(ts, /rule: "C1"/);
+  assert.match(ts, /consistencia: "coordenacao"/);
+  // front: as duas áreas migradas.
+  assert.match(read("app/src/pessoas.tsx"), /export function Pessoas/);
+  const ad = read("app/src/admin.tsx");
+  assert.match(ad, /export function Administracao/);
+  assert.match(ad, /"consistencia"/);
+  const app = read("app/src/App.tsx");
+  assert.match(app, /area\.id === "pessoas"/);
+  assert.match(app, /area\.id === "admin"/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

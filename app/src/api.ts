@@ -37,6 +37,7 @@ export interface Proj { cc: string; projeto: string; status?: string; registro?:
 export interface StateResp {
   ok: true; coord: boolean; slug: string; owner: boolean;
   lanc: Lanc[]; proj: Proj[]; projx: any[]; membros?: [string, string][];
+  cargos?: Record<string, string>; setores?: Record<string, string>; funcs?: Record<string, string>;
 }
 
 // ---- Projeto 360 (ação `projdetalhe`, só gestão). Tipagem defensiva do que a página 360 usa.
