@@ -7,8 +7,8 @@ compatibility_flags = ["nodejs_compat"]
 # O dominio custom e configurado no painel Cloudflare e nao e afetado por esta flag.
 workers_dev = false
 
-# Diretório das migrações versionadas (Onda 0). `wrangler d1 migrations apply <db>` lê daqui.
-migrations_dir = "migrations"
+# Migrações versionadas (Onda 0) ficam em ./migrations — que já é o diretório PADRÃO do
+# wrangler (`wrangler d1 migrations apply <db>`), então não é preciso declarar migrations_dir.
 
 # Assets estaticos do front-end (index.html, cursos.js, seed.js e imagens).
 [assets]
