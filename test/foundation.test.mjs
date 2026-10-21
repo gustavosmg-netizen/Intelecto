@@ -96,6 +96,21 @@ test("Onda 1: regra de status (concluído/cancelado não recebe horas) + andamen
   assert.match(ts, /progressoDerivado: pctEtapa/);
 });
 
+test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
+  const pkg = JSON.parse(read("app/package.json"));
+  assert.ok(pkg.dependencies.react, "app sem react");
+  assert.ok(pkg.dependencies["@dnd-kit/sortable"], "app sem dnd-kit (cockpit arrastável)");
+  assert.match(read("app/vite.config.ts"), /base:\s*"\/app\/"/);
+  assert.match(read("app/vite.config.ts"), /outDir:\s*"\.\.\/public\/app"/);
+  // o build do app entra no verify e no deploy.
+  assert.match(read("package.json"), /"build:app"/);
+  assert.match(read(".github/workflows/verify.yml"), /npm run build:app/);
+  assert.match(read(".github/workflows/deploy.yml"), /npm run build:app/);
+  // cockpit arrastável + paleta Ctrl+K + cliente de API por cookie (sem token no corpo).
+  assert.match(read("app/src/cockpit.tsx"), /DndContext/);
+  assert.match(read("app/src/api.ts"), /credentials:\s*"same-origin"/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

@@ -30,6 +30,8 @@ jobs:
           node-version: "22"
       - name: Install deps
         run: npm ci
+      - name: Build da casca nova (React/Vite -> public/app)
+        run: npm run build:app
       - name: Build check (wrangler dry-run)
         run: npm run build:check
       - name: Testes de fundacao
@@ -49,6 +51,9 @@ jobs:
 
       - name: Install deps
         run: npm ci
+
+      - name: Build da casca nova (React/Vite -> public/app)
+        run: npm run build:app
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3

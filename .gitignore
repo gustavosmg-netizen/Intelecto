@@ -13,3 +13,7 @@ seed_local*.sql
 seed_t5*.sql
 devlog*.txt
 dist-check/
+
+# Casca nova (Onda 2): artefato de build do app React (gerado no CI/local)
+public/app/
+*.tsbuildinfo

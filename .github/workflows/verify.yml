@@ -27,6 +27,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Build da casca nova (React/Vite -> public/app)
+        run: npm run build:app
+
       - name: Build check (wrangler dry-run — empacota o Worker sem publicar)
         run: npm run build:check
 
