@@ -51,6 +51,13 @@ MAIL_TO = ""
 [ai]
 binding = "AI"
 
+# Observabilidade (E-04): liga o Workers Logs — captura os logs estruturados em JSON que o Worker
+# emite por requisição (/api) e por cron (ver logEvent em src/index.ts). Sem PII. Consulta no painel
+# Cloudflare (Workers & Pages -> portal-intelecto -> Logs) ou via Logpush/Tail.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # Crons (gratuitos no plano Workers). Ver handler scheduled() em src/index.ts, que ramifica
 # por event.cron:
 #  - "*/5 * * * *" : keep-alive (aquece Worker/D1 p/ o handshake /mcp nao estourar timeout).
@@ -106,3 +113,7 @@ MAIL_TO = ""
 
 [env.staging.triggers]
 crons = []
+
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1

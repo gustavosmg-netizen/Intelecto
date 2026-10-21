@@ -5842,6 +5842,14 @@ if(window.mermaid){try{mermaid.initialize({startOnLoad:false,theme:matchMedia('(
 </html>`;
 }
 
+/* OBSERVABILIDADE (E-04 / "enxergar o sistema") — log estruturado em JSON no console, capturado
+ * pelo Workers Logs (ligado em wrangler.toml [observability]). NUNCA registra PII nem segredo:
+ * só ação, duração, resultado e um id de requisição para correlacionar o erro que o usuário vê
+ * com a linha do log. */
+function logEvent(o: Record<string, unknown>): void {
+  try { console.log(JSON.stringify({ ts: new Date().toISOString(), ...o })); } catch (_) { /* log nunca derruba a resposta */ }
+}
+
 const app = new Hono();
 app.use("*", async (c: any, next: any) => { ENV = c.env; try { REQ_ORIGIN = new URL(c.req.url).origin; } catch (_) { /* url invalida: mantem origem anterior */ } await next(); });
 
@@ -5867,11 +5875,14 @@ app.use("*", async (c, next) => {
 app.post("/api", async (c) => {
   await ensureSchema();
   const ip = c.req.header("cf-connecting-ip") || (c.req.header("x-forwarded-for") || "").split(",")[0].trim() || "?";
+  const t0 = Date.now();
+  const reqId = crypto.randomUUID().slice(0, 8); // id curto p/ correlacionar erro visível ↔ log
+  let action = "?";
   try {
     const p = await c.req.json();
     // M2 — sessão em cookie HttpOnly: se o corpo não traz token, usa o do cookie `ce_t`.
     if (!p.token) { const ct = cookieVal(c.req.header("cookie") || "", "ce_t"); if (ct) p.token = ct; }
-    const action = String(p.action || "");
+    action = String(p.action || "");
     const out = await route(action, p, ip);
     // O token NUNCA volta ao JS: ação que cria sessão grava-o no cookie HttpOnly e some do corpo.
     if (out && (out as any).token) {
@@ -5880,6 +5891,8 @@ app.post("/api", async (c) => {
     } else if (action === "logout") {
       c.header("Set-Cookie", "ce_t=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
     }
+    // RED (Rate/Errors/Duration): sem PII (só ação, duração, ok). Lento vira sinal por si.
+    logEvent({ ev: "api", reqId, action, ms: Date.now() - t0, ok: true });
     return c.json(out);
   } catch (err) {
     /* Erro de regra de negocio e escrito para a pessoa ler e pode sair. Erro de
@@ -5887,9 +5900,11 @@ app.post("/api", async (c) => {
        e o detalhe fica so na auditoria. */
     const msg = err instanceof Error ? err.message : String(err);
     const interno = /\b(SQLITE|D1_|no such (table|column)|UNIQUE constraint|syntax error|FOREIGN KEY)\b/i.test(msg);
+    const reauth = msg.indexOf("REAUTH_NECESSARIO") === 0;
+    logEvent({ ev: "api", reqId, action, ms: Date.now() - t0, ok: false, kind: interno ? "interno" : reauth ? "reauth" : "negocio", msg: interno ? msg : undefined });
     if (interno) {
-      try { await audit("erro_interno", "-", msg, ip); } catch { /* auditoria nunca derruba a resposta */ }
-      return c.json({ ok: false, error: "Não foi possível concluir. Tente de novo; se persistir, avise a Coordenação." });
+      try { await audit("erro_interno", "-", reqId + " " + msg, ip); } catch { /* auditoria nunca derruba a resposta */ }
+      return c.json({ ok: false, error: "Não foi possível concluir. Tente de novo; se persistir, avise a Coordenação (ref " + reqId + ")." });
     }
     return c.json({ ok: false, error: msg });
   }
@@ -6563,8 +6578,15 @@ export default {
      *  - "0 6 * * *" : backup diario do D1 -> R2
      *  - "0 9 * * *" : coletor do Daily Brief (fontes ativas e devidas pela cadencia)
      *  - demais ("*​/5 * * * *") : keep-alive */
-    if (event && event.cron === "0 6 * * *") ctx.waitUntil(backupD1(env));
-    else if (event && event.cron === "0 9 * * *") ctx.waitUntil(briefColetar(env, { autor: "cron" }));
-    else ctx.waitUntil(keepAlive(env));
+    const cron = (event && event.cron) || "?";
+    // Observabilidade: cada disparo de cron deixa uma linha (quem/quando/resultado) no Workers Logs.
+    const run = (nome: string, pr: Promise<any>) => {
+      const t0 = Date.now();
+      return pr.then(() => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: true }))
+        .catch((e: any) => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: false, msg: String((e && e.message) || e).slice(0, 200) }));
+    };
+    if (event && event.cron === "0 6 * * *") ctx.waitUntil(run("backup", backupD1(env)));
+    else if (event && event.cron === "0 9 * * *") ctx.waitUntil(run("daily_brief", briefColetar(env, { autor: "cron" })));
+    else ctx.waitUntil(run("keep_alive", keepAlive(env)));
   },
 };

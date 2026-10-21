@@ -229,6 +229,17 @@ test("Segurança: S-02 negar-por-omissão, S-03 reauth e cabeçalhos", () => {
   assert.match(read("public/index.html"), /REAUTH_NECESSARIO/);
 });
 
+test("Observabilidade (E-04): logs estruturados + Workers Logs ligado", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /function logEvent/);
+  assert.match(ts, /logEvent\(\{ ev: "api", reqId, action, ms:/);   // RED por requisição
+  assert.match(ts, /ev: "cron", job:/);                              // cron instrumentado
+  assert.doesNotMatch(ts, /logEvent\([^)]*token/);                   // nunca loga o token
+  const toml = read("wrangler.toml");
+  assert.match(toml, /\[observability\]\s*\nenabled = true/);
+  assert.match(toml, /\[env\.staging\.observability\]/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);
