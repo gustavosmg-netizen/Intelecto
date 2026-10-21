@@ -6428,6 +6428,7 @@ async function restauraBackup(opts: { key?: string; aplicar?: boolean; confirmar
       // colunas da tabela (descoberto no drill E-05, com tabelas largas como crm_deal/proj/lanc).
       const nCols = rows.length ? Object.keys(rows[0]).length : 0;
       const porLote = nCols ? Math.max(1, Math.floor(90 / nCols)) : 50;
+      const stmts: any[] = [];
       for (let i = 0; i < rows.length; i += porLote) {
         const lote = rows.slice(i, i + porLote);
         if (!lote.length) continue;
@@ -6437,10 +6438,13 @@ async function restauraBackup(opts: { key?: string; aplicar?: boolean; confirmar
         const ph = "(" + cols.map(() => "?").join(",") + ")";
         const args: any[] = [];
         for (const r of lote) for (const c of cols) { const v = (r as any)[c]; args.push(v === undefined ? null : v); }
-        const sql = 'INSERT OR REPLACE INTO "' + t + '" (' + colSql + ") VALUES " + lote.map(() => ph).join(",");
-        await sqlite.execute({ sql, args });
+        stmts.push({ sql: 'INSERT OR REPLACE INTO "' + t + '" (' + colSql + ") VALUES " + lote.map(() => ph).join(","), args });
         inseridas += lote.length;
       }
+      // Agrupa os INSERTs em poucos round-trips (D1 batch). Em sequência, centenas de executes
+      // deixavam a restauração inteira lenta demais num único request e o Worker era cortado
+      // (descoberto no drill E-05: projx/sess ficavam incompletos). Chunk conservador por batch.
+      for (let j = 0; j < stmts.length; j += 20) { await sqlite.batch(stmts.slice(j, j + 20)); }
       restauradas.push({ tabela: t, linhas: inseridas });
     } catch (e: any) {
       falhas.push({ tabela: t, erro: e && e.message ? e.message : String(e) });
