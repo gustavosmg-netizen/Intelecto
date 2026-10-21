@@ -148,6 +148,21 @@ test("Onda 2: cronograma com arraste de prazo auditado (via setproj)", () => {
   assert.match(read("src/index.ts"), /audit\("projeto_gestao"/);
 });
 
+test("Onda 2: Meu trabalho e Financeiro migrados para a casca nova", () => {
+  const mt = read("app/src/meutrabalho.tsx");
+  assert.match(mt, /export function MeuTrabalho/);
+  assert.match(mt, /"add"/);               // lançar horas
+  assert.match(mt, /entry:\s*\{\s*d:/);    // formato entry {d,cc,h,t}
+  const fin = read("app/src/financeiro.tsx");
+  assert.match(fin, /export function Financeiro/);
+  for (const ac of ["resumoExec", "financeiro", "conciliacao", "fluxoCc"]) {
+    assert.ok(fin.includes(ac), "Financeiro sem a ação: " + ac);
+  }
+  const app = read("app/src/App.tsx");
+  assert.match(app, /area\.id === "meu"/);
+  assert.match(app, /area\.id === "financeiro"/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

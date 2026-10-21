@@ -5,6 +5,8 @@ import { Cockpit } from "./cockpit";
 import { Carteira, Projeto360 } from "./projetos";
 import { PipelineBoard, ProjetosBoardLoader } from "./boards";
 import { CronogramaLoader } from "./cronograma";
+import { MeuTrabalho } from "./meutrabalho";
+import { Financeiro } from "./financeiro";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
@@ -58,6 +60,10 @@ export function App() {
               </>)
         ) : area.id === "comercial" ? (
           <><h1>{area.label}</h1><p className="sub">Pipeline comercial — mova os negócios entre as fases.</p><PipelineBoard /></>
+        ) : area.id === "meu" ? (
+          <><h1>{area.label}</h1><p className="sub">Lance e acompanhe as suas horas.</p><MeuTrabalho /></>
+        ) : area.id === "financeiro" ? (
+          <><h1>{area.label}</h1><p className="sub">Resultado por projeto, caixa e conciliação.</p><Financeiro /></>
         ) : area.id === "inicio" ? (
           <><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Cockpit /></>
         ) : (
