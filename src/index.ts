@@ -1205,9 +1205,12 @@ function validSenha(s: string) {
 /** H2 — hash de SENHA com PBKDF2-SHA256 (KDF lenta, salt aleatorio por usuario, versionada):
  *  formato "pbkdf2$<iter>$<saltHex>$<hashHex>". Substitui o SHA-256 rapido no ARMAZENAMENTO de
  *  senha; o SHA-256 salgado (hashSenha) segue SO para TOKENS de uso unico (rec/reclink), cuja alta
- *  entropia dispensa KDF. Iteracoes conservadoras p/ caber no limite de CPU do Worker (ajustavel). */
+ *  entropia dispensa KDF. ITERACOES = 100000: e o TETO do PBKDF2 no runtime do Cloudflare Workers
+ *  ("iteration counts above 100000 are not supported"). Acima disso o deriveBits LANCA, e como
+ *  verificaSenha le o iter do proprio hash guardado, um hash gravado com >100000 fica impossivel de
+ *  verificar no Worker (login quebra). Descoberto no drill de restauracao (E-05). */
 async function hashSenhaNova(_slug: string, senha: string): Promise<string> {
-  const iter = 150000;
+  const iter = 100000;
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256);
@@ -1219,6 +1222,10 @@ async function verificaSenha(slug: string, senha: string, stored: string): Promi
   if (stored && stored.indexOf("pbkdf2$") === 0) {
     const parts = stored.split("$");
     const iter = Number(parts[1]) || 0;
+    // O runtime do Worker nao deriva PBKDF2 acima de 100000 iteracoes (lanca). Um hash legado
+    // gravado com mais que isso e irreproduzivel aqui — trata como nao-verificavel (false), em vez
+    // de deixar o deriveBits estourar e virar erro opaco de login. hashSenhaNova ja grava 100000.
+    if (iter > 100000) return false;
     const salt = Uint8Array.from((String(parts[2]).match(/../g) || []).map((h) => parseInt(h, 16)));
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
     const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256);

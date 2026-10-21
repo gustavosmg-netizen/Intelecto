@@ -266,6 +266,15 @@ test("Recuperação (E-05): restore_backup com verify/apply, dono+reauth e trava
   assert.match(read("docs/RESTORE_DRILL.md"), /\*\*RPO\*\*[\s\S]*\*\*RTO\*\*/);
 });
 
+test("Auth: PBKDF2 respeita o teto de 100000 iterações do runtime do Worker", () => {
+  const ts = read("src/index.ts");
+  // hashSenhaNova NUNCA grava acima de 100000 (acima disso o Worker lança ao verificar → login quebra).
+  assert.match(ts, /async function hashSenhaNova[\s\S]*?const iter = 100000;/);
+  assert.doesNotMatch(ts, /const iter = 150000;/);
+  // verificaSenha trata hash legado >100000 como não-verificável (false), sem estourar.
+  assert.match(ts, /if \(iter > 100000\) return false;/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);
