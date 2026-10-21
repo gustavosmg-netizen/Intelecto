@@ -11,6 +11,10 @@ export class ApiError extends Error {
 }
 
 export async function api<T = any>(action: string, extra?: Record<string, unknown>): Promise<T> {
+  return apiCall<T>(action, extra, true);
+}
+
+async function apiCall<T = any>(action: string, extra: Record<string, unknown> | undefined, permiteReauth: boolean): Promise<T> {
   let r: Response;
   try {
     r = await fetch("/api", {
@@ -26,6 +30,15 @@ export async function api<T = any>(action: string, extra?: Record<string, unknow
   try { j = await r.json(); } catch (_) { /* resposta não-JSON */ }
   if (!r.ok || !j || j.ok === false) {
     const msg = (j && (j.error as string)) || (r.status === 401 ? "Faça login no portal para continuar." : "Erro inesperado.");
+    // S-03 — ação sensível pede senha reconfirmada: confirma e repete a ação uma vez.
+    if (permiteReauth && typeof msg === "string" && msg.indexOf("REAUTH_NECESSARIO") === 0) {
+      let senha: string | null = null;
+      try { senha = window.prompt("Confirme a sua senha para esta ação sensível:"); } catch (_) { senha = null; }
+      if (senha) {
+        await apiCall("reauth", { senha }, false); // lança se a senha estiver errada
+        return apiCall<T>(action, extra, false);   // repete a ação original uma vez
+      }
+    }
     throw new ApiError(msg, r.status);
   }
   return j as T;

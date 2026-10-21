@@ -209,6 +209,26 @@ test("Onda 4: Academia (cursos/aulas/quiz/certificado ligado à ficha)", () => {
   assert.match(read("app/src/App.tsx"), /area\.id === "academia"/);
 });
 
+test("Segurança: S-02 negar-por-omissão, S-03 reauth e cabeçalhos", () => {
+  const ts = read("src/index.ts");
+  // S-02 — guard fail-closed: ação fora de PUBLICAS e de MIN é NEGADA.
+  assert.match(ts, /if \(!Object\.prototype\.hasOwnProperty\.call\(MIN, action\)\) \{\s*\n\s*throw new Error\("Ação não reconhecida/);
+  assert.match(ts, /ambList: "equipe"/); // as ações antes não-catalogadas entraram em MIN
+  // S-03 — reauth step-up.
+  assert.match(ts, /const SENSIVEIS = new Set<string>\(/);
+  assert.match(ts, /async function exigeReauth/);
+  assert.match(ts, /action === "reauth"/);
+  assert.match(ts, /REAUTH_NECESSARIO/);
+  assert.match(ts, /if \(SENSIVEIS\.has\(action\)\) await exigeReauth/);
+  // cabeçalhos: HSTS + cache-control na página; CSP nos assets de /app.
+  assert.match(ts, /Strict-Transport-Security/);
+  assert.match(ts, /Cache-Control", "private, no-cache/);
+  assert.match(read("public/_headers"), /Content-Security-Policy:.*script-src 'self'/);
+  // o front (casca nova e portal) trata o REAUTH e repete a ação.
+  assert.match(read("app/src/api.ts"), /REAUTH_NECESSARIO/);
+  assert.match(read("public/index.html"), /REAUTH_NECESSARIO/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

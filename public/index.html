@@ -300,12 +300,19 @@ function addMeses(iso,n){const d=new Date(iso+"T00:00:00");d.setMonth(d.getMonth
 function addAnos(iso,n){const d=new Date(iso+"T00:00:00");d.setFullYear(d.getFullYear()+n);return d.toISOString().slice(0,10)}
 function nomeMes(m){return ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][Number(m)-1]||""}
 function nomeMesLongo(m){return ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][Number(m)-1]||""}
-async function api(action,extra){
+async function api(action,extra,_noreauth){
   const body=Object.assign({action},extra||{});
   /* M2: a sessão vai pelo cookie HttpOnly (enviado automaticamente no fetch same-origin); nada de token no corpo. */
   const r=await fetch(BASE+"/api",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
   const j=await r.json();
-  if(!j.ok) throw new Error(j.error||"Erro inesperado.");
+  if(!j.ok){
+    /* S-03: ação sensível (R$, exclusão, acesso) pede senha reconfirmada. Confirma e repete uma vez. */
+    if(!_noreauth && typeof j.error==="string" && j.error.indexOf("REAUTH_NECESSARIO")===0){
+      var s=null; try{s=prompt("Confirme a sua senha para esta ação sensível:");}catch(_){s=null;}
+      if(s){ await api("reauth",{senha:s},true); return api(action,extra,true); }
+    }
+    throw new Error(j.error||"Erro inesperado.");
+  }
   return j;
 }
 /* Capabilities do usuário (modelo por cargo): o servidor devolve state.caps/hub.caps.

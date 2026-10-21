@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-21a";
+const SCHEMA_VER = "2026-10-21b";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -717,6 +717,8 @@ function ensureSchema(): Promise<void> {
         args: [TENANT_INTELECTO, slug, "2025-01-01", CAP20.has(slug) ? 20 : 40],
       })));
     } catch (_) { /* já existe */ }
+    /* S-03 — carimbo de reautenticação por sessão (step-up). ALTER idempotente. */
+    try { await sqlite.execute("ALTER TABLE sess ADD COLUMN reauth TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
     /* ===== ACADEMIA (Onda 4) — cursos, módulos, aulas, matrícula, progresso, avaliação e
      * certificado ligado à ficha (pessoa_treino). Fecha o ciclo aprender → comprovar → alocar.
      * curso_aula.quiz guarda as perguntas E a alternativa correta (JSON); a correta NUNCA vai ao
@@ -1224,6 +1226,26 @@ async function verificaSenha(slug: string, senha: string, stored: string): Promi
     return calc === parts[3];
   }
   return !!stored && stored === await hashSenha(slug, senha);
+}
+/* ===== S-03 — REAUTH STEP-UP ===== */
+const REAUTH_MIN = 10; // minutos de validade da reautenticação
+/** Ações sensíveis que exigem senha reconfirmada: tudo que mexe em R$ (Financeiro), exclui dado
+ *  financeiro, ou muda ACESSO/segurança. Sessão válida não basta — pede a senha de novo. */
+const SENSIVEIS = new Set<string>([
+  "projfinSet", "custohoraSet", "custohoraDel", "contratoSet", "impostoPadraoSet",
+  "fluxoSet", "fluxoDel", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
+  "capacidadeSet", "resumoExecFechar",
+  "permset", "acset", "resetpin",
+]);
+/** Exige que a sessão do token tenha reautenticado nos últimos REAUTH_MIN minutos. Senão lança um
+ *  erro marcado (REAUTH_NECESSARIO:) que o front reconhece para pedir a senha e repetir a ação. */
+async function exigeReauth(p: P, _slug: string): Promise<void> {
+  const tok = String(p.token || "");
+  if (!tok) throw new Error("REAUTH_NECESSARIO: confirme a sua senha para continuar.");
+  let ts = "";
+  try { const r = await sqlite.execute({ sql: "SELECT reauth FROM sess WHERE token = ?", args: [tok] }); ts = r.rows.length ? String((r.rows[0] as P).reauth || "") : ""; } catch (_) { ts = ""; }
+  const ok = !!ts && (Date.now() - Date.parse(ts)) < REAUTH_MIN * 60000;
+  if (!ok) throw new Error("REAUTH_NECESSARIO: confirme a sua senha para esta ação sensível.");
 }
 /** H1 — conta habilitada a autenticar: colaborador interno ATIVO (COLABS sem INATIVOS) OU
  *  identidade do modelo formal `membro` com ativo=1 (cliente/fornecedor APROVADO via T7). Pendente
@@ -1791,6 +1813,11 @@ const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
   comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
+  // Leads ambientais (explorador) + enriquecimento — piso login; o recorte comercial é fino DENTRO
+  // de cada ação (podeComercial / comercial.ver|gerir). Catalogados para o guard fail-closed (S-02).
+  ambList: "equipe", ambFicha: "equipe", ambMeta: "equipe", ambFacets: "equipe", ambAgg: "equipe",
+  ambPoints: "equipe", ambExport: "equipe", ambToCrm: "equipe", cnpjLookup: "equipe",
+  reauth: "equipe",
   andamento: "equipe", addandam: "equipe", delandam: "equipe", produtos: "equipe",
   // CARTEIRA EXECUTIVA: leitura rica de projeto (piso equipe); edição de gestão (piso coordenacao).
   projdetalhe: "equipe", setproj: "coordenacao", lancColab: "coordenacao",
@@ -2207,13 +2234,31 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* GUARD CENTRAL: negacao por papel no SERVIDOR, antes de qualquer branch. Acoes publicas
      (pre-login) passam direto; toda acao catalogada em MIN exige o papel minimo. Os branches
      seguem chamando auth() para obter u.tenant_id e aplicar o recorte fino de cada acao. */
-  if (!PUBLICAS.has(action) && Object.prototype.hasOwnProperty.call(MIN, action)) {
+  // S-02 — NEGAR POR OMISSÃO (fail-closed): toda ação é pública (PUBLICAS) OU catalogada em MIN.
+  // Ação que não está em nenhum dos dois é NEGADA — não existe mais "permitir por omissão".
+  if (!PUBLICAS.has(action)) {
+    if (!Object.prototype.hasOwnProperty.call(MIN, action)) {
+      throw new Error("Ação não reconhecida ou sem permissão definida.");
+    }
     const g = await auth(p);
     const min = MIN[action];
     const autorizado = g.papel === "fornecedor" ? FORNECEDOR_OK.has(action) : temPapelMinimo(g.papel, min);
     if (!autorizado) throw new Error("Sem acesso: esta ação exige o papel mínimo \"" + min + "\".");
+    // S-03 — REAUTH STEP-UP: ações sensíveis (R$, exclusões, acesso) exigem senha reconfirmada
+    // nos últimos REAUTH_MIN minutos, mesmo com sessão válida.
+    if (SENSIVEIS.has(action)) await exigeReauth(p, g.slug);
   }
 
+  /* S-03 — reautenticar: confirma a senha e marca a sessão como reautenticada (REAUTH_MIN min). */
+  if (action === "reauth") {
+    const u = await auth(p);
+    const senha = String(p.senha || "");
+    const stored = (await cfgGet("pin:" + u.slug)) || "";
+    if (!stored || !(await verificaSenha(u.slug, senha, stored))) { await audit("reauth", u.slug, "falha", ip); throw new Error("Senha incorreta."); }
+    await sqlite.execute({ sql: "UPDATE sess SET reauth = ? WHERE token = ?", args: [new Date().toISOString(), String(p.token || "")] });
+    await audit("reauth", u.slug, "ok", ip);
+    return { ok: true, min: REAUTH_MIN };
+  }
   if (action === "backup_now") {
     const u = await auth(p);
     if (!isOwner(u.slug)) throw new Error("Apenas o dono pode disparar o backup.");
@@ -5806,11 +5851,16 @@ app.use("*", async (c, next) => {
   c.header("X-Frame-Options", "DENY");
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // HSTS: só sobre HTTPS, força o navegador a nunca mais falar HTTP com o domínio.
+  c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   if ((c.res.headers.get("content-type") || "").includes("text/html")) {
     c.header("Content-Security-Policy",
       "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.town https://cdn.jsdelivr.net; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; " +
       "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    // BUG-01: o cache compartilhado (CF edge) servia o HTML SEM os headers de segurança do Worker.
+    // `private` tira o HTML do cache compartilhado — os headers passam a vir sempre do Worker.
+    c.header("Cache-Control", "private, no-cache, must-revalidate");
   }
 });
 
