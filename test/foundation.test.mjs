@@ -197,8 +197,8 @@ test("Onda 4: Academia (cursos/aulas/quiz/certificado ligado à ficha)", () => {
   assert.match(ts, /CREATE TABLE IF NOT EXISTS curso \(/);
   assert.match(ts, /CREATE TABLE IF NOT EXISTS certificado \(/);
   for (const ac of ["academia", "cursoDetalhe", "matricular", "aulaConcluir"]) assert.ok(ts.includes('action === "' + ac + '"'), "falta ação " + ac);
-  // a nota do quiz é calculada no servidor e a correta não vai ao cliente.
-  assert.match(ts, /\.map\(\(q\) => \(\{ q: q\.q, opc: q\.opc \}\)\)/);
+  // a nota do quiz é calculada no servidor; a correta só vai ao cliente p/ coord (autoria), nunca ao aluno.
+  assert.match(ts, /u\.coord \? q : \{ q: q\.q, opc: q\.opc \}/);
   assert.match(ts, /resp\[i\] === Number\(\(perg\[i\] as P\)\.correta\)/);
   // o certificado grava um treinamento na ficha.
   assert.match(ts, /INSERT OR IGNORE INTO pessoa_treino/);

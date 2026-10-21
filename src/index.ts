@@ -2350,7 +2350,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const aulas = (aur.rows as P[]).map((a) => {
       let quiz: P[] | null = null;
       if (String(a.tipo) === "quiz" && a.quiz) {
-        try { quiz = (JSON.parse(String(a.quiz)) as P[]).map((q) => ({ q: q.q, opc: q.opc })); } catch (_) { quiz = []; }
+        // O aluno recebe o quiz SEM a alternativa correta (a nota é calculada no servidor). A
+        // coordenação, como AUTORA, recebe o quiz completo (precisa editar a resposta certa).
+        try { quiz = (JSON.parse(String(a.quiz)) as P[]).map((q) => (u.coord ? q : { q: q.q, opc: q.opc })); } catch (_) { quiz = []; }
       }
       return { id: a.id, modulo_id: a.modulo_id, titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo, url: a.url, ordem: a.ordem, min_nota: a.min_nota, quiz, feito: !!prog[String(a.id)], nota: prog[String(a.id)] ? Number(prog[String(a.id)].nota) || 0 : null };
     });
