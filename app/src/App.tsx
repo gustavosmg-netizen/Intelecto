@@ -3,10 +3,12 @@ import { AREAS, parseHash } from "./routes";
 import { CommandPalette } from "./palette";
 import { Cockpit } from "./cockpit";
 import { Carteira, Projeto360 } from "./projetos";
+import { PipelineBoard, ProjetosBoardLoader } from "./boards";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
   const [palOpen, setPalOpen] = useState(false);
+  const [projView, setProjView] = useState<"lista" | "quadro">("lista");
 
   useEffect(() => {
     const onHash = () => setLoc(parseHash());
@@ -44,7 +46,16 @@ export function App() {
         {area.id === "projetos" ? (
           sub
             ? <Projeto360 cc={sub} />
-            : (<><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Carteira /></>)
+            : (<>
+                <h1>{area.label}</h1><p className="sub">{area.resumo}</p>
+                <div className="ktoggle" style={{ marginBottom: 14 }}>
+                  <button className={projView === "lista" ? "on" : ""} onClick={() => setProjView("lista")}>Lista</button>
+                  <button className={projView === "quadro" ? "on" : ""} onClick={() => setProjView("quadro")}>Quadro</button>
+                </div>
+                {projView === "lista" ? <Carteira /> : <ProjetosBoardLoader />}
+              </>)
+        ) : area.id === "comercial" ? (
+          <><h1>{area.label}</h1><p className="sub">Pipeline comercial — mova os negócios entre as fases.</p><PipelineBoard /></>
         ) : area.id === "inicio" ? (
           <><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Cockpit /></>
         ) : (

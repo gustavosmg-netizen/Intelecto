@@ -80,4 +80,22 @@ h1 { font-size: 22px; margin: 0 0 2px; }
 .pal li.sel { background: var(--brand-soft); }
 .pal li .ic { width: 22px; text-align: center; }
 .pal li .d { font-size: 12px; color: var(--muted); margin-left: auto; }
+/* Kanban */
+.kboard { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+.kcol { background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; min-height: 120px; display: flex; flex-direction: column; }
+.kcol.over { border-color: var(--brand); background: var(--brand-soft); }
+.kcol-h { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 10px 12px; font: 600 11.5px var(--fm); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--line); }
+.kcol-n { background: var(--surface); border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; color: var(--ink); }
+.kcol-b { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.kcard { background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; cursor: grab; }
+.kcard:active { cursor: grabbing; }
+.kcard.kdrag { box-shadow: 0 10px 30px rgba(0,0,0,.25); cursor: grabbing; }
+.kcard .kt { font-weight: 600; font-size: 13.5px; }
+.kcard .km { font-size: 11.5px; color: var(--muted); margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ktag { font: 600 10px var(--fm); padding: 1px 6px; border-radius: 99px; border: 1px solid currentColor; }
+.kempty { color: var(--line); text-align: center; font-size: 12px; padding: 6px 0; }
+.ktoggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ktoggle button { border: 0; background: var(--surface); color: var(--muted); padding: 7px 14px; cursor: pointer; font-size: 14px; }
+.ktoggle button.on { background: var(--brand); color: var(--brand-ink); }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

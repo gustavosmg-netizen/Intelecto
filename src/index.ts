@@ -1739,7 +1739,7 @@ const PUBLICAS = new Set<string>(["ping", "haspin", "setpin", "login", "recupera
 const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
-  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmLeadAprovar: "equipe",
+  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
   andamento: "equipe", addandam: "equipe", delandam: "equipe", produtos: "equipe",
   // CARTEIRA EXECUTIVA: leitura rica de projeto (piso equipe); edição de gestão (piso coordenacao).
   projdetalhe: "equipe", setproj: "coordenacao", lancColab: "coordenacao",
@@ -2504,6 +2504,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     });
     await audit("crm_deal", u.slug, (isNew ? "novo " : "edit ") + id + ": " + co.slice(0, 60), ip);
     return { ok: true, id, isNew };
+  }
+  /* CRM — mover o negócio de etapa (kanban do pipeline). Mutação FINA: toca só `st`, sem sobrescrever
+     os demais campos (ao contrário do crmDealSet). Gate comercial.gerir. Auditado. */
+  if (action === "crmDealStage") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.gerir")) throw new Error("Sem permissão para mover o negócio.");
+    const id = String(p.id || "").trim(); if (!id) throw new Error("Negócio ausente.");
+    const st = Math.max(0, Math.min(21, Math.floor(Number(p.st) || 0)));
+    const r = await sqlite.execute({ sql: "UPDATE crm_deal SET st = ?, atualizado = ? WHERE id = ? AND tenant_id = ?", args: [st, new Date().toISOString(), id, u.tenant_id] });
+    if (!r.meta || (r.meta as P).changes === 0) { /* id inexistente: sem erro ruidoso, o front re-sincroniza */ }
+    await audit("crm_deal", u.slug, "mover " + id + " -> st " + st, ip);
+    return { ok: true, id, st };
   }
   /* CRM — aprovar lead inbound: vira um negócio (deal) no topo do funil e marca o lead. */
   if (action === "crmLeadAprovar") {

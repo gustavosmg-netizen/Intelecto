@@ -123,6 +123,21 @@ test("Onda 2: Projeto 360 na casca nova (abas + endereço por CC)", () => {
   assert.match(read("app/src/routes.ts"), /export function parseHash/);
 });
 
+test("Onda 2: kanbans arrastáveis (pipeline + projetos) com mutação segura", () => {
+  const ts = read("src/index.ts");
+  // mutação FINA do estágio do deal (não sobrescreve os outros campos, ao contrário do crmDealSet).
+  assert.match(ts, /action === "crmDealStage"/);
+  assert.match(ts, /UPDATE crm_deal SET st = \?, atualizado = \? WHERE id = \?/);
+  // front: board reutilizável com dnd-kit + os dois quadros.
+  assert.match(read("app/src/kanban.tsx"), /useDroppable/);
+  assert.match(read("app/src/kanban.tsx"), /useDraggable/);
+  const b = read("app/src/boards.tsx");
+  assert.match(b, /export function PipelineBoard/);
+  assert.match(b, /export function ProjetosBoard/);
+  assert.match(b, /crmDealStage/);
+  assert.match(b, /"setproj"/); // quadro de projetos usa setproj (update parcial seguro)
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

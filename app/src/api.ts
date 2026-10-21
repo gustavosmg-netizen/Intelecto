@@ -58,6 +58,26 @@ export interface ProjDetalhe {
   contratos?: Contrato360[];
 }
 
+// ---- CRM / pipeline (ação `crm`). O card do pipeline NÃO exibe valor em R$ (confidencialidade:
+// valor monetário não circula fora do Financeiro) — mostra empresa, responsável, prioridade.
+export interface Deal { id: string; st: number; co: string; owner?: string; pri?: string; temp?: string; city?: string; seg?: string; cc?: string; signeddate?: string }
+export interface CrmResp { ok: true; deals: Deal[]; podeGerir: boolean }
+
+export const MACRO = [
+  { id: "prosp", label: "Prospecção & Qualificação", base: 1, lo: 1, hi: 4 },
+  { id: "diag", label: "Diagnóstico Técnico", base: 5, lo: 5, hi: 8 },
+  { id: "prop", label: "Proposta", base: 9, lo: 9, hi: 12 },
+  { id: "neg", label: "Negociação & Contrato", base: 13, lo: 13, hi: 16 },
+  { id: "exec", label: "Execução", base: 17, lo: 17, hi: 20 },
+  { id: "pos", label: "Pós-venda & Expansão", base: 21, lo: 21, hi: 21 },
+];
+export function faseDeSt(st: number): string | null {
+  const s = Number(st) || 0;
+  if (s <= 0) return null; // ainda não entrou no funil (lead candidato)
+  const c = MACRO.find((m) => s >= m.lo && s <= m.hi);
+  return c ? c.id : null;
+}
+
 export const fmtBRL = (n: number) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export const fmtHoras = (n: number) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " h";
 
