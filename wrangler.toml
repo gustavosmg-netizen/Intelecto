@@ -7,6 +7,9 @@ compatibility_flags = ["nodejs_compat"]
 # O dominio custom e configurado no painel Cloudflare e nao e afetado por esta flag.
 workers_dev = false
 
+# Migrações versionadas (Onda 0) ficam em ./migrations — que já é o diretório PADRÃO do
+# wrangler (`wrangler d1 migrations apply <db>`), então não é preciso declarar migrations_dir.
+
 # Assets estaticos do front-end (index.html, cursos.js, seed.js e imagens).
 [assets]
 directory = "./public"
@@ -42,11 +45,21 @@ bucket_name = "portal-intelecto-backup"
 REPO_URL = ""
 MAIL_FROM = ""
 MAIL_TO = ""
+# Identifica o ambiente em runtime. A acao restore_backup so aplica 'apply' real sem prod:true
+# quando AMBIENTE == "staging" (trava contra restaurar por engano sobre producao).
+AMBIENTE = "producao"
 # RESEND_API_KEY entra como secret:  npx wrangler secret put RESEND_API_KEY
 
 # AI Search (AutoRAG) - acervo-intelecto (adicionado p/ acervo_search)
 [ai]
 binding = "AI"
+
+# Observabilidade (E-04): liga o Workers Logs — captura os logs estruturados em JSON que o Worker
+# emite por requisição (/api) e por cron (ver logEvent em src/index.ts). Sem PII. Consulta no painel
+# Cloudflare (Workers & Pages -> portal-intelecto -> Logs) ou via Logpush/Tail.
+[observability]
+enabled = true
+head_sampling_rate = 1
 
 # Crons (gratuitos no plano Workers). Ver handler scheduled() em src/index.ts, que ramifica
 # por event.cron:
@@ -55,3 +68,57 @@ binding = "AI"
 #  - "0 9 * * *"   : coletor do Daily Brief (06:00 BRT / 09:00 UTC) — fontes ativas e devidas.
 [triggers]
 crons = ["*/5 * * * *", "0 6 * * *", "0 9 * * *"]
+
+# ============================================================================
+# AMBIENTE DE STAGING (homologação) — Onda 0 do Plano Diretor.
+# Worker SEPARADO (portal-intelecto-staging) sobre um D1 SEPARADO (criado em
+# 2026-10-20). NÃO toca produção. Deploy: `wrangler deploy --env staging`.
+# - workers_dev = true: ganha uma URL *.workers.dev para testar (staging não usa o
+#   domínio dedicado). É aceitável aqui porque é ambiente de teste, não produção.
+# - crons = []: staging NÃO roda backup nem Daily Brief (não escreve nos buckets de
+#   produção por cron). Os bindings R2/AI reusam os buckets de produção só para o
+#   Worker compilar; o Acervo é leitura, e BLOB/BACKUP não são exercitados num teste
+#   de tela. Para isolamento total, criar buckets próprios de staging depois.
+# - O schema já foi aplicado no D1 de staging pelas migrações 0001–0004.
+# ============================================================================
+[env.staging]
+name = "portal-intelecto-staging"
+workers_dev = true
+
+[env.staging.assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "portal-intelecto-staging"
+database_id = "7050663a-2875-406f-8ed1-31c802a17fab"
+
+[[env.staging.r2_buckets]]
+binding = "BLOB"
+bucket_name = "portal-intelecto-blob"
+
+[[env.staging.r2_buckets]]
+binding = "ACERVO"
+bucket_name = "acervo-intelecto"
+
+[[env.staging.r2_buckets]]
+binding = "BACKUP"
+bucket_name = "portal-intelecto-backup"
+
+[env.staging.ai]
+binding = "AI"
+
+[env.staging.vars]
+REPO_URL = ""
+MAIL_FROM = ""
+MAIL_TO = ""
+# Marca staging: libera o 'apply' do restore_backup sem prod:true (o drill de recuperacao roda aqui).
+AMBIENTE = "staging"
+
+[env.staging.triggers]
+crons = []
+
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1

@@ -1,0 +1,41 @@
+name: Verify Portal (CI)
+
+# Verificação da Onda 0: roda em todo push de branch e em todo pull request.
+# NÃO faz deploy e NÃO precisa de segredos. Garante que o Worker empacota
+# (build:check = wrangler deploy --dry-run), que os testes de fundação passam e
+# reporta o typecheck (sem bloquear, enquanto o código legado é tipado por etapas).
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build da casca nova (React/Vite -> public/app)
+        run: npm run build:app
+
+      - name: Build check (wrangler dry-run — empacota o Worker sem publicar)
+        run: npm run build:check
+
+      - name: Testes de fundação
+        run: npm test
+
+      - name: Typecheck (informativo — não bloqueia por ora)
+        run: npm run typecheck
+        continue-on-error: true

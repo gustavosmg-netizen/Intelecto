@@ -1,0 +1,15 @@
+# Cabeçalhos de segurança para os ASSETS estáticos (servidos direto pela Cloudflare, sem passar
+# pelo Worker — ex.: a casca nova em /app). As respostas geradas pelo Worker (página, /api) já
+# recebem os mesmos cabeçalhos pelo middleware em src/index.ts. (Onda 2 / endurecimento S.)
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# A casca nova (React/Vite) só carrega scripts próprios (sem inline) e estilos próprios + inline
+# (style={} do React). Sem CDNs externos, sem embutir em iframe.
+/app/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'

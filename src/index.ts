@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-19h";
+const SCHEMA_VER = "2026-10-21b";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -662,8 +662,116 @@ function ensureSchema(): Promise<void> {
         d TEXT DEFAULT '', tipo TEXT DEFAULT '', detalhe TEXT DEFAULT '',
         u TEXT DEFAULT '', criado TEXT DEFAULT '')`,
     ].map((sql) => ({ sql, args: [] })));
-    // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute impostos,
-    // rateio e encargos de mão de obra; o custo real do projeto = MO + consumíveis + terceiros + outros.
+    // CONTRATO (Onda 1) — o CONTRATO é o dono único do valor contratado. cc_contrato nasceu em
+    // 2026-10 com (id,cc,titulo,valor,assinado,obs); ganha agora status/tipo/deal_id para funcionar
+    // como dono do valor (confirmado vs rascunho; base vs aditivo; ligação ao deal de origem).
+    // ALTER idempotente. Ver migrations/0002_contrato.sql (caminho novo, versionado).
+    for (const col of ["status TEXT DEFAULT 'rascunho'", "tipo TEXT DEFAULT 'base'", "deal_id TEXT DEFAULT ''"]) {
+      try { await sqlite.execute("ALTER TABLE cc_contrato ADD COLUMN " + col); } catch (_) { /* já existe */ }
+    }
+    try { await sqlite.execute("CREATE INDEX IF NOT EXISTS cc_contrato_cc ON cc_contrato (tenant_id, cc, status)"); } catch (_) {}
+    // Parcelas do contrato (base da conciliação com o caixa — a fila liga fluxo.cc ↔ parcela).
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS contrato_parcela (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', contrato_id TEXT NOT NULL, cc TEXT DEFAULT '',
+        numero INTEGER DEFAULT 1, valor REAL DEFAULT 0, venc_prev TEXT DEFAULT '', recebido_em TEXT DEFAULT '',
+        fluxo_id TEXT DEFAULT '', status TEXT DEFAULT 'prevista', obs TEXT DEFAULT '', criado TEXT DEFAULT '', u TEXT DEFAULT '')`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS contrato_parcela_ct ON contrato_parcela (tenant_id, contrato_id)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS contrato_parcela_cc ON contrato_parcela (tenant_id, cc, status)"); } catch (_) {}
+    } catch (_) { /* já existe */ }
+    // Índice da FILA DE CONCILIAÇÃO: o caixa sem CC consultado por tenant (ver ação `conciliacao`).
+    try { await sqlite.execute("CREATE INDEX IF NOT EXISTS fluxo_cc ON fluxo (tenant_id, cc)"); } catch (_) {}
+    /* CATÁLOGO DE CLASSES DE ATIVIDADE (Onda 1) — tira do código as palavras-chave que classificam
+       o apontamento como não-trabalho (feriado/férias/ausência). Cada classe tem padrões de texto
+       (separados por |) casados contra lanc.t. É o que torna a capacidade reaproveitável: outra
+       empresa edita os termos (ex.: "Folga", "PTO") sem mexer no código. Seed = o comportamento de
+       hoje (mesmos 4 termos), para nada mudar no dia 1. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS atividade_classe (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', cid TEXT NOT NULL, nome TEXT DEFAULT '',
+        classe TEXT NOT NULL DEFAULT 'feriado', padroes TEXT DEFAULT '', ordem INTEGER DEFAULT 0,
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '', PRIMARY KEY (tenant_id, cid))`);
+      const seed: [string, string, string, string, number][] = [
+        ["feriado", "Feriado", "feriado", "Feriado", 0],
+        ["ferias", "Férias", "ferias", "Ferias|Férias", 1],
+        ["ausj", "Ausência justificada", "aus_just", "Ausente Justificado", 2],
+        ["ausn", "Ausência não justificada", "aus_naojust", "Ausente Não Justificado|Ausente Nao Justificado", 3],
+      ];
+      await sqlite.batch(seed.map((s) => ({
+        sql: "INSERT OR IGNORE INTO atividade_classe (tenant_id, cid, nome, classe, padroes, ordem, atualizado) VALUES (?,?,?,?,?,?,'')",
+        args: [TENANT_INTELECTO, s[0], s[1], s[2], s[3], s[4]],
+      })));
+    } catch (_) { /* já existe */ }
+    /* CAPACIDADE COM VIGÊNCIA (Onda 1) — horas/semana por pessoa, datada (como o custo/hora). Tira do
+       código a lista fixa (CAP20). hdia = horas_semana ÷ 5. Seed = a realidade de hoje (estagiários
+       20h, demais 40h), para não mudar o cálculo no dia 1; a partir daí a Coordenação edita no RH. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS capacidade_vig (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, desde TEXT NOT NULL,
+        horas_semana REAL DEFAULT 40, u TEXT DEFAULT '', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, slug, desde))`);
+      // Semente da realidade atual: cada colaborador conhecido recebe sua capacidade a partir de uma
+      // data-base. INSERT OR IGNORE preserva ajustes já feitos. CAP20 é usado SÓ aqui, como semente.
+      await sqlite.batch(COLABS.map((slug) => ({
+        sql: "INSERT OR IGNORE INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?, 'seed','')",
+        args: [TENANT_INTELECTO, slug, "2025-01-01", CAP20.has(slug) ? 20 : 40],
+      })));
+    } catch (_) { /* já existe */ }
+    /* S-03 — carimbo de reautenticação por sessão (step-up). ALTER idempotente. */
+    try { await sqlite.execute("ALTER TABLE sess ADD COLUMN reauth TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
+    /* ===== ACADEMIA (Onda 4) — cursos, módulos, aulas, matrícula, progresso, avaliação e
+     * certificado ligado à ficha (pessoa_treino). Fecha o ciclo aprender → comprovar → alocar.
+     * curso_aula.quiz guarda as perguntas E a alternativa correta (JSON); a correta NUNCA vai ao
+     * cliente (cursoDetalhe a remove) e a nota é calculada no servidor (aulaConcluir). Nasce com o
+     * curso "Como usar o portal". Sem valor monetário. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', cid TEXT NOT NULL, titulo TEXT DEFAULT '',
+        resumo TEXT DEFAULT '', categoria TEXT DEFAULT '', cargo_alvo TEXT DEFAULT '', carga_h REAL DEFAULT 0,
+        publicado INTEGER DEFAULT 0, ordem INTEGER DEFAULT 0, capa TEXT DEFAULT '',
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '', PRIMARY KEY (tenant_id, cid))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso_modulo (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, curso_id TEXT NOT NULL,
+        titulo TEXT DEFAULT '', ordem INTEGER DEFAULT 0, u TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS curso_modulo_c ON curso_modulo (tenant_id, curso_id, ordem)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso_aula (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, curso_id TEXT NOT NULL, modulo_id TEXT DEFAULT '',
+        titulo TEXT DEFAULT '', tipo TEXT DEFAULT 'texto', conteudo TEXT DEFAULT '', url TEXT DEFAULT '',
+        ordem INTEGER DEFAULT 0, quiz TEXT DEFAULT '', min_nota REAL DEFAULT 70, u TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS curso_aula_c ON curso_aula (tenant_id, curso_id, ordem)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS matricula (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, curso_id TEXT NOT NULL,
+        status TEXT DEFAULT 'ativa', iniciado TEXT DEFAULT '', concluido TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, curso_id))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS aula_prog (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, aula_id TEXT NOT NULL, curso_id TEXT DEFAULT '',
+        nota REAL DEFAULT 0, concluido_em TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, aula_id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS aula_prog_sc ON aula_prog (tenant_id, slug, curso_id)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS certificado (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, curso_id TEXT NOT NULL,
+        titulo TEXT DEFAULT '', carga_h REAL DEFAULT 0, emitido TEXT DEFAULT '', u TEXT DEFAULT '')`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS certificado_sc ON certificado (tenant_id, slug, curso_id)"); } catch (_) {}
+      // Semente: o 1º curso "Como usar o portal" (substitui as Trilhas), com 1 módulo e 3 aulas
+      // (2 de texto + 1 quiz). INSERT OR IGNORE: não sobrescreve edição da casa.
+      await sqlite.batch([
+        { sql: "INSERT OR IGNORE INTO curso (tenant_id,cid,titulo,resumo,categoria,cargo_alvo,carga_h,publicado,ordem,atualizado) VALUES (?,?,?,?,?,?,?,?,?,'')",
+          args: [TENANT_INTELECTO, "como-usar-portal", "Como usar o portal", "O essencial para operar o Portal Intelecto no dia a dia: lançar horas, acompanhar projetos e ler os indicadores.", "Onboarding", "todos", 1, 1, 0] },
+        { sql: "INSERT OR IGNORE INTO curso_modulo (tenant_id,id,curso_id,titulo,ordem) VALUES (?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "m-portal-1", "como-usar-portal", "Primeiros passos", 0] },
+        { sql: "INSERT OR IGNORE INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,ordem) VALUES (?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "a-portal-1", "como-usar-portal", "m-portal-1", "Para que serve o portal", "texto", "O portal reúne, num lugar só, as horas da equipe, os projetos, o comercial e o financeiro — ligando o que antes vivia em planilhas soltas. A regra de ouro: um fato tem um dono; as telas leem desse dono, ninguém redigita.", 0] },
+        { sql: "INSERT OR IGNORE INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,ordem) VALUES (?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "a-portal-2", "como-usar-portal", "m-portal-1", "Lançar as suas horas", "texto", "Em Meu trabalho, escolha a data, o centro de custo (o projeto), as horas e descreva o que foi feito. O lançamento nasce PENDENTE e só entra nos indicadores depois de aprovado. Projeto concluído ou cancelado não recebe horas.", 1] },
+        { sql: "INSERT OR IGNORE INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,quiz,ordem) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "a-portal-3", "como-usar-portal", "m-portal-1", "Verificação", "quiz", "Responda para concluir o curso.",
+            JSON.stringify([
+              { q: "Em que situação o lançamento de horas nasce?", opc: ["Aprovado", "Pendente", "Lançado"], correta: 1 },
+              { q: "Um projeto concluído pode receber novas horas?", opc: ["Sim, sempre", "Não, é bloqueado na fonte"], correta: 1 },
+              { q: "Quem é o dono do valor contratado?", opc: ["O Contrato", "Cada tela que quiser"], correta: 0 },
+            ]), 2] },
+      ]);
+    } catch (_) { /* já existe */ }
+    // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute encargos da MO;
+    // o custo real do projeto = MO + imposto + consumíveis + terceiros + outros + overhead (Onda 1, D-3).
     try { await sqlite.execute("ALTER TABLE projx ADD COLUMN consumiveis REAL DEFAULT 0"); } catch (_) { /* já existe */ }
     try { await sqlite.execute("ALTER TABLE projx ADD COLUMN terceiros REAL DEFAULT 0"); } catch (_) { /* já existe */ }
     // projx ganhou setor e responsável do projeto depois de criada: acrescenta se faltar.
@@ -1097,9 +1205,12 @@ function validSenha(s: string) {
 /** H2 — hash de SENHA com PBKDF2-SHA256 (KDF lenta, salt aleatorio por usuario, versionada):
  *  formato "pbkdf2$<iter>$<saltHex>$<hashHex>". Substitui o SHA-256 rapido no ARMAZENAMENTO de
  *  senha; o SHA-256 salgado (hashSenha) segue SO para TOKENS de uso unico (rec/reclink), cuja alta
- *  entropia dispensa KDF. Iteracoes conservadoras p/ caber no limite de CPU do Worker (ajustavel). */
+ *  entropia dispensa KDF. ITERACOES = 100000: e o TETO do PBKDF2 no runtime do Cloudflare Workers
+ *  ("iteration counts above 100000 are not supported"). Acima disso o deriveBits LANCA, e como
+ *  verificaSenha le o iter do proprio hash guardado, um hash gravado com >100000 fica impossivel de
+ *  verificar no Worker (login quebra). Descoberto no drill de restauracao (E-05). */
 async function hashSenhaNova(_slug: string, senha: string): Promise<string> {
-  const iter = 150000;
+  const iter = 100000;
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256);
@@ -1111,6 +1222,10 @@ async function verificaSenha(slug: string, senha: string, stored: string): Promi
   if (stored && stored.indexOf("pbkdf2$") === 0) {
     const parts = stored.split("$");
     const iter = Number(parts[1]) || 0;
+    // O runtime do Worker nao deriva PBKDF2 acima de 100000 iteracoes (lanca). Um hash legado
+    // gravado com mais que isso e irreproduzivel aqui — trata como nao-verificavel (false), em vez
+    // de deixar o deriveBits estourar e virar erro opaco de login. hashSenhaNova ja grava 100000.
+    if (iter > 100000) return false;
     const salt = Uint8Array.from((String(parts[2]).match(/../g) || []).map((h) => parseInt(h, 16)));
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
     const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256);
@@ -1118,6 +1233,27 @@ async function verificaSenha(slug: string, senha: string, stored: string): Promi
     return calc === parts[3];
   }
   return !!stored && stored === await hashSenha(slug, senha);
+}
+/* ===== S-03 — REAUTH STEP-UP ===== */
+const REAUTH_MIN = 10; // minutos de validade da reautenticação
+/** Ações sensíveis que exigem senha reconfirmada: tudo que mexe em R$ (Financeiro), exclui dado
+ *  financeiro, ou muda ACESSO/segurança. Sessão válida não basta — pede a senha de novo. */
+const SENSIVEIS = new Set<string>([
+  "projfinSet", "custohoraSet", "custohoraDel", "contratoSet", "impostoPadraoSet",
+  "fluxoSet", "fluxoDel", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
+  "capacidadeSet", "resumoExecFechar",
+  "permset", "acset", "resetpin",
+  "restore_backup",
+]);
+/** Exige que a sessão do token tenha reautenticado nos últimos REAUTH_MIN minutos. Senão lança um
+ *  erro marcado (REAUTH_NECESSARIO:) que o front reconhece para pedir a senha e repetir a ação. */
+async function exigeReauth(p: P, _slug: string): Promise<void> {
+  const tok = String(p.token || "");
+  if (!tok) throw new Error("REAUTH_NECESSARIO: confirme a sua senha para continuar.");
+  let ts = "";
+  try { const r = await sqlite.execute({ sql: "SELECT reauth FROM sess WHERE token = ?", args: [tok] }); ts = r.rows.length ? String((r.rows[0] as P).reauth || "") : ""; } catch (_) { ts = ""; }
+  const ok = !!ts && (Date.now() - Date.parse(ts)) < REAUTH_MIN * 60000;
+  if (!ok) throw new Error("REAUTH_NECESSARIO: confirme a sua senha para esta ação sensível.");
 }
 /** H1 — conta habilitada a autenticar: colaborador interno ATIVO (COLABS sem INATIVOS) OU
  *  identidade do modelo formal `membro` com ativo=1 (cliente/fornecedor APROVADO via T7). Pendente
@@ -1445,27 +1581,87 @@ async function horasCustoPorColab(cc: string, tenant: string): Promise<{ slug: s
 /** Dado px (linha projx com campos fin) + custo de mão de obra (R$) + rateio de fixos (R$),
  * devolve a decomposição. `rateioFixIn` = parcela do pool de custos fixos (overhead) alocada a
  * este CC por participação de horas (ver rateioFixosCarteira); entra no custo real. */
-function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0): P {
+function decompoeFin(px: P, moCustoIn: number, rateioFixIn: number = 0, contratadoOverride?: number, impostoPctDefaultIn?: number): P {
   const moCusto = arred2(Number(moCustoIn) || 0);
-  const contratado = arred2(Number(px.contratado) || 0);
-  const imposto = arred2(((Number(px.pct_imposto) || 0) / 100) * contratado);
+  // Valor contratado: o CONTRATO é o dono (contratadoOverride = soma dos contratos confirmados do
+  // CC, via valorContratadoMap). projx.contratado permanece como fallback de transição, enquanto os
+  // contratos não forem materializados — assim a troca é gradual e nada quebra para quem já usa.
+  const contratado = arred2((contratadoOverride != null && !Number.isNaN(contratadoOverride)) ? contratadoOverride : (Number(px.contratado) || 0));
+  // IMPOSTO sobre o FATURAMENTO (valor contratado), NUNCA sobre as horas — é tributo de serviço
+  // (ISS/PIS/COFINS ou Simples), que incide sobre a receita. Alíquota efetiva = override do projeto
+  // (px.pct_imposto) quando informado; senão o PADRÃO DA EMPRESA (regime tributário do tenant,
+  // config `imposto_padrao`). Esse padrão é o que torna o modelo reaproveitável: cada empresa define
+  // a alíquota uma vez e todo projeto a herda, com exceção pontual por projeto.
+  const pctImpProj = Number(px.pct_imposto) || 0;
+  const pctImp = pctImpProj > 0 ? pctImpProj : (Number(impostoPctDefaultIn) || 0);
+  const imposto = arred2((pctImp / 100) * contratado);
   const rateio = arred2(((Number(px.pct_rateio) || 0) / 100) * moCusto); // legado: pct — não entra no custo
   const rateioFix = arred2(Number(rateioFixIn) || 0); // overhead rateado por horas (Onda 2)
   const outros = arred2(Number(px.outros) || 0);
   const consumiveis = arred2(Number(px.consumiveis) || 0);
   const terceiros = arred2(Number(px.terceiros) || 0);
-  // Custo real = mão de obra (o custo/hora JÁ inclui encargos da MO) + consumíveis + terceiros +
-  // outros + rateio dos fixos (overhead). O pct_rateio legado fica fora da soma (não dobrar).
-  const custoTotal = arred2(moCusto + consumiveis + terceiros + outros + rateioFix);
+  // Custo real (D-3, decisão dos sócios 2026-10-19 — imposto e overhead SEPARADOS):
+  //   = mão de obra (o custo/hora JÁ inclui encargos da MO)
+  //   + IMPOSTO sobre o faturamento contratado   <-- antes era calculado e NÃO somado (corrigido)
+  //   + consumíveis + terceiros + outros
+  //   + rateio dos fixos (overhead das áreas não técnicas, por horas apontadas).
+  // O pct_rateio legado fica fora da soma (não dobrar com o overhead por horas).
+  const custoTotal = arred2(moCusto + imposto + consumiveis + terceiros + outros + rateioFix);
   const margem = arred2(contratado - custoTotal);
   const margemPct = contratado > 0 ? Math.round((margem / contratado) * 1000) / 10 : null;
   const lucroAlvo = arred2(((Number(px.pct_lucro) || 0) / 100) * contratado);
   const configurado = contratado > 0 || moCusto > 0 || outros > 0 || consumiveis > 0 || terceiros > 0 || rateioFix > 0;
+  // Custo NÃO-mão-de-obra do projeto (imposto + overhead + outros + consumíveis + terceiros). Serve
+  // para ratear o custo real por colaborador por horas (ver projdetalhe → colab.custoReal).
+  const naoMO = arred2(imposto + rateioFix + outros + consumiveis + terceiros);
   return {
-    contratado, moCusto, imposto, rateio, rateioFix, outros, consumiveis, terceiros, custoTotal, margem, margemPct, lucroAlvo,
-    pct_imposto: Number(px.pct_imposto) || 0, pct_rateio: Number(px.pct_rateio) || 0, pct_lucro: Number(px.pct_lucro) || 0,
+    contratado, moCusto, imposto, rateio, rateioFix, outros, consumiveis, terceiros, naoMO, custoTotal, margem, margemPct, lucroAlvo,
+    // pct_imposto = alíquota EFETIVA aplicada (override do projeto ou padrão da empresa); pct_imposto_proj
+    // = só o override do projeto (0 = usa o padrão), para o editor distinguir os dois.
+    pct_imposto: pctImp, pct_imposto_proj: pctImpProj, pct_rateio: Number(px.pct_rateio) || 0, pct_lucro: Number(px.pct_lucro) || 0,
     configurado, prejuizo: configurado && contratado > 0 && margem < 0,
   };
+}
+/** Alíquota de imposto PADRÃO da empresa (regime tributário do tenant), em %. Config `imposto_padrao`,
+ *  tenant-scoped. É o que faz o modelo reaproveitável: cada empresa define uma vez; o projeto herda. */
+async function impostoPadrao(tenant: string): Promise<number> {
+  try {
+    const r = await sqlite.execute({ sql: "SELECT v FROM config WHERE k = 'imposto_padrao' AND tenant_id = ?", args: [tenant] });
+    return r.rows.length ? Math.max(0, Math.min(100, Number(r.rows[0].v) || 0)) : 0;
+  } catch (_) { return 0; }
+}
+/** REGRA DE STATUS (Onda 1): um projeto CONCLUÍDO ou CANCELADO não recebe horas. Bloqueia o
+ *  lançamento/edição na fonte (não só na tela) — é o que impede a recorrência de "concluído com
+ *  horas novas". CC sem projeto cadastrado (reunião, ausência, treinamento) passa, como hoje. */
+async function bloqueiaSeFechado(cc: string, tenant: string): Promise<void> {
+  const r = await sqlite.execute({ sql: "SELECT status FROM proj WHERE cc = ? AND tenant_id = ?", args: [cc, tenant] });
+  if (!r.rows.length) return;
+  const st = String((r.rows[0] as P).status || "").toUpperCase();
+  if (st.indexOf("CONCLU") >= 0 || st.indexOf("CANCEL") >= 0) {
+    throw new Error("Projeto " + st.toLowerCase() + " não recebe horas. Peça à Coordenação para reabrir o status antes de lançar.");
+  }
+}
+/** ANDAMENTO ÚNICO (Onda 1): o progresso DERIVA dos marcos (etapa atual ÷ total), não de um campo
+ *  manual. Devolve o % 0-100 quando há total de etapas; null quando ainda não há marcos (aí a tela
+ *  cai no campo manual projx.progresso como fallback). */
+function pctEtapa(atual: number, total: number): number | null {
+  const a = Number(atual) || 0; const t = Number(total) || 0;
+  if (t <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((a / t) * 100)));
+}
+/** VALOR CONTRATADO por CC, do CONTRATO (dono único do valor) — Onda 1. Soma os contratos
+ *  CONFIRMADOS de cada CC em cc_contrato (base + aditivos). Enquanto um CC não tiver contrato
+ *  confirmado, o valor cai no fallback projx.contratado dentro de decompoeFin (transição). */
+async function valorContratadoMap(tenant: string): Promise<Record<string, number>> {
+  const m: Record<string, number> = {};
+  try {
+    const r = await sqlite.execute({
+      sql: "SELECT cc, COALESCE(SUM(valor),0) v FROM cc_contrato WHERE tenant_id = ? AND status = 'confirmado' GROUP BY cc",
+      args: [tenant],
+    });
+    for (const x of r.rows as P[]) { const v = Number(x.v) || 0; if (v > 0) m[String(x.cc)] = arred2(v); }
+  } catch (_) { /* coluna status recém-criada ou tabela ausente: sem override, usa o fallback */ }
+  return m;
 }
 /** RATEIO DOS CUSTOS FIXOS (overhead) sobre a carteira bilhável, POR HORAS APONTADAS (decisão do
  * dono — pool total editável). O pool = soma de custo_fixo; a base = horas (APROVADO/LANÇADO) dos
@@ -1501,30 +1697,61 @@ function diasUteisMes(ym: string): number {
  * rótulos da atividade t). Esperado = dias úteis×h/dia − feriado − férias − ausência JUSTIFICADA;
  * Realizado = trabalho (tudo menos os 4 rótulos); Saldo = Realizado − Esperado (>0 extra, <0 déficit;
  * ausência NÃO justificada puxa p/ déficit). Custo da extra = saldo+ × custo/hora vigente no mês. */
+/** Classes de atividade não-trabalho do tenant (feriado/férias/ausências), do CATÁLOGO editável.
+ *  Devolve os padrões de texto por classe. Fallback para os termos padrão se a tabela estiver vazia. */
+async function classesNaoTrabalho(tenant: string): Promise<{ feriado: string[]; ferias: string[]; aus_just: string[]; aus_naojust: string[] }> {
+  const out = { feriado: [] as string[], ferias: [] as string[], aus_just: [] as string[], aus_naojust: [] as string[] };
+  try {
+    const r = await sqlite.execute({ sql: "SELECT classe, padroes FROM atividade_classe WHERE tenant_id = ?", args: [tenant] });
+    for (const x of r.rows as P[]) {
+      const c = String(x.classe); const pads = String(x.padroes || "").split("|").map((s) => s.trim()).filter(Boolean);
+      if ((out as any)[c]) (out as any)[c].push(...pads);
+    }
+  } catch (_) { /* tabela ausente: usa o fallback abaixo */ }
+  if (!out.feriado.length && !out.ferias.length && !out.aus_just.length && !out.aus_naojust.length) {
+    out.feriado = ["Feriado"]; out.ferias = ["Ferias", "Férias"]; out.aus_just = ["Ausente Justificado"]; out.aus_naojust = ["Ausente Não Justificado", "Ausente Nao Justificado"];
+  }
+  return out;
+}
 async function capacidadeApontado(tenant: string): Promise<P[]> {
-  const r = await sqlite.execute({
-    sql: "SELECT slug, substr(d,1,7) ym," +
-      " SUM(CASE WHEN t LIKE '%Feriado%' THEN h ELSE 0 END) feriado," +
-      " SUM(CASE WHEN t LIKE '%Ferias%' OR t LIKE '%Férias%' THEN h ELSE 0 END) ferias," +
-      " SUM(CASE WHEN t LIKE '%Ausente Justificado%' THEN h ELSE 0 END) ausj," +
-      " SUM(CASE WHEN t LIKE '%Ausente N%o Justificado%' THEN h ELSE 0 END) ausn," +
-      " SUM(CASE WHEN t LIKE '%Feriado%' OR t LIKE '%Ferias%' OR t LIKE '%Férias%' OR t LIKE '%Ausente Justificado%' OR t LIKE '%Ausente N%o Justificado%' THEN 0 ELSE h END) trab" +
-      " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym",
-    args: [tenant],
-  });
+  // Classificação por CATÁLOGO (não mais por termos no código). Monta as somas parametrizadas.
+  const cls = await classesNaoTrabalho(tenant);
+  const selArgs: any[] = [];
+  const sumCol = (pads: string[], alias: string) => {
+    if (!pads.length) return "0 " + alias;
+    return "SUM(CASE WHEN (" + pads.map((k) => { selArgs.push("%" + k + "%"); return "t LIKE ?"; }).join(" OR ") + ") THEN h ELSE 0 END) " + alias;
+  };
+  const colFer = sumCol(cls.feriado, "feriado");
+  const colFrs = sumCol(cls.ferias, "ferias");
+  const colAj = sumCol(cls.aus_just, "ausj");
+  const colAn = sumCol(cls.aus_naojust, "ausn");
+  const allPads = [...cls.feriado, ...cls.ferias, ...cls.aus_just, ...cls.aus_naojust];
+  const trabCol = allPads.length
+    ? ("SUM(CASE WHEN (" + allPads.map((k) => { selArgs.push("%" + k + "%"); return "t LIKE ?"; }).join(" OR ") + ") THEN 0 ELSE h END) trab")
+    : "SUM(h) trab";
+  const sql = "SELECT slug, substr(d,1,7) ym, " + [colFer, colFrs, colAj, colAn, trabCol].join(", ")
+    + " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym";
+  const r = await sqlite.execute({ sql, args: [...selArgs, tenant] });
   const cvr = await sqlite.execute({ sql: "SELECT slug, desde, valor FROM custohora_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
   const vig: Record<string, { desde: string; valor: number }[]> = {};
   for (const x of cvr.rows as P[]) { (vig[String(x.slug)] = vig[String(x.slug)] || []).push({ desde: String(x.desde), valor: Number(x.valor) || 0 }); }
   const taxaEm = (slug: string, ym: string) => { let v = 0; const ref = ym + "-01"; for (const e of (vig[slug] || [])) { if (e.desde <= ref) v = e.valor; else break; } return v; };
+  // CAPACIDADE COM VIGÊNCIA (tabela, não mais CAP20): horas/semana datadas por pessoa → hdia = h/5.
+  const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
+  const capv: Record<string, { desde: string; hsem: number }[]> = {};
+  for (const x of capr.rows as P[]) { (capv[String(x.slug)] = capv[String(x.slug)] || []).push({ desde: String(x.desde), hsem: Number(x.horas_semana) || 0 }); }
+  const hsemEm = (slug: string, ym: string) => { let v = NaN; const ref = ym + "-01"; for (const e of (capv[slug] || [])) { if (e.desde <= ref) v = e.hsem; else break; } return v; };
   const porSlug: Record<string, P> = {};
   for (const row of r.rows as P[]) {
     const slug = String(row.slug); const ym = String(row.ym);
-    const hdia = CAP20.has(slug) ? 4 : 8;
+    const hsemMes = hsemEm(slug, ym); const hsem = Number.isNaN(hsemMes) ? 40 : hsemMes; // fallback 40h/sem
+    const hdia = arred2(hsem / 5);
     const feriado = arred2(Number(row.feriado) || 0), ferias = arred2(Number(row.ferias) || 0), ausj = arred2(Number(row.ausj) || 0), ausn = arred2(Number(row.ausn) || 0), trab = arred2(Number(row.trab) || 0);
     const esperado = arred2(diasUteisMes(ym) * hdia - feriado - ferias - ausj);
     const saldo = arred2(trab - esperado);
     const custoExtra = saldo > 0 ? arred2(saldo * taxaEm(slug, ym)) : 0;
-    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem: CAP20.has(slug) ? 20 : 40, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    o.hsem = hsem;
     (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, custoExtra });
     o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = arred2(o.tSaldo + saldo);
     o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0)); o.tCustoExtra = arred2(o.tCustoExtra + custoExtra);
@@ -1541,9 +1768,11 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
   const prr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [tenant] });
   const rf = await rateioFixosCarteira(tenant);
+  const vcMap = await valorContratadoMap(tenant); // valor do Contrato (dono); fallback projx
+  const impPad = await impostoPadrao(tenant); // alíquota padrão da empresa
   let contratado = 0, custoTotal = 0, margem = 0, nProj = 0, nPrej = 0;
   for (const pr of prr.rows as P[]) {
-    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0);
+    const d = decompoeFin(pxByCc[String(pr.cc)] || {}, moByCc[String(pr.cc)] || 0, rf.byCc[String(pr.cc)] || 0, vcMap[String(pr.cc)], impPad);
     if (d.contratado <= 0) continue;
     contratado += d.contratado; custoTotal += d.custoTotal; margem += d.margem; nProj++;
     if (d.margem < 0) nPrej++;
@@ -1591,7 +1820,12 @@ const PUBLICAS = new Set<string>(["ping", "haspin", "setpin", "login", "recupera
 const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
-  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmLeadAprovar: "equipe",
+  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
+  // Leads ambientais (explorador) + enriquecimento — piso login; o recorte comercial é fino DENTRO
+  // de cada ação (podeComercial / comercial.ver|gerir). Catalogados para o guard fail-closed (S-02).
+  ambList: "equipe", ambFicha: "equipe", ambMeta: "equipe", ambFacets: "equipe", ambAgg: "equipe",
+  ambPoints: "equipe", ambExport: "equipe", ambToCrm: "equipe", cnpjLookup: "equipe",
+  reauth: "equipe",
   andamento: "equipe", addandam: "equipe", delandam: "equipe", produtos: "equipe",
   // CARTEIRA EXECUTIVA: leitura rica de projeto (piso equipe); edição de gestão (piso coordenacao).
   projdetalhe: "equipe", setproj: "coordenacao", lancColab: "coordenacao",
@@ -1612,6 +1846,8 @@ const MIN: Record<string, Papel> = {
   brieffontes: "coordenacao", brieffonteset: "coordenacao", brieffontedel: "coordenacao", briefrun: "coordenacao",
   // Backup manual do D1 (verificacao sob demanda); o handler ainda exige isOwner.
   backup_now: "coordenacao",
+  // Restauracao do backup (R2->D1) — drill de recuperacao; handler exige isOwner + reauth (SENSIVEIS).
+  restore_backup: "coordenacao",
   // T4 — Hub/Launcher: piso = cliente (TODO logado pode perguntar o PROPRIO Hub). A acao
   // 'hub' apenas DEVOLVE a lista de modulos liberados; a liberacao de cada card deriva do
   // piso MIN da acao que o governa (ver MODULOS/modulosLiberados), nunca de flag de front.
@@ -1658,15 +1894,20 @@ const MIN: Record<string, Papel> = {
   setstatus: "coordenacao", catset: "coordenacao", catinfo: "coordenacao",
   mcptoken: "coordenacao", mcptokens: "coordenacao", mcprevoke: "coordenacao",
   // permissoes confidenciais e concessao de acervo (aba do dono) — admin
-  perms: "coordenacao", permset: "coordenacao", acset: "coordenacao",
+  perms: "coordenacao", permset: "coordenacao", acset: "coordenacao", consistencia: "coordenacao",
+  academia: "equipe", cursoDetalhe: "equipe", matricular: "equipe", aulaConcluir: "equipe",
+  cursoSet: "coordenacao", moduloSet: "coordenacao", aulaSet: "coordenacao",
   // FINANCEIRO — painel de lucro/prejuizo em R$. Piso 'admin' no guard; recorte fino isOwner
   // (so o dono) DENTRO de cada branch e em modulosLiberados. Unico lugar do portal com valor
   // monetario. acervo_list/acervo_arquivo ficam no piso de acervo (equipe + grant), nao aqui.
   financeiro: "coordenacao", custohoraList: "coordenacao", custohoraSet: "coordenacao", custohoraDel: "coordenacao", projfinSet: "coordenacao",
+  contratoList: "coordenacao", contratoSet: "coordenacao", impostoPadraoSet: "coordenacao",
   // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
+  conciliacao: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
+  atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
   capacidade: "coordenacao",
   // ACERVO — navegar pastas do bucket-fonte (abrir arquivo e via rota POST /acervo/arquivo).
@@ -1931,6 +2172,8 @@ const EVENTOS_SENSIVEIS: string[] = [
   "portfolio_serv", "portfolio_serv_del", "portfolio_ver", "portfolio_ver_del", "portfolio_skill",
   // M4 — falha de entrega de e-mail (retida para rastreio operacional).
   "email_falha",
+  // E-05 — restauração do backup (R2->D1): evento crítico, sempre retido na trilha.
+  "restore_backup",
 ];
 /** T6 — tamanho maximo do avatar (comprimento da data URL, em caracteres). ~64 KB: a foto
  *  e PEQUENA e sem upload externo; o front reduz a imagem a um quadrado pequeno antes de
@@ -2003,19 +2246,56 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* GUARD CENTRAL: negacao por papel no SERVIDOR, antes de qualquer branch. Acoes publicas
      (pre-login) passam direto; toda acao catalogada em MIN exige o papel minimo. Os branches
      seguem chamando auth() para obter u.tenant_id e aplicar o recorte fino de cada acao. */
-  if (!PUBLICAS.has(action) && Object.prototype.hasOwnProperty.call(MIN, action)) {
+  // S-02 — NEGAR POR OMISSÃO (fail-closed): toda ação é pública (PUBLICAS) OU catalogada em MIN.
+  // Ação que não está em nenhum dos dois é NEGADA — não existe mais "permitir por omissão".
+  if (!PUBLICAS.has(action)) {
+    if (!Object.prototype.hasOwnProperty.call(MIN, action)) {
+      throw new Error("Ação não reconhecida ou sem permissão definida.");
+    }
     const g = await auth(p);
     const min = MIN[action];
     const autorizado = g.papel === "fornecedor" ? FORNECEDOR_OK.has(action) : temPapelMinimo(g.papel, min);
     if (!autorizado) throw new Error("Sem acesso: esta ação exige o papel mínimo \"" + min + "\".");
+    // S-03 — REAUTH STEP-UP: ações sensíveis (R$, exclusões, acesso) exigem senha reconfirmada
+    // nos últimos REAUTH_MIN minutos, mesmo com sessão válida.
+    if (SENSIVEIS.has(action)) await exigeReauth(p, g.slug);
   }
 
+  /* S-03 — reautenticar: confirma a senha e marca a sessão como reautenticada (REAUTH_MIN min). */
+  if (action === "reauth") {
+    const u = await auth(p);
+    const senha = String(p.senha || "");
+    const stored = (await cfgGet("pin:" + u.slug)) || "";
+    if (!stored || !(await verificaSenha(u.slug, senha, stored))) { await audit("reauth", u.slug, "falha", ip); throw new Error("Senha incorreta."); }
+    await sqlite.execute({ sql: "UPDATE sess SET reauth = ? WHERE token = ?", args: [new Date().toISOString(), String(p.token || "")] });
+    await audit("reauth", u.slug, "ok", ip);
+    return { ok: true, min: REAUTH_MIN };
+  }
   if (action === "backup_now") {
     const u = await auth(p);
     if (!isOwner(u.slug)) throw new Error("Apenas o dono pode disparar o backup.");
     const r = await backupD1(ENV);
     if (!r.ok) throw new Error("Backup falhou: " + (r.erro || "erro desconhecido"));
     return { ok: true, backup: r } as P;
+  }
+  if (action === "restore_backup") {
+    // Drill de recuperacao (E-05): le um dump do bucket BACKUP e o reescreve no D1 DESTE Worker.
+    // Em staging, restaura um backup de producao e confere contagens (prova de recuperabilidade).
+    // Gate: dono-only + reauth (SENSIVEIS). Em producao e um caminho de recuperacao de incidente.
+    // Trava extra: 'apply' real so no D1 de STAGING (database_name termina em -staging), a menos
+    // que o dono passe prod:true EXPLICITO — defesa contra apagar producao por engano no drill.
+    const u = await auth(p);
+    if (!isOwner(u.slug)) throw new Error("Apenas o dono pode restaurar o backup.");
+    const aplicar = p.aplicar === true || p.aplicar === "true";
+    const confirmar = p.confirmar === true || p.confirmar === "true";
+    const ehStaging = String((ENV as any).AMBIENTE || "").toLowerCase() === "staging";
+    if (aplicar && confirmar && !ehStaging && p.prod !== true && p.prod !== "true") {
+      throw new Error("Restauração com 'apply' fora de staging exige prod:true explícito (proteção contra apagar produção).");
+    }
+    const r = await restauraBackup({ key: p.key ? String(p.key) : undefined, aplicar, confirmar });
+    if (!r.ok) throw new Error("Restauração falhou: " + (r.erro || "erro desconhecido"));
+    if (r.modo === "aplicado") await audit("restore_backup", u.slug, r.key || "", ip);
+    return { ok: true, restore: r } as P;
   }
 
   if (action === "escritorio") {
@@ -2111,6 +2391,130 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         ], recursos: [ r("acervo-consulta", "skill", "existe", "Consulta o acervo via AutoRAG/MCP."), r("intelecto-contexto", "skill", "existe", "Contexto-mestre e POP-ENG.") ] },
     ];
     return { ok: true, catalogo, cerebro: { macro, areas } };
+  }
+
+  /* ===== ACADEMIA (Onda 4) ===== */
+  /* Catálogo + o meu progresso. Piso equipe (todo mundo aprende). Coord também vê rascunhos. */
+  if (action === "academia") {
+    const u = await auth(p);
+    const cr = await sqlite.execute({ sql: "SELECT cid, titulo, resumo, categoria, cargo_alvo, carga_h, publicado, ordem FROM curso WHERE tenant_id = ?" + (u.coord ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo", args: [u.tenant_id] });
+    const an = await sqlite.execute({ sql: "SELECT curso_id, COUNT(*) n FROM curso_aula WHERE tenant_id = ? GROUP BY curso_id", args: [u.tenant_id] });
+    const totAulas: Record<string, number> = {}; for (const x of an.rows as P[]) totAulas[String(x.curso_id)] = Number(x.n) || 0;
+    const mr = await sqlite.execute({ sql: "SELECT curso_id, status, concluido FROM matricula WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+    const matr: Record<string, P> = {}; for (const x of mr.rows as P[]) matr[String(x.curso_id)] = x;
+    const pg = await sqlite.execute({ sql: "SELECT curso_id, COUNT(*) n FROM aula_prog WHERE tenant_id = ? AND slug = ? GROUP BY curso_id", args: [u.tenant_id, u.slug] });
+    const feitas: Record<string, number> = {}; for (const x of pg.rows as P[]) feitas[String(x.curso_id)] = Number(x.n) || 0;
+    const ce = await sqlite.execute({ sql: "SELECT curso_id, titulo, carga_h, emitido FROM certificado WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+    const cursos = (cr.rows as P[]).map((c) => {
+      const cid = String(c.cid); const tot = totAulas[cid] || 0; const feito = Math.min(feitas[cid] || 0, tot);
+      return { ...c, totalAulas: tot, feitas: feito, pct: tot > 0 ? Math.round((feito / tot) * 100) : 0, matriculado: !!matr[cid], concluido: matr[cid] ? String(matr[cid].status) === "concluida" : false };
+    });
+    return { ok: true, cursos, certificados: ce.rows, coord: u.coord };
+  }
+  /* Detalhe do curso: módulos + aulas (SEM a alternativa correta do quiz) + o meu progresso. */
+  if (action === "cursoDetalhe") {
+    const u = await auth(p);
+    const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Curso ausente.");
+    const cr = await sqlite.execute({ sql: "SELECT cid, titulo, resumo, categoria, cargo_alvo, carga_h, publicado FROM curso WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+    if (!cr.rows.length) throw new Error("Curso não encontrado.");
+    const curso = cr.rows[0] as P;
+    if (!Number(curso.publicado) && !u.coord) throw new Error("Curso ainda não publicado.");
+    const mods = await sqlite.execute({ sql: "SELECT id, titulo, ordem FROM curso_modulo WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
+    const aur = await sqlite.execute({ sql: "SELECT id, modulo_id, titulo, tipo, conteudo, url, ordem, quiz, min_nota FROM curso_aula WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
+    const pr = await sqlite.execute({ sql: "SELECT aula_id, nota, concluido_em FROM aula_prog WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    const prog: Record<string, P> = {}; for (const x of pr.rows as P[]) prog[String(x.aula_id)] = x;
+    const aulas = (aur.rows as P[]).map((a) => {
+      let quiz: P[] | null = null;
+      if (String(a.tipo) === "quiz" && a.quiz) {
+        // O aluno recebe o quiz SEM a alternativa correta (a nota é calculada no servidor). A
+        // coordenação, como AUTORA, recebe o quiz completo (precisa editar a resposta certa).
+        try { quiz = (JSON.parse(String(a.quiz)) as P[]).map((q) => (u.coord ? q : { q: q.q, opc: q.opc })); } catch (_) { quiz = []; }
+      }
+      return { id: a.id, modulo_id: a.modulo_id, titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo, url: a.url, ordem: a.ordem, min_nota: a.min_nota, quiz, feito: !!prog[String(a.id)], nota: prog[String(a.id)] ? Number(prog[String(a.id)].nota) || 0 : null };
+    });
+    const mr = await sqlite.execute({ sql: "SELECT status, concluido FROM matricula WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    const ce = await sqlite.execute({ sql: "SELECT id, emitido, carga_h FROM certificado WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    return { ok: true, curso, modulos: mods.rows, aulas, matricula: mr.rows[0] || null, certificado: ce.rows[0] || null, coord: u.coord };
+  }
+  /* Matricular-se (no próprio). */
+  if (action === "matricular") {
+    const u = await auth(p);
+    const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Curso ausente.");
+    await sqlite.execute({ sql: "INSERT OR IGNORE INTO matricula (tenant_id, slug, curso_id, status, iniciado) VALUES (?,?,?, 'ativa', ?)", args: [u.tenant_id, u.slug, cid, now] });
+    await audit("academia", u.slug, "matricula " + cid, ip);
+    return { ok: true, cid };
+  }
+  /* Concluir uma aula. Se for quiz, a NOTA é calculada no SERVIDOR (respostas vs correta guardada);
+     abaixo da min_nota não conclui. Ao fechar todas as aulas, emite o certificado e grava na ficha. */
+  if (action === "aulaConcluir") {
+    const u = await auth(p);
+    const aid = String(p.aula_id || "").trim(); if (!aid) throw new Error("Aula ausente.");
+    const ar = await sqlite.execute({ sql: "SELECT id, curso_id, tipo, quiz, min_nota FROM curso_aula WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, aid] });
+    if (!ar.rows.length) throw new Error("Aula não encontrada.");
+    const a = ar.rows[0] as P; const cid = String(a.curso_id);
+    // precisa estar matriculado (auto-matricula se faltar, para fluxo simples).
+    await sqlite.execute({ sql: "INSERT OR IGNORE INTO matricula (tenant_id, slug, curso_id, status, iniciado) VALUES (?,?,?, 'ativa', ?)", args: [u.tenant_id, u.slug, cid, now] });
+    let nota = 100;
+    if (String(a.tipo) === "quiz") {
+      let perg: P[] = []; try { perg = JSON.parse(String(a.quiz || "[]")) as P[]; } catch (_) { perg = []; }
+      const resp = Array.isArray(p.respostas) ? (p.respostas as any[]).map((x) => Number(x)) : [];
+      if (!perg.length) nota = 100;
+      else { let ok2 = 0; for (let i = 0; i < perg.length; i++) if (resp[i] === Number((perg[i] as P).correta)) ok2++; nota = Math.round((ok2 / perg.length) * 100); }
+      const min = Number(a.min_nota) || 70;
+      if (nota < min) return { ok: true, aprovado: false, nota, min };
+    }
+    await sqlite.execute({ sql: "INSERT INTO aula_prog (tenant_id, slug, aula_id, curso_id, nota, concluido_em) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id,slug,aula_id) DO UPDATE SET nota=excluded.nota, concluido_em=excluded.concluido_em", args: [u.tenant_id, u.slug, aid, cid, nota, now] });
+    // concluiu o curso? (todas as aulas feitas) → certificado + ficha.
+    const tot = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM curso_aula WHERE tenant_id = ? AND curso_id = ?", args: [u.tenant_id, cid] });
+    const feito = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM aula_prog WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    const nTot = Number((tot.rows[0] as P).n) || 0; const nFeito = Number((feito.rows[0] as P).n) || 0;
+    let certificado: P | null = null;
+    if (nTot > 0 && nFeito >= nTot) {
+      const cur = await sqlite.execute({ sql: "SELECT titulo, carga_h FROM curso WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+      const titulo = String((cur.rows[0] as P)?.titulo || cid); const cargaH = Number((cur.rows[0] as P)?.carga_h) || 0;
+      await sqlite.execute({ sql: "UPDATE matricula SET status = 'concluida', concluido = ? WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [now, u.tenant_id, u.slug, cid] });
+      const certId = "CERT-" + u.slug + "-" + cid;
+      await sqlite.execute({ sql: "INSERT OR IGNORE INTO certificado (id, tenant_id, slug, curso_id, titulo, carga_h, emitido, u) VALUES (?,?,?,?,?,?,?,?)", args: [certId, u.tenant_id, u.slug, cid, titulo, cargaH, now, u.slug] });
+      // liga à FICHA: grava um treinamento (idempotente por id derivado).
+      try {
+        await sqlite.execute({ sql: "INSERT OR IGNORE INTO pessoa_treino (tenant_id, id, slug, nome, instituicao, data, carga_h, obs, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?)", args: [u.tenant_id, "TRC-" + u.slug + "-" + cid, u.slug, titulo, "Academia Intelecto", now.slice(0, 10), cargaH, "Certificado da Academia", now, u.slug] });
+      } catch (_) { /* ficha pode não existir: o certificado já ficou registrado */ }
+      await audit("academia", u.slug, "concluiu " + cid + " (certificado)", ip);
+      certificado = { id: certId, titulo, carga_h: cargaH, emitido: now };
+    }
+    return { ok: true, aprovado: true, nota, concluiuCurso: !!certificado, certificado };
+  }
+  /* Autoria (coordenação): criar/editar curso, módulo e aula. */
+  if (action === "cursoSet") {
+    const u = await auth(p); if (!u.coord) throw new Error("Autoria de cursos restrita à Coordenação.");
+    const cid = String(p.cid || "").trim() || "curso-" + Date.now().toString(36);
+    const g = (k: string, n = 300) => String(p[k] == null ? "" : p[k]).slice(0, n);
+    await sqlite.execute({
+      sql: "INSERT INTO curso (tenant_id,cid,titulo,resumo,categoria,cargo_alvo,carga_h,publicado,ordem,atualizado,u) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,cid) DO UPDATE SET titulo=excluded.titulo,resumo=excluded.resumo,categoria=excluded.categoria,cargo_alvo=excluded.cargo_alvo,carga_h=excluded.carga_h,publicado=excluded.publicado,ordem=excluded.ordem,atualizado=excluded.atualizado,u=excluded.u",
+      args: [u.tenant_id, cid, g("titulo", 160), g("resumo", 600), g("categoria", 60), g("cargo_alvo", 60), Math.max(0, Number(p.carga_h) || 0), p.publicado ? 1 : 0, Math.floor(Number(p.ordem) || 0), now, u.slug],
+    });
+    await audit("academia", u.slug, "curso " + cid, ip);
+    return { ok: true, cid };
+  }
+  if (action === "moduloSet") {
+    const u = await auth(p); if (!u.coord) throw new Error("Autoria restrita à Coordenação.");
+    const curso_id = String(p.curso_id || "").trim(); if (!curso_id) throw new Error("Curso ausente.");
+    const id = String(p.id || "").trim() || "m-" + Date.now().toString(36);
+    await sqlite.execute({ sql: "INSERT INTO curso_modulo (tenant_id,id,curso_id,titulo,ordem,u) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET titulo=excluded.titulo,ordem=excluded.ordem,u=excluded.u", args: [u.tenant_id, id, curso_id, String(p.titulo || "").slice(0, 160), Math.floor(Number(p.ordem) || 0), u.slug] });
+    return { ok: true, id };
+  }
+  if (action === "aulaSet") {
+    const u = await auth(p); if (!u.coord) throw new Error("Autoria restrita à Coordenação.");
+    const curso_id = String(p.curso_id || "").trim(); if (!curso_id) throw new Error("Curso ausente.");
+    const id = String(p.id || "").trim() || "a-" + Date.now().toString(36);
+    let tipo = String(p.tipo || "texto").toLowerCase(); if (!["texto", "video", "pdf", "quiz"].includes(tipo)) tipo = "texto";
+    let quiz = ""; if (tipo === "quiz" && p.quiz != null) { try { quiz = JSON.stringify(p.quiz); } catch (_) { quiz = ""; } }
+    await sqlite.execute({
+      sql: "INSERT INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,url,ordem,quiz,min_nota,u) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET modulo_id=excluded.modulo_id,titulo=excluded.titulo,tipo=excluded.tipo,conteudo=excluded.conteudo,url=excluded.url,ordem=excluded.ordem,quiz=excluded.quiz,min_nota=excluded.min_nota,u=excluded.u",
+      args: [u.tenant_id, id, curso_id, String(p.modulo_id || "").slice(0, 60), String(p.titulo || "").slice(0, 200), tipo, String(p.conteudo || "").slice(0, 8000), String(p.url || "").slice(0, 600), Math.floor(Number(p.ordem) || 0), quiz, Math.max(0, Math.min(100, Number(p.min_nota) || 70)), u.slug],
+    });
+    await audit("academia", u.slug, "aula " + id + " (" + tipo + ")", ip);
+    return { ok: true, id };
   }
 
   // ===== COMERCIAL · Leads Ambientais (allowlist perm:comercial) =====
@@ -2353,6 +2757,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     });
     await audit("crm_deal", u.slug, (isNew ? "novo " : "edit ") + id + ": " + co.slice(0, 60), ip);
     return { ok: true, id, isNew };
+  }
+  /* CRM — mover o negócio de etapa (kanban do pipeline). Mutação FINA: toca só `st`, sem sobrescrever
+     os demais campos (ao contrário do crmDealSet). Gate comercial.gerir. Auditado. */
+  if (action === "crmDealStage") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.gerir")) throw new Error("Sem permissão para mover o negócio.");
+    const id = String(p.id || "").trim(); if (!id) throw new Error("Negócio ausente.");
+    const st = Math.max(0, Math.min(21, Math.floor(Number(p.st) || 0)));
+    const r = await sqlite.execute({ sql: "UPDATE crm_deal SET st = ?, atualizado = ? WHERE id = ? AND tenant_id = ?", args: [st, new Date().toISOString(), id, u.tenant_id] });
+    if (!r.meta || (r.meta as P).changes === 0) { /* id inexistente: sem erro ruidoso, o front re-sincroniza */ }
+    await audit("crm_deal", u.slug, "mover " + id + " -> st " + st, ip);
+    return { ok: true, id, st };
   }
   /* CRM — aprovar lead inbound: vira um negócio (deal) no topo do funil e marca o lead. */
   if (action === "crmLeadAprovar") {
@@ -2944,7 +3360,20 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       ? (await horasCustoPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h, custoHora: chMap[c.slug] || 0, custo: c.custo }))
       : (await horasPorColab(cc, u.tenant_id)).map((c) => ({ slug: c.slug, nome: NOMES[c.slug] || c.slug, h: c.h }));
     const rfp = podeFin ? await rateioFixosCarteira(u.tenant_id) : { fixosTotal: 0, byCc: {} as Record<string, number>, horasBase: 0 };
-    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0) : null;
+    const vcCc = podeFin ? (await valorContratadoMap(u.tenant_id))[cc] : undefined; // valor do Contrato (dono)
+    const impPad = podeFin ? await impostoPadrao(u.tenant_id) : 0; // alíquota padrão da empresa
+    const fin = podeFin ? decompoeFin(px, (colab as any[]).reduce((s, c) => s + (c.custo || 0), 0), rfp.byCc[cc] || 0, vcCc, impPad) : null;
+    // CUSTO REAL POR COLABORADOR (D-3): além da mão de obra direta (horas × custo/hora c/ encargos),
+    // cada colaborador absorve sua fatia do custo não-MO do projeto (imposto + overhead + outros +
+    // consumíveis + terceiros), rateada pelas horas que lançou. Dá o custo real carregado por pessoa.
+    if (podeFin && fin) {
+      const somaH = (colab as any[]).reduce((s, c) => s + (Number(c.h) || 0), 0);
+      const naoMO = Number((fin as P).naoMO) || 0;
+      for (const c of colab as any[]) {
+        const fatia = somaH > 0 ? arred2(naoMO * ((Number(c.h) || 0) / somaH)) : 0;
+        c.custoReal = arred2((Number(c.custo) || 0) + fatia);
+      }
+    }
     // HISTÓRICO DE HORAS do projeto: cada apontamento efetivo (aprovado/lançado) com o que foi
     // feito (lanc.t). Em importados o `t` costuma vir vazio — o front exibe "—" quando não houver.
     const lcr = await sqlite.execute({ sql: "SELECT d, slug, h, t FROM lanc WHERE cc = ? AND tenant_id = ? AND s IN ('APROVADO','LANÇADO') ORDER BY d DESC LIMIT 300", args: [cc, u.tenant_id] });
@@ -2954,6 +3383,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     for (const a of andam) {
       if (!ultimoDetalhe && a.detalhe) { ultimoDetalhe = String(a.detalhe); ultimaData = String(a.d); }
       if ((Number(a.total) || 0) > 0 || (Number(a.etapa) || 0) > 0) { etapaAtual = Number(a.etapa) || 0; etapaTotal = Number(a.total) || 0; break; }
+    }
+    // CONTRATOS + PARCELAS do CC (só para quem vê o Financeiro) — para o painel Contrato & parcelas.
+    // E uma amostra das ENTRADAS de caixa sem CC (para baixar uma parcela e conciliar o recebimento).
+    let contratos: P[] = []; let caixaSemCc: P[] = [];
+    if (podeFin) {
+      const cr = await sqlite.execute({ sql: "SELECT id, titulo, valor, assinado, status, tipo, deal_id, obs FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+      const pcr = await sqlite.execute({ sql: "SELECT id, contrato_id, numero, valor, venc_prev, recebido_em, fluxo_id, status, obs FROM contrato_parcela WHERE tenant_id = ? AND cc = ? ORDER BY numero, venc_prev", args: [u.tenant_id, cc] });
+      const byCt: Record<string, P[]> = {};
+      for (const pc of pcr.rows as P[]) { (byCt[String(pc.contrato_id)] = byCt[String(pc.contrato_id)] || []).push(pc); }
+      contratos = (cr.rows as P[]).map((c) => ({ ...c, parcelas: byCt[String(c.id)] || [] }));
+      const csc = await sqlite.execute({ sql: "SELECT id, descricao, valor, data_real, data_prev FROM fluxo WHERE tenant_id = ? AND tipo = 'entrada' AND COALESCE(cc,'') = '' ORDER BY COALESCE(NULLIF(data_real,''), data_prev, criado) DESC LIMIT 40", args: [u.tenant_id] });
+      caixaSemCc = csc.rows as P[];
     }
     return {
       ok: true, coord: u.coord, cc,
@@ -2978,9 +3419,16 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         } : {}),
       },
       horas: { gastas, previstas: prev, restantes, consumo, estouro: prev > 0 && gastas > prev },
-      etapa: { atual: etapaAtual, total: etapaTotal, ultimoDetalhe, ultimaData },
+      // ANDAMENTO ÚNICO: progresso DERIVADO dos marcos (etapa/total). `progresso` em projx vira
+      // fallback/override quando ainda não há marcos. `divergente` sinaliza quando os dois não batem.
+      etapa: {
+        atual: etapaAtual, total: etapaTotal, ultimoDetalhe, ultimaData,
+        progressoDerivado: pctEtapa(etapaAtual, etapaTotal),
+        divergente: (() => { const d = pctEtapa(etapaAtual, etapaTotal); return d != null && Math.abs(d - (Number(px.progresso) || 0)) > 10; })(),
+      },
       andam, prevf: pf.rows, lancs,
       colab, podeFin, fin,
+      ...(podeFin ? { contratos, caixaSemCc } : {}),
     };
   }
   /* APONTAMENTOS DE OUTRO COLABORADOR (seletor da aba Horas): histórico COMPLETO de um colega,
@@ -3057,6 +3505,37 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await audit("projfin", u.slug, cc + " contratado=" + contratado, ip);
     return { ok: true, cc };
   }
+  /* CONTRATO (Onda 1) — o CONTRATO é o dono único do valor contratado. Lista/cria/confirma os
+     contratos de um CC (base + aditivos). Enquanto um CC não tiver contrato confirmado, o valor
+     cai no fallback projx.contratado (transição). Gate: dono ou financeiro.editar. Confidencial (R$). */
+  if (action === "contratoList") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
+    const r = await sqlite.execute({ sql: "SELECT id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u, criado, atualizado FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+    const conf = (r.rows as P[]).filter((x) => String(x.status) === "confirmado").reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    return { ok: true, cc, contratos: r.rows, valorContratado: arred2(conf) };
+  }
+  if (action === "contratoSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição de contrato restrita à direção ou coordenação financeira.");
+    const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
+    let id = String(p.id || "").trim(); const isNew = !id;
+    if (isNew) id = "CT-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const valor = Math.max(0, Number(p.valor) || 0);
+    const titulo = String(p.titulo || "").slice(0, 200);
+    const assinado = (() => { const s = String(p.assinado || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; })();
+    let tipo = String(p.tipo || "base").trim().toLowerCase(); if (tipo !== "base" && tipo !== "aditivo") tipo = "base";
+    let status = String(p.status || "rascunho").trim().toLowerCase(); if (status !== "rascunho" && status !== "confirmado" && status !== "cancelado") status = "rascunho";
+    const deal_id = String(p.deal_id || "").slice(0, 60);
+    const obs = String(p.obs || "").slice(0, 2000);
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO cc_contrato (id,tenant_id,cc,titulo,valor,assinado,status,tipo,deal_id,obs,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        + "ON CONFLICT(id) DO UPDATE SET cc=excluded.cc,titulo=excluded.titulo,valor=excluded.valor,assinado=excluded.assinado,status=excluded.status,tipo=excluded.tipo,deal_id=excluded.deal_id,obs=excluded.obs,u=excluded.u,atualizado=excluded.atualizado",
+      args: [id, u.tenant_id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u.slug, now, now],
+    });
+    await audit("contrato", u.slug, (isNew ? "novo " : "edit ") + id + " cc=" + cc + " " + status + " valor=" + valor, ip);
+    return { ok: true, id, cc, isNew };
+  }
   if (action === "financeiro") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     // mão de obra por cc: cada apontamento × a taxa de custo/hora VIGENTE na sua data (histórico preservado).
@@ -3067,16 +3546,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const pxByCc: Record<string, P> = {}; for (const x of pxr.rows as P[]) pxByCc[String(x.cc)] = x;
     const prr = await sqlite.execute({ sql: "SELECT cc, projeto, cliente, status FROM proj WHERE tenant_id = ? AND registro = 'ATIVO'", args: [u.tenant_id] });
     const rf = await rateioFixosCarteira(u.tenant_id);
+    const vcMap = await valorContratadoMap(u.tenant_id); // valor do Contrato (dono); fallback projx
+    const impPad = await impostoPadrao(u.tenant_id); // alíquota padrão da empresa (herdada pelo projeto)
     const rows: P[] = [];
     for (const pr of prr.rows as P[]) {
       const cc = String(pr.cc); const px = pxByCc[cc] || {};
-      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0);
+      const d = decompoeFin(px, moByCc[cc] || 0, rf.byCc[cc] || 0, vcMap[cc], impPad);
       if (d.contratado <= 0) continue; // carteira = só projetos com valor contratado informado
       rows.push({ cc, projeto: pr.projeto, cliente: pr.cliente || "", status: pr.status || "", ...d });
     }
     rows.sort((a: any, b: any) => (a.margem - b.margem)); // prejuízo/menor margem primeiro
     const tot = rows.reduce((s: any, r: any) => ({ contratado: s.contratado + r.contratado, custoTotal: s.custoTotal + r.custoTotal, margem: s.margem + r.margem }), { contratado: 0, custoTotal: 0, margem: 0 });
-    return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) }, overhead: { total: rf.fixosTotal, horasBase: rf.horasBase } };
+    return { ok: true, projetos: rows, total: { contratado: arred2(tot.contratado), custoTotal: arred2(tot.custoTotal), margem: arred2(tot.margem) }, overhead: { total: rf.fixosTotal, horasBase: rf.horasBase }, impostoPadrao: impPad };
   }
   /* CUSTOS FIXOS / OVERHEAD — pool editável rateado por horas (Onda 2). Leitura restrita. */
   if (action === "custoFixoList") {
@@ -3084,7 +3565,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const r = await sqlite.execute({ sql: "SELECT id, categoria, descricao, valor, u, criado, atualizado FROM custo_fixo WHERE tenant_id = ? ORDER BY categoria, criado", args: [u.tenant_id] });
     const total = (r.rows as P[]).reduce((s, x) => s + (Number(x.valor) || 0), 0);
     const rf = await rateioFixosCarteira(u.tenant_id);
-    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase };
+    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase, impostoPadrao: await impostoPadrao(u.tenant_id) };
   }
   if (action === "custoFixoSet") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
@@ -3102,6 +3583,16 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await audit("custo_fixo", u.slug, (isNew ? "novo " : "edit ") + id + " " + categoria + " " + valor, ip);
     return { ok: true, id, isNew };
   }
+  /* IMPOSTO PADRÃO DA EMPRESA (regime tributário do tenant) — alíquota % sobre o faturamento que
+     todo projeto herda (override por projeto em projx.pct_imposto). É a peça que torna o modelo de
+     custo reaproveitável: cada empresa define uma vez. Gate financeiro.editar. Confidencial. */
+  if (action === "impostoPadraoSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const pct = Math.max(0, Math.min(100, Number(p.pct) || 0));
+    await sqlite.execute({ sql: "INSERT INTO config (k, v, tenant_id) VALUES ('imposto_padrao', ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", args: [String(pct), u.tenant_id] });
+    await audit("imposto_padrao", u.slug, "pct=" + pct, ip);
+    return { ok: true, pct };
+  }
   if (action === "custoFixoDel") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
     const id = String(p.id || "").trim(); if (!id) throw new Error("ID do custo fixo ausente.");
@@ -3113,7 +3604,40 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "capacidade") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     const pessoas = await capacidadeApontado(u.tenant_id);
-    return { ok: true, pessoas };
+    const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde DESC", args: [u.tenant_id] });
+    const capAtual: Record<string, number> = {};
+    for (const x of capr.rows as P[]) { const s = String(x.slug); if (!(s in capAtual)) capAtual[s] = Number(x.horas_semana) || 0; }
+    const cls = await sqlite.execute({ sql: "SELECT cid, nome, classe, padroes, ordem FROM atividade_classe WHERE tenant_id = ? ORDER BY ordem", args: [u.tenant_id] });
+    return { ok: true, pessoas, capacidades: capAtual, classes: cls.rows };
+  }
+  /* CATÁLOGO DE CLASSES DE ATIVIDADE — editar os padrões de texto que marcam feriado/férias/ausência
+     (reaproveitável por empresa). Gate coordenação (financeiro.editar). Auditado. */
+  if (action === "atividadeClasseSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Classe ausente.");
+    const padroes = String(p.padroes || "").slice(0, 400);
+    const nome = String(p.nome || "").slice(0, 80);
+    await sqlite.execute({
+      sql: "INSERT INTO atividade_classe (tenant_id, cid, nome, classe, padroes, atualizado, u) VALUES (?,?,?,COALESCE((SELECT classe FROM atividade_classe WHERE tenant_id=? AND cid=?),?),?,?,?) "
+        + "ON CONFLICT(tenant_id,cid) DO UPDATE SET nome=excluded.nome, padroes=excluded.padroes, atualizado=excluded.atualizado, u=excluded.u",
+      args: [u.tenant_id, cid, nome, u.tenant_id, cid, cid, padroes, new Date().toISOString(), u.slug],
+    });
+    await audit("atividade_classe", u.slug, cid + " padroes=" + padroes, ip);
+    return { ok: true, cid };
+  }
+  /* CAPACIDADE COM VIGÊNCIA — registrar horas/semana de uma pessoa a partir de uma data (histórico
+     preservado, como o custo/hora). Gate coordenação. Auditado. */
+  if (action === "capacidadeSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const slug = String(p.slug || "").trim(); if (!slug) throw new Error("Colaborador ausente.");
+    const desde = String(p.desde || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) throw new Error("Data de vigência inválida (AAAA-MM-DD).");
+    const hs = Math.max(0, Math.min(80, Number(p.horas_semana) || 0));
+    await sqlite.execute({
+      sql: "INSERT INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id,slug,desde) DO UPDATE SET horas_semana=excluded.horas_semana, u=excluded.u",
+      args: [u.tenant_id, slug, desde, hs, u.slug, new Date().toISOString()],
+    });
+    await audit("capacidade", u.slug, slug + " " + desde + " " + hs + "h/sem", ip);
+    return { ok: true, slug, desde, horas_semana: hs };
   }
   /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
      restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */
@@ -3194,6 +3718,89 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "UPDATE fluxo SET cc = ?, u = ?, atualizado = ? WHERE tenant_id = ? AND id IN (" + ids.map(() => "?").join(",") + ")", args: [cc, u.slug, now, u.tenant_id, ...ids] });
     await audit("fluxo", u.slug, "cc=" + (cc || "(limpo)") + " em " + ids.length + " lançamento(s)", ip);
     return { ok: true, n: ids.length, cc };
+  }
+  /* FILA DE CONCILIAÇÃO (Onda 1) — os movimentos de caixa SEM centro de custo, paginados no servidor
+     (princípio de escala: nunca devolver a base inteira). É a lista de trabalho para ligar cada
+     entrada/saída a um projeto. Entradas podem ser baixadas contra uma parcela de contrato
+     (parcelaBaixar), que preenche o CC sozinho. Gate financeiro.ver. */
+  if (action === "conciliacao") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const limit = Math.max(1, Math.min(200, Math.floor(Number(p.limit) || 50)));
+    const offset = Math.max(0, Math.floor(Number(p.offset) || 0));
+    const tipo = String(p.tipo || "") === "entrada" ? "entrada" : (String(p.tipo || "") === "saida" ? "saida" : "");
+    const wh = "tenant_id = ? AND COALESCE(cc,'') = ''" + (tipo ? " AND tipo = ?" : "");
+    const argsBase: any[] = tipo ? [u.tenant_id, tipo] : [u.tenant_id];
+    const tot = await sqlite.execute({ sql: "SELECT COUNT(*) n, COALESCE(SUM(valor),0) v FROM fluxo WHERE " + wh, args: argsBase });
+    const r = await sqlite.execute({
+      sql: "SELECT id, tipo, categoria, descricao, valor, data_prev, data_real, status, origem FROM fluxo WHERE " + wh
+        + " ORDER BY COALESCE(NULLIF(data_real,''), data_prev, criado) DESC LIMIT ? OFFSET ?",
+      args: [...argsBase, limit, offset],
+    });
+    const n = Number((tot.rows[0] as P).n) || 0;
+    return { ok: true, fila: r.rows, total: n, valorPendente: arred2(Number((tot.rows[0] as P).v) || 0), limit, offset, temMais: offset + limit < n };
+  }
+  /* PARCELAS DO CONTRATO (Onda 1) — plano de recebimento de um contrato (base da conciliação).
+     Lista por contrato OU por CC. Gate financeiro.ver. */
+  if (action === "parcelaList") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const cid = String(p.contrato_id || "").trim(); const cc = String(p.cc || "").trim();
+    if (!cid && !cc) throw new Error("Informe o contrato ou o centro de custo.");
+    const wh = cid ? "tenant_id = ? AND contrato_id = ?" : "tenant_id = ? AND cc = ?";
+    const r = await sqlite.execute({ sql: "SELECT id, contrato_id, cc, numero, valor, venc_prev, recebido_em, fluxo_id, status, obs FROM contrato_parcela WHERE " + wh + " ORDER BY numero, venc_prev", args: [u.tenant_id, cid || cc] });
+    const rows = r.rows as P[];
+    const prev = rows.reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    const receb = rows.filter((x) => String(x.status) === "recebida").reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    return { ok: true, parcelas: rows, totalPrevisto: arred2(prev), totalRecebido: arred2(receb) };
+  }
+  if (action === "parcelaSet") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const contrato_id = String(p.contrato_id || "").trim(); if (!contrato_id) throw new Error("Contrato ausente.");
+    const ct = await sqlite.execute({ sql: "SELECT cc FROM cc_contrato WHERE id = ? AND tenant_id = ?", args: [contrato_id, u.tenant_id] });
+    if (!ct.rows.length) throw new Error("Contrato não encontrado.");
+    const cc = String((ct.rows[0] as P).cc || "");
+    let id = String(p.id || "").trim(); const isNew = !id;
+    if (isNew) id = "PC-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const numero = Math.max(1, Math.floor(Number(p.numero) || 1));
+    const valor = Math.max(0, Number(p.valor) || 0);
+    const venc = (() => { const s = String(p.venc_prev || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; })();
+    const obs = String(p.obs || "").slice(0, 300);
+    const now = new Date().toISOString();
+    await sqlite.execute({
+      sql: "INSERT INTO contrato_parcela (id,tenant_id,contrato_id,cc,numero,valor,venc_prev,status,obs,criado,u) VALUES (?,?,?,?,?,?,?, 'prevista', ?,?,?) "
+        + "ON CONFLICT(id) DO UPDATE SET numero=excluded.numero,valor=excluded.valor,venc_prev=excluded.venc_prev,obs=excluded.obs,u=excluded.u",
+      args: [id, u.tenant_id, contrato_id, cc, numero, valor, venc, obs, now, u.slug],
+    });
+    await audit("parcela", u.slug, (isNew ? "nova " : "edit ") + id + " ct=" + contrato_id + " valor=" + valor, ip);
+    return { ok: true, id, cc, isNew };
+  }
+  /* BAIXA DE PARCELA (conciliação da entrada) — liga um recebimento do caixa (fluxo entrada) a uma
+     parcela do contrato: marca a parcela como recebida e PREENCHE o CC do movimento com o CC do
+     contrato. É a conciliação que fecha o buraco "caixa sem centro de custo" para os recebimentos.
+     Gate financeiro.editar. Auditado. Passe fluxo_id='' para desfazer a baixa. */
+  if (action === "parcelaBaixar") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const pid = String(p.parcela_id || "").trim(); if (!pid) throw new Error("Parcela ausente.");
+    const pr = await sqlite.execute({ sql: "SELECT id, cc, fluxo_id FROM contrato_parcela WHERE id = ? AND tenant_id = ?", args: [pid, u.tenant_id] });
+    if (!pr.rows.length) throw new Error("Parcela não encontrada.");
+    const parc = pr.rows[0] as P; const cc = String(parc.cc || "");
+    const fluxo_id = String(p.fluxo_id || "").trim();
+    const now = new Date().toISOString();
+    if (!fluxo_id) {
+      // desfaz a baixa: volta a parcela a prevista; o CC do movimento não é apagado (decisão humana).
+      await sqlite.execute({ sql: "UPDATE contrato_parcela SET status = 'prevista', recebido_em = '', fluxo_id = '' WHERE id = ? AND tenant_id = ?", args: [pid, u.tenant_id] });
+      await audit("parcela", u.slug, "desfez baixa " + pid, ip);
+      return { ok: true, id: pid, baixada: false };
+    }
+    const fr = await sqlite.execute({ sql: "SELECT id, tipo, data_real, data_prev FROM fluxo WHERE id = ? AND tenant_id = ?", args: [fluxo_id, u.tenant_id] });
+    if (!fr.rows.length) throw new Error("Movimento de caixa não encontrado.");
+    const fx = fr.rows[0] as P;
+    if (String(fx.tipo) !== "entrada") throw new Error("Só uma entrada (recebimento) baixa uma parcela.");
+    const receb = String(fx.data_real || fx.data_prev || now.slice(0, 10)).slice(0, 10);
+    await sqlite.execute({ sql: "UPDATE contrato_parcela SET status = 'recebida', recebido_em = ?, fluxo_id = ? WHERE id = ? AND tenant_id = ?", args: [receb, fluxo_id, pid, u.tenant_id] });
+    // preenche o CC do movimento com o do contrato (conciliação) — não sobrescreve um CC já definido.
+    await sqlite.execute({ sql: "UPDATE fluxo SET cc = ?, u = ?, atualizado = ? WHERE id = ? AND tenant_id = ? AND COALESCE(cc,'') = ''", args: [cc, u.slug, now, fluxo_id, u.tenant_id] });
+    await audit("parcela", u.slug, "baixou " + pid + " com " + fluxo_id + " cc=" + cc, ip);
+    return { ok: true, id: pid, baixada: true, cc, fluxo_id };
   }
 
   /* ===== ACERVO — navegar pastas do bucket-fonte (abrir arquivo é a rota POST /acervo/arquivo) ===== */
@@ -4500,6 +5107,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "add") {
     const u = await auth(p);
     const e = validEntry(p.entry);
+    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
     const id = crypto.randomUUID().slice(0, 8);
     await sqlite.execute({
       sql: "INSERT INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id) VALUES (?,?,?,?,?,?,'PENDENTE','','',?,?,?)",
@@ -4514,6 +5122,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (cur.slug !== u.slug && !u.coord) throw new Error("Só é possível editar o próprio lançamento.");
     if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO") throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
+    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
     await sqlite.execute({
       sql: "UPDATE lanc SET d=?, cc=?, h=?, t=?, s='PENDENTE', m='', a='', u=? WHERE id=? AND tenant_id=?",
       args: [e.d, e.cc, e.h, e.t, now, String(p.id), u.tenant_id],
@@ -4709,6 +5318,53 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, hits: data.map((d: any) => ({ arquivo: d.filename, score: d.score, trecho: ((d.content || []).map((c: any) => c.text).join("\n")).slice(0, 1200) })) };
   }
 
+  /* PAINEL DE CONSISTÊNCIA (Onda 0.2) — roda as regras de integridade entre módulos (as mesmas de
+     consistency/rules.sql) e devolve a contagem de violações por regra, com dono e atalho. SOMENTE
+     LEITURA. Gate: direção (sistema.config). É o que torna a bagunça MENSURÁVEL na própria tela. */
+  if (action === "consistencia") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "sistema.config"))) throw new Error("Painel de Consistência restrito à direção (Sócios).");
+    const T = u.tenant_id;
+    const regras: { rule: string; titulo: string; sev: string; dono: string; atalho: string; sql: string; args: any[] }[] = [
+      { rule: "C1", titulo: "Caixa sem centro de custo", sev: "crit", dono: "Financeiro", atalho: "Financeiro › Conciliação",
+        sql: "SELECT COUNT(*) n FROM fluxo WHERE tenant_id = ? AND COALESCE(cc,'') = ''", args: [T] },
+      { rule: "C2", titulo: "Deal assinado sem contrato confirmado", sev: "crit", dono: "Comercial+Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM crm_deal d WHERE d.tenant_id = ? AND d.signeddate <> '' AND d.cc <> '' AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc = d.cc AND c.tenant_id = d.tenant_id AND c.status = 'confirmado')", args: [T] },
+      { rule: "C3", titulo: "Valor do contrato divergente do deal", sev: "crit", dono: "Comercial+Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM crm_deal d JOIN (SELECT cc, tenant_id, SUM(valor) v FROM cc_contrato WHERE status='confirmado' GROUP BY cc, tenant_id) c ON c.cc=d.cc AND c.tenant_id=d.tenant_id WHERE d.tenant_id = ? AND d.signeddate <> '' AND ABS(c.v - d.val) > 1", args: [T] },
+      { rule: "C4", titulo: "Contrato confirmado sem deal assinado", sev: "alto", dono: "Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT cc, tenant_id FROM cc_contrato WHERE status='confirmado') c WHERE c.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM crm_deal d WHERE d.cc=c.cc AND d.tenant_id=c.tenant_id AND d.signeddate <> '')", args: [T] },
+      { rule: "C4b", titulo: "Valor só em projx (sem contrato — dívida de migração)", sev: "medio", dono: "Financeiro", atalho: "Projeto 360 › Financeiro",
+        sql: "SELECT COUNT(*) n FROM projx x WHERE x.tenant_id = ? AND x.contratado > 0 AND NOT EXISTS (SELECT 1 FROM cc_contrato c WHERE c.cc=x.cc AND c.tenant_id=x.tenant_id AND c.status='confirmado')", args: [T] },
+      { rule: "C5", titulo: "Andamento divergente (>10 p.p.)", sev: "alto", dono: "Projetos", atalho: "Projeto 360 › Visão",
+        sql: "SELECT COUNT(*) n FROM projx x JOIN (SELECT cc, MAX(d) md FROM andam WHERE tenant_id = ? GROUP BY cc) a ON a.cc=x.cc JOIN andam an ON an.cc=a.cc AND an.d=a.md WHERE x.tenant_id = ? AND an.total>0 AND ABS(ROUND(100.0*an.etapa/an.total)-x.progresso)>10", args: [T, T] },
+      { rule: "C6", titulo: "Concluído com horas nos últimos 30 dias", sev: "alto", dono: "Projetos", atalho: "Projeto 360 › Visão",
+        sql: "SELECT COUNT(*) n FROM proj WHERE tenant_id = ? AND status='CONCLUÍDO' AND EXISTS (SELECT 1 FROM lanc l WHERE l.cc=proj.cc AND l.tenant_id=proj.tenant_id AND l.d>=date('now','-30 day'))", args: [T] },
+      { rule: "C7", titulo: "Em andamento sem horas há 60 dias", sev: "medio", dono: "Projetos", atalho: "Projeto 360 › Visão",
+        sql: "SELECT COUNT(*) n FROM proj p WHERE p.tenant_id = ? AND p.status='EM ANDAMENTO' AND NOT EXISTS (SELECT 1 FROM lanc l WHERE l.cc=p.cc AND l.tenant_id=p.tenant_id AND l.d>=date('now','-60 day'))", args: [T] },
+      { rule: "C8", titulo: "Hora em centro de custo sem projeto", sev: "alto", dono: "Horas", atalho: "Lançar horas",
+        sql: "SELECT COUNT(*) n FROM lanc l WHERE l.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM proj p WHERE p.cc=l.cc AND p.tenant_id=l.tenant_id)", args: [T] },
+      { rule: "C10", titulo: "Custo/hora legado preenchido (fonte é custohora_vig)", sev: "medio", dono: "Financeiro", atalho: "Financeiro › Custo/hora",
+        sql: "SELECT COUNT(*) n FROM custohora WHERE tenant_id = ? AND valor > 0", args: [T] },
+      { rule: "C11", titulo: "Pessoa ativa com horas e sem custo/hora", sev: "alto", dono: "Financeiro", atalho: "Financeiro › Custo/hora",
+        sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM custohora_vig v WHERE v.slug=a.slug AND v.tenant_id = ?)", args: [T, T] },
+      { rule: "C13", titulo: "Contrato confirmado sem parcelas", sev: "medio", dono: "Financeiro", atalho: "Projeto 360 › Contrato",
+        sql: "SELECT COUNT(*) n FROM cc_contrato c WHERE c.tenant_id = ? AND c.status='confirmado' AND NOT EXISTS (SELECT 1 FROM contrato_parcela pp WHERE pp.contrato_id=c.id AND pp.tenant_id=c.tenant_id)", args: [T] },
+      { rule: "C14", titulo: "Parcela prevista vencida e não recebida", sev: "alto", dono: "Financeiro", atalho: "Financeiro › Conciliação",
+        sql: "SELECT COUNT(*) n FROM contrato_parcela WHERE tenant_id = ? AND status='prevista' AND venc_prev <> '' AND venc_prev < date('now')", args: [T] },
+      { rule: "C15", titulo: "Pessoa com horas e sem capacidade cadastrada", sev: "medio", dono: "RH", atalho: "Financeiro › Capacidade",
+        sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug=a.slug AND c.tenant_id = ?)", args: [T, T] },
+      { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
+        sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
+    ];
+    const out: P[] = [];
+    for (const r of regras) {
+      let n = -1;
+      try { const q = await sqlite.execute({ sql: r.sql, args: r.args }); n = Number((q.rows[0] as P).n) || 0; } catch (_) { n = -1; }
+      out.push({ rule: r.rule, titulo: r.titulo, sev: r.sev, dono: r.dono, atalho: r.atalho, n });
+    }
+    const crit = out.filter((x) => x.sev === "crit" && (x.n as number) > 0).length;
+    return { ok: true, regras: out, em: new Date().toISOString(), criticosAbertos: crit };
+  }
   if (action === "perms") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "sistema.config"))) throw new Error("Acesso às permissões restrito à direção (Sócios).");
     const r = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE tenant_id = ? AND (k LIKE 'perm:%' OR k LIKE 'acgrant:%')", args: [TENANT_INTELECTO] });
@@ -5217,6 +5873,14 @@ if(window.mermaid){try{mermaid.initialize({startOnLoad:false,theme:matchMedia('(
 </html>`;
 }
 
+/* OBSERVABILIDADE (E-04 / "enxergar o sistema") — log estruturado em JSON no console, capturado
+ * pelo Workers Logs (ligado em wrangler.toml [observability]). NUNCA registra PII nem segredo:
+ * só ação, duração, resultado e um id de requisição para correlacionar o erro que o usuário vê
+ * com a linha do log. */
+function logEvent(o: Record<string, unknown>): void {
+  try { console.log(JSON.stringify({ ts: new Date().toISOString(), ...o })); } catch (_) { /* log nunca derruba a resposta */ }
+}
+
 const app = new Hono();
 app.use("*", async (c: any, next: any) => { ENV = c.env; try { REQ_ORIGIN = new URL(c.req.url).origin; } catch (_) { /* url invalida: mantem origem anterior */ } await next(); });
 
@@ -5226,22 +5890,30 @@ app.use("*", async (c, next) => {
   c.header("X-Frame-Options", "DENY");
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // HSTS: só sobre HTTPS, força o navegador a nunca mais falar HTTP com o domínio.
+  c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   if ((c.res.headers.get("content-type") || "").includes("text/html")) {
     c.header("Content-Security-Policy",
       "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.town https://cdn.jsdelivr.net; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; " +
       "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    // BUG-01: o cache compartilhado (CF edge) servia o HTML SEM os headers de segurança do Worker.
+    // `private` tira o HTML do cache compartilhado — os headers passam a vir sempre do Worker.
+    c.header("Cache-Control", "private, no-cache, must-revalidate");
   }
 });
 
 app.post("/api", async (c) => {
   await ensureSchema();
   const ip = c.req.header("cf-connecting-ip") || (c.req.header("x-forwarded-for") || "").split(",")[0].trim() || "?";
+  const t0 = Date.now();
+  const reqId = crypto.randomUUID().slice(0, 8); // id curto p/ correlacionar erro visível ↔ log
+  let action = "?";
   try {
     const p = await c.req.json();
     // M2 — sessão em cookie HttpOnly: se o corpo não traz token, usa o do cookie `ce_t`.
     if (!p.token) { const ct = cookieVal(c.req.header("cookie") || "", "ce_t"); if (ct) p.token = ct; }
-    const action = String(p.action || "");
+    action = String(p.action || "");
     const out = await route(action, p, ip);
     // O token NUNCA volta ao JS: ação que cria sessão grava-o no cookie HttpOnly e some do corpo.
     if (out && (out as any).token) {
@@ -5250,6 +5922,8 @@ app.post("/api", async (c) => {
     } else if (action === "logout") {
       c.header("Set-Cookie", "ce_t=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
     }
+    // RED (Rate/Errors/Duration): sem PII (só ação, duração, ok). Lento vira sinal por si.
+    logEvent({ ev: "api", reqId, action, ms: Date.now() - t0, ok: true });
     return c.json(out);
   } catch (err) {
     /* Erro de regra de negocio e escrito para a pessoa ler e pode sair. Erro de
@@ -5257,9 +5931,11 @@ app.post("/api", async (c) => {
        e o detalhe fica so na auditoria. */
     const msg = err instanceof Error ? err.message : String(err);
     const interno = /\b(SQLITE|D1_|no such (table|column)|UNIQUE constraint|syntax error|FOREIGN KEY)\b/i.test(msg);
+    const reauth = msg.indexOf("REAUTH_NECESSARIO") === 0;
+    logEvent({ ev: "api", reqId, action, ms: Date.now() - t0, ok: false, kind: interno ? "interno" : reauth ? "reauth" : "negocio", msg: interno ? msg : undefined });
     if (interno) {
-      try { await audit("erro_interno", "-", msg, ip); } catch { /* auditoria nunca derruba a resposta */ }
-      return c.json({ ok: false, error: "Não foi possível concluir. Tente de novo; se persistir, avise a Coordenação." });
+      try { await audit("erro_interno", "-", reqId + " " + msg, ip); } catch { /* auditoria nunca derruba a resposta */ }
+      return c.json({ ok: false, error: "Não foi possível concluir. Tente de novo; se persistir, avise a Coordenação (ref " + reqId + ")." });
     }
     return c.json({ ok: false, error: msg });
   }
@@ -5658,13 +6334,21 @@ async function keepAlive(env: any) {
  * DB.dump() (indisponivel no D1 remoto): varre sqlite_master e serializa linha a linha via
  * o helper sqlite. Retencao simples por data no nome do arquivo. Nunca lanca (cron robusto). */
 const BACKUP_RET_DIAS = 90;
+// Tabelas EXCLUÍDAS do backup/restauração: projeções reconstruíveis e volumosas (os leads
+// ambientais, ~151k linhas, recarregados da fonte Base Empreendimentos MG por wrangler). Mantê-las
+// fora do dump deixa o backup pequeno e restaurável dentro dos limites de memória do Worker.
+const BACKUP_SKIP = new Set<string>(["amb_registro", "amb_agg"]);
 async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?: number; linhas?: number; bytes?: number; removidos?: number; erro?: string }> {
   ENV = env; /* mesmo padrao do keepAlive: helpers usam o ENV global */
   if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
   try {
     await ensureSchema();
     const tb = await sqlite.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%' ORDER BY name");
-    const nomes = tb.rows.map((r: any) => r.name as string);
+    // Exclui as PROJEÇÕES reconstruíveis e volumosas (leads ambientais, ~151k linhas): elas são
+    // recarregadas da fonte (Base Empreendimentos MG), não do backup. Isso mantém o backup pequeno
+    // e, sobretudo, RESTAURÁVEL dentro dos limites do Worker (um backup com elas estouraria a memória
+    // na restauração). O dado IRREPARÁVEL — operação, horas, financeiro, CRM, academia — é o que entra.
+    const nomes = tb.rows.map((r: any) => r.name as string).filter((n: string) => !BACKUP_SKIP.has(n));
     const dump: any = { gerado_em: new Date().toISOString(), db: "portal-intelecto", tabelas: {} };
     let linhas = 0;
     for (const t of nomes) {
@@ -5689,6 +6373,84 @@ async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?
   } catch (e: any) {
     return { ok: false, erro: e && e.message ? e.message : String(e) };
   }
+}
+
+/* ---------- Restauração do backup (R2 -> D1) — drill de recuperação (E-05) ----------
+ * Lê um dump JSON gerado por backupD1() do bucket BACKUP e o escreve de volta no D1 ligado a
+ * ESTE Worker. Em staging (que reusa o bucket de produção), isso é o DRILL: restaura um backup
+ * de produção no D1 de staging e confere as contagens — prova, de verdade, que o backup é
+ * recuperável. Em produção, é o caminho de recuperação de um incidente de perda de dados.
+ *
+ * Dois modos, deliberadamente separados para não haver apagão acidental:
+ *  - modo "verify" (padrão): só LÊ o backup e devolve o manifesto (tabelas + linhas + gerado_em).
+ *    Não escreve nada. É o que se roda primeiro, sempre.
+ *  - modo "apply": para cada tabela do dump, DELETE + reinserção em lotes. EXIGE confirmar:true.
+ *    Pula tabelas de BACKUP_SKIP e tabelas ausentes no schema atual (best-effort por tabela).
+ *
+ * Nunca restaura as projeções volumosas (BACKUP_SKIP) mesmo que um backup antigo as contenha.
+ * A ação que expõe isto é dono-only + reauth (ver SENSIVEIS/MIN). */
+async function listaBackups(): Promise<string[]> {
+  if (!ENV.BACKUP) return [];
+  const lista: any = await ENV.BACKUP.list({ prefix: "d1/" });
+  return (lista.objects || []).map((o: any) => o.key as string).filter((k: string) => /\.json$/.test(k)).sort();
+}
+async function restauraBackup(opts: { key?: string; aplicar?: boolean; confirmar?: boolean }): Promise<any> {
+  ENV = ENV; /* helpers sqlite usam o ENV global, já setado no middleware de fetch */
+  if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
+  await ensureSchema();
+  const chaves = await listaBackups();
+  let key = (opts.key || "").trim();
+  if (!key) key = chaves[chaves.length - 1] || ""; /* mais recente */
+  if (!key) return { ok: false, erro: "Nenhum backup encontrado no bucket (prefixo d1/)." };
+  const obj: any = await ENV.BACKUP.get(key);
+  if (!obj) return { ok: false, erro: "Backup não encontrado: " + key };
+  let dump: any;
+  try { dump = JSON.parse(await obj.text()); } catch (e: any) { return { ok: false, erro: "Backup ilegível (JSON inválido): " + (e && e.message ? e.message : String(e)) }; }
+  const tabelas = dump && dump.tabelas ? dump.tabelas : {};
+  const manifesto = Object.keys(tabelas)
+    .filter((t) => !BACKUP_SKIP.has(t))
+    .map((t) => ({ tabela: t, linhas: Array.isArray(tabelas[t]) ? tabelas[t].length : 0 }));
+  const totalLinhas = manifesto.reduce((s, m) => s + m.linhas, 0);
+  const base = { ok: true, key, gerado_em: dump.gerado_em || null, disponiveis: chaves.length, tabelas: manifesto, totalLinhas };
+  if (!opts.aplicar) return { ...base, modo: "verify" };
+  if (!opts.confirmar) return { ...base, modo: "verify", aviso: "modo apply exige confirmar:true — nada foi escrito." };
+  /* APLICAR: por tabela, DELETE + reinserção em lotes. Best-effort por tabela. */
+  const restauradas: any[] = [];
+  const falhas: any[] = [];
+  for (const m of manifesto) {
+    const t = m.tabela;
+    const rows: any[] = Array.isArray(tabelas[t]) ? tabelas[t] : [];
+    try {
+      await sqlite.execute('DELETE FROM "' + t + '"');
+      let inseridas = 0;
+      // D1 limita o nº de variáveis VINCULADAS por statement (~100). O lote precisa respeitar
+      // linhas×colunas ≤ ~90 (margem), senão estoura "too many SQL variables". Ajusta ao nº de
+      // colunas da tabela (descoberto no drill E-05, com tabelas largas como crm_deal/proj/lanc).
+      const nCols = rows.length ? Object.keys(rows[0]).length : 0;
+      const porLote = nCols ? Math.max(1, Math.floor(90 / nCols)) : 50;
+      const stmts: any[] = [];
+      for (let i = 0; i < rows.length; i += porLote) {
+        const lote = rows.slice(i, i + porLote);
+        if (!lote.length) continue;
+        const cols = Object.keys(lote[0]);
+        if (!cols.length) continue;
+        const colSql = cols.map((c) => '"' + c + '"').join(",");
+        const ph = "(" + cols.map(() => "?").join(",") + ")";
+        const args: any[] = [];
+        for (const r of lote) for (const c of cols) { const v = (r as any)[c]; args.push(v === undefined ? null : v); }
+        stmts.push({ sql: 'INSERT OR REPLACE INTO "' + t + '" (' + colSql + ") VALUES " + lote.map(() => ph).join(","), args });
+        inseridas += lote.length;
+      }
+      // Agrupa os INSERTs em poucos round-trips (D1 batch). Em sequência, centenas de executes
+      // deixavam a restauração inteira lenta demais num único request e o Worker era cortado
+      // (descoberto no drill E-05: projx/sess ficavam incompletos). Chunk conservador por batch.
+      for (let j = 0; j < stmts.length; j += 20) { await sqlite.batch(stmts.slice(j, j + 20)); }
+      restauradas.push({ tabela: t, linhas: inseridas });
+    } catch (e: any) {
+      falhas.push({ tabela: t, erro: e && e.message ? e.message : String(e) });
+    }
+  }
+  return { ...base, modo: "aplicado", restauradas, falhas, tabelasRestauradas: restauradas.length };
 }
 
 /* ============================================================================
@@ -5933,8 +6695,15 @@ export default {
      *  - "0 6 * * *" : backup diario do D1 -> R2
      *  - "0 9 * * *" : coletor do Daily Brief (fontes ativas e devidas pela cadencia)
      *  - demais ("*​/5 * * * *") : keep-alive */
-    if (event && event.cron === "0 6 * * *") ctx.waitUntil(backupD1(env));
-    else if (event && event.cron === "0 9 * * *") ctx.waitUntil(briefColetar(env, { autor: "cron" }));
-    else ctx.waitUntil(keepAlive(env));
+    const cron = (event && event.cron) || "?";
+    // Observabilidade: cada disparo de cron deixa uma linha (quem/quando/resultado) no Workers Logs.
+    const run = (nome: string, pr: Promise<any>) => {
+      const t0 = Date.now();
+      return pr.then(() => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: true }))
+        .catch((e: any) => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: false, msg: String((e && e.message) || e).slice(0, 200) }));
+    };
+    if (event && event.cron === "0 6 * * *") ctx.waitUntil(run("backup", backupD1(env)));
+    else if (event && event.cron === "0 9 * * *") ctx.waitUntil(run("daily_brief", briefColetar(env, { autor: "cron" })));
+    else ctx.waitUntil(run("keep_alive", keepAlive(env)));
   },
 };

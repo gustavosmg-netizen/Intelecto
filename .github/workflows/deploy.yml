@@ -16,7 +16,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Portao da Onda 0: o deploy em main so acontece se a verificacao passar.
+  # build:check = wrangler deploy --dry-run (empacota o Worker); npm test = testes
+  # de fundacao. Sem segredos nesta etapa. Se quebrar, NADA e publicado.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install deps
+        run: npm ci
+      - name: Build da casca nova (React/Vite -> public/app)
+        run: npm run build:app
+      - name: Build check (wrangler dry-run)
+        run: npm run build:check
+      - name: Testes de fundacao
+        run: npm test
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,10 +47,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install deps
         run: npm ci
+
+      - name: Build da casca nova (React/Vite -> public/app)
+        run: npm run build:app
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
