@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-20c";
+const SCHEMA_VER = "2026-10-21a";
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -716,6 +716,57 @@ function ensureSchema(): Promise<void> {
         sql: "INSERT OR IGNORE INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?, 'seed','')",
         args: [TENANT_INTELECTO, slug, "2025-01-01", CAP20.has(slug) ? 20 : 40],
       })));
+    } catch (_) { /* já existe */ }
+    /* ===== ACADEMIA (Onda 4) — cursos, módulos, aulas, matrícula, progresso, avaliação e
+     * certificado ligado à ficha (pessoa_treino). Fecha o ciclo aprender → comprovar → alocar.
+     * curso_aula.quiz guarda as perguntas E a alternativa correta (JSON); a correta NUNCA vai ao
+     * cliente (cursoDetalhe a remove) e a nota é calculada no servidor (aulaConcluir). Nasce com o
+     * curso "Como usar o portal". Sem valor monetário. */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', cid TEXT NOT NULL, titulo TEXT DEFAULT '',
+        resumo TEXT DEFAULT '', categoria TEXT DEFAULT '', cargo_alvo TEXT DEFAULT '', carga_h REAL DEFAULT 0,
+        publicado INTEGER DEFAULT 0, ordem INTEGER DEFAULT 0, capa TEXT DEFAULT '',
+        atualizado TEXT DEFAULT '', u TEXT DEFAULT '', PRIMARY KEY (tenant_id, cid))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso_modulo (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, curso_id TEXT NOT NULL,
+        titulo TEXT DEFAULT '', ordem INTEGER DEFAULT 0, u TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS curso_modulo_c ON curso_modulo (tenant_id, curso_id, ordem)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso_aula (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, curso_id TEXT NOT NULL, modulo_id TEXT DEFAULT '',
+        titulo TEXT DEFAULT '', tipo TEXT DEFAULT 'texto', conteudo TEXT DEFAULT '', url TEXT DEFAULT '',
+        ordem INTEGER DEFAULT 0, quiz TEXT DEFAULT '', min_nota REAL DEFAULT 70, u TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS curso_aula_c ON curso_aula (tenant_id, curso_id, ordem)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS matricula (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, curso_id TEXT NOT NULL,
+        status TEXT DEFAULT 'ativa', iniciado TEXT DEFAULT '', concluido TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, curso_id))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS aula_prog (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, aula_id TEXT NOT NULL, curso_id TEXT DEFAULT '',
+        nota REAL DEFAULT 0, concluido_em TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, aula_id))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS aula_prog_sc ON aula_prog (tenant_id, slug, curso_id)"); } catch (_) {}
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS certificado (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, curso_id TEXT NOT NULL,
+        titulo TEXT DEFAULT '', carga_h REAL DEFAULT 0, emitido TEXT DEFAULT '', u TEXT DEFAULT '')`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS certificado_sc ON certificado (tenant_id, slug, curso_id)"); } catch (_) {}
+      // Semente: o 1º curso "Como usar o portal" (substitui as Trilhas), com 1 módulo e 3 aulas
+      // (2 de texto + 1 quiz). INSERT OR IGNORE: não sobrescreve edição da casa.
+      await sqlite.batch([
+        { sql: "INSERT OR IGNORE INTO curso (tenant_id,cid,titulo,resumo,categoria,cargo_alvo,carga_h,publicado,ordem,atualizado) VALUES (?,?,?,?,?,?,?,?,?,'')",
+          args: [TENANT_INTELECTO, "como-usar-portal", "Como usar o portal", "O essencial para operar o Portal Intelecto no dia a dia: lançar horas, acompanhar projetos e ler os indicadores.", "Onboarding", "todos", 1, 1, 0] },
+        { sql: "INSERT OR IGNORE INTO curso_modulo (tenant_id,id,curso_id,titulo,ordem) VALUES (?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "m-portal-1", "como-usar-portal", "Primeiros passos", 0] },
+        { sql: "INSERT OR IGNORE INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,ordem) VALUES (?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "a-portal-1", "como-usar-portal", "m-portal-1", "Para que serve o portal", "texto", "O portal reúne, num lugar só, as horas da equipe, os projetos, o comercial e o financeiro — ligando o que antes vivia em planilhas soltas. A regra de ouro: um fato tem um dono; as telas leem desse dono, ninguém redigita.", 0] },
+        { sql: "INSERT OR IGNORE INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,ordem) VALUES (?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "a-portal-2", "como-usar-portal", "m-portal-1", "Lançar as suas horas", "texto", "Em Meu trabalho, escolha a data, o centro de custo (o projeto), as horas e descreva o que foi feito. O lançamento nasce PENDENTE e só entra nos indicadores depois de aprovado. Projeto concluído ou cancelado não recebe horas.", 1] },
+        { sql: "INSERT OR IGNORE INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,quiz,ordem) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [TENANT_INTELECTO, "a-portal-3", "como-usar-portal", "m-portal-1", "Verificação", "quiz", "Responda para concluir o curso.",
+            JSON.stringify([
+              { q: "Em que situação o lançamento de horas nasce?", opc: ["Aprovado", "Pendente", "Lançado"], correta: 1 },
+              { q: "Um projeto concluído pode receber novas horas?", opc: ["Sim, sempre", "Não, é bloqueado na fonte"], correta: 1 },
+              { q: "Quem é o dono do valor contratado?", opc: ["O Contrato", "Cada tela que quiser"], correta: 0 },
+            ]), 2] },
+      ]);
     } catch (_) { /* já existe */ }
     // FINANCEIRO — consumíveis e terceiros por projeto (R$). O custo/hora JÁ embute encargos da MO;
     // o custo real do projeto = MO + imposto + consumíveis + terceiros + outros + overhead (Onda 1, D-3).
@@ -1807,6 +1858,8 @@ const MIN: Record<string, Papel> = {
   mcptoken: "coordenacao", mcptokens: "coordenacao", mcprevoke: "coordenacao",
   // permissoes confidenciais e concessao de acervo (aba do dono) — admin
   perms: "coordenacao", permset: "coordenacao", acset: "coordenacao", consistencia: "coordenacao",
+  academia: "equipe", cursoDetalhe: "equipe", matricular: "equipe", aulaConcluir: "equipe",
+  cursoSet: "coordenacao", moduloSet: "coordenacao", aulaSet: "coordenacao",
   // FINANCEIRO — painel de lucro/prejuizo em R$. Piso 'admin' no guard; recorte fino isOwner
   // (so o dono) DENTRO de cada branch e em modulosLiberados. Unico lugar do portal com valor
   // monetario. acervo_list/acervo_arquivo ficam no piso de acervo (equipe + grant), nao aqui.
@@ -2262,6 +2315,128 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         ], recursos: [ r("acervo-consulta", "skill", "existe", "Consulta o acervo via AutoRAG/MCP."), r("intelecto-contexto", "skill", "existe", "Contexto-mestre e POP-ENG.") ] },
     ];
     return { ok: true, catalogo, cerebro: { macro, areas } };
+  }
+
+  /* ===== ACADEMIA (Onda 4) ===== */
+  /* Catálogo + o meu progresso. Piso equipe (todo mundo aprende). Coord também vê rascunhos. */
+  if (action === "academia") {
+    const u = await auth(p);
+    const cr = await sqlite.execute({ sql: "SELECT cid, titulo, resumo, categoria, cargo_alvo, carga_h, publicado, ordem FROM curso WHERE tenant_id = ?" + (u.coord ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo", args: [u.tenant_id] });
+    const an = await sqlite.execute({ sql: "SELECT curso_id, COUNT(*) n FROM curso_aula WHERE tenant_id = ? GROUP BY curso_id", args: [u.tenant_id] });
+    const totAulas: Record<string, number> = {}; for (const x of an.rows as P[]) totAulas[String(x.curso_id)] = Number(x.n) || 0;
+    const mr = await sqlite.execute({ sql: "SELECT curso_id, status, concluido FROM matricula WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+    const matr: Record<string, P> = {}; for (const x of mr.rows as P[]) matr[String(x.curso_id)] = x;
+    const pg = await sqlite.execute({ sql: "SELECT curso_id, COUNT(*) n FROM aula_prog WHERE tenant_id = ? AND slug = ? GROUP BY curso_id", args: [u.tenant_id, u.slug] });
+    const feitas: Record<string, number> = {}; for (const x of pg.rows as P[]) feitas[String(x.curso_id)] = Number(x.n) || 0;
+    const ce = await sqlite.execute({ sql: "SELECT curso_id, titulo, carga_h, emitido FROM certificado WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+    const cursos = (cr.rows as P[]).map((c) => {
+      const cid = String(c.cid); const tot = totAulas[cid] || 0; const feito = Math.min(feitas[cid] || 0, tot);
+      return { ...c, totalAulas: tot, feitas: feito, pct: tot > 0 ? Math.round((feito / tot) * 100) : 0, matriculado: !!matr[cid], concluido: matr[cid] ? String(matr[cid].status) === "concluida" : false };
+    });
+    return { ok: true, cursos, certificados: ce.rows, coord: u.coord };
+  }
+  /* Detalhe do curso: módulos + aulas (SEM a alternativa correta do quiz) + o meu progresso. */
+  if (action === "cursoDetalhe") {
+    const u = await auth(p);
+    const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Curso ausente.");
+    const cr = await sqlite.execute({ sql: "SELECT cid, titulo, resumo, categoria, cargo_alvo, carga_h, publicado FROM curso WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+    if (!cr.rows.length) throw new Error("Curso não encontrado.");
+    const curso = cr.rows[0] as P;
+    if (!Number(curso.publicado) && !u.coord) throw new Error("Curso ainda não publicado.");
+    const mods = await sqlite.execute({ sql: "SELECT id, titulo, ordem FROM curso_modulo WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
+    const aur = await sqlite.execute({ sql: "SELECT id, modulo_id, titulo, tipo, conteudo, url, ordem, quiz, min_nota FROM curso_aula WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
+    const pr = await sqlite.execute({ sql: "SELECT aula_id, nota, concluido_em FROM aula_prog WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    const prog: Record<string, P> = {}; for (const x of pr.rows as P[]) prog[String(x.aula_id)] = x;
+    const aulas = (aur.rows as P[]).map((a) => {
+      let quiz: P[] | null = null;
+      if (String(a.tipo) === "quiz" && a.quiz) {
+        try { quiz = (JSON.parse(String(a.quiz)) as P[]).map((q) => ({ q: q.q, opc: q.opc })); } catch (_) { quiz = []; }
+      }
+      return { id: a.id, modulo_id: a.modulo_id, titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo, url: a.url, ordem: a.ordem, min_nota: a.min_nota, quiz, feito: !!prog[String(a.id)], nota: prog[String(a.id)] ? Number(prog[String(a.id)].nota) || 0 : null };
+    });
+    const mr = await sqlite.execute({ sql: "SELECT status, concluido FROM matricula WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    const ce = await sqlite.execute({ sql: "SELECT id, emitido, carga_h FROM certificado WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    return { ok: true, curso, modulos: mods.rows, aulas, matricula: mr.rows[0] || null, certificado: ce.rows[0] || null, coord: u.coord };
+  }
+  /* Matricular-se (no próprio). */
+  if (action === "matricular") {
+    const u = await auth(p);
+    const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Curso ausente.");
+    await sqlite.execute({ sql: "INSERT OR IGNORE INTO matricula (tenant_id, slug, curso_id, status, iniciado) VALUES (?,?,?, 'ativa', ?)", args: [u.tenant_id, u.slug, cid, now] });
+    await audit("academia", u.slug, "matricula " + cid, ip);
+    return { ok: true, cid };
+  }
+  /* Concluir uma aula. Se for quiz, a NOTA é calculada no SERVIDOR (respostas vs correta guardada);
+     abaixo da min_nota não conclui. Ao fechar todas as aulas, emite o certificado e grava na ficha. */
+  if (action === "aulaConcluir") {
+    const u = await auth(p);
+    const aid = String(p.aula_id || "").trim(); if (!aid) throw new Error("Aula ausente.");
+    const ar = await sqlite.execute({ sql: "SELECT id, curso_id, tipo, quiz, min_nota FROM curso_aula WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, aid] });
+    if (!ar.rows.length) throw new Error("Aula não encontrada.");
+    const a = ar.rows[0] as P; const cid = String(a.curso_id);
+    // precisa estar matriculado (auto-matricula se faltar, para fluxo simples).
+    await sqlite.execute({ sql: "INSERT OR IGNORE INTO matricula (tenant_id, slug, curso_id, status, iniciado) VALUES (?,?,?, 'ativa', ?)", args: [u.tenant_id, u.slug, cid, now] });
+    let nota = 100;
+    if (String(a.tipo) === "quiz") {
+      let perg: P[] = []; try { perg = JSON.parse(String(a.quiz || "[]")) as P[]; } catch (_) { perg = []; }
+      const resp = Array.isArray(p.respostas) ? (p.respostas as any[]).map((x) => Number(x)) : [];
+      if (!perg.length) nota = 100;
+      else { let ok2 = 0; for (let i = 0; i < perg.length; i++) if (resp[i] === Number((perg[i] as P).correta)) ok2++; nota = Math.round((ok2 / perg.length) * 100); }
+      const min = Number(a.min_nota) || 70;
+      if (nota < min) return { ok: true, aprovado: false, nota, min };
+    }
+    await sqlite.execute({ sql: "INSERT INTO aula_prog (tenant_id, slug, aula_id, curso_id, nota, concluido_em) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id,slug,aula_id) DO UPDATE SET nota=excluded.nota, concluido_em=excluded.concluido_em", args: [u.tenant_id, u.slug, aid, cid, nota, now] });
+    // concluiu o curso? (todas as aulas feitas) → certificado + ficha.
+    const tot = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM curso_aula WHERE tenant_id = ? AND curso_id = ?", args: [u.tenant_id, cid] });
+    const feito = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM aula_prog WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
+    const nTot = Number((tot.rows[0] as P).n) || 0; const nFeito = Number((feito.rows[0] as P).n) || 0;
+    let certificado: P | null = null;
+    if (nTot > 0 && nFeito >= nTot) {
+      const cur = await sqlite.execute({ sql: "SELECT titulo, carga_h FROM curso WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+      const titulo = String((cur.rows[0] as P)?.titulo || cid); const cargaH = Number((cur.rows[0] as P)?.carga_h) || 0;
+      await sqlite.execute({ sql: "UPDATE matricula SET status = 'concluida', concluido = ? WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [now, u.tenant_id, u.slug, cid] });
+      const certId = "CERT-" + u.slug + "-" + cid;
+      await sqlite.execute({ sql: "INSERT OR IGNORE INTO certificado (id, tenant_id, slug, curso_id, titulo, carga_h, emitido, u) VALUES (?,?,?,?,?,?,?,?)", args: [certId, u.tenant_id, u.slug, cid, titulo, cargaH, now, u.slug] });
+      // liga à FICHA: grava um treinamento (idempotente por id derivado).
+      try {
+        await sqlite.execute({ sql: "INSERT OR IGNORE INTO pessoa_treino (tenant_id, id, slug, nome, instituicao, data, carga_h, obs, atualizado, u) VALUES (?,?,?,?,?,?,?,?,?,?)", args: [u.tenant_id, "TRC-" + u.slug + "-" + cid, u.slug, titulo, "Academia Intelecto", now.slice(0, 10), cargaH, "Certificado da Academia", now, u.slug] });
+      } catch (_) { /* ficha pode não existir: o certificado já ficou registrado */ }
+      await audit("academia", u.slug, "concluiu " + cid + " (certificado)", ip);
+      certificado = { id: certId, titulo, carga_h: cargaH, emitido: now };
+    }
+    return { ok: true, aprovado: true, nota, concluiuCurso: !!certificado, certificado };
+  }
+  /* Autoria (coordenação): criar/editar curso, módulo e aula. */
+  if (action === "cursoSet") {
+    const u = await auth(p); if (!u.coord) throw new Error("Autoria de cursos restrita à Coordenação.");
+    const cid = String(p.cid || "").trim() || "curso-" + Date.now().toString(36);
+    const g = (k: string, n = 300) => String(p[k] == null ? "" : p[k]).slice(0, n);
+    await sqlite.execute({
+      sql: "INSERT INTO curso (tenant_id,cid,titulo,resumo,categoria,cargo_alvo,carga_h,publicado,ordem,atualizado,u) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,cid) DO UPDATE SET titulo=excluded.titulo,resumo=excluded.resumo,categoria=excluded.categoria,cargo_alvo=excluded.cargo_alvo,carga_h=excluded.carga_h,publicado=excluded.publicado,ordem=excluded.ordem,atualizado=excluded.atualizado,u=excluded.u",
+      args: [u.tenant_id, cid, g("titulo", 160), g("resumo", 600), g("categoria", 60), g("cargo_alvo", 60), Math.max(0, Number(p.carga_h) || 0), p.publicado ? 1 : 0, Math.floor(Number(p.ordem) || 0), now, u.slug],
+    });
+    await audit("academia", u.slug, "curso " + cid, ip);
+    return { ok: true, cid };
+  }
+  if (action === "moduloSet") {
+    const u = await auth(p); if (!u.coord) throw new Error("Autoria restrita à Coordenação.");
+    const curso_id = String(p.curso_id || "").trim(); if (!curso_id) throw new Error("Curso ausente.");
+    const id = String(p.id || "").trim() || "m-" + Date.now().toString(36);
+    await sqlite.execute({ sql: "INSERT INTO curso_modulo (tenant_id,id,curso_id,titulo,ordem,u) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET titulo=excluded.titulo,ordem=excluded.ordem,u=excluded.u", args: [u.tenant_id, id, curso_id, String(p.titulo || "").slice(0, 160), Math.floor(Number(p.ordem) || 0), u.slug] });
+    return { ok: true, id };
+  }
+  if (action === "aulaSet") {
+    const u = await auth(p); if (!u.coord) throw new Error("Autoria restrita à Coordenação.");
+    const curso_id = String(p.curso_id || "").trim(); if (!curso_id) throw new Error("Curso ausente.");
+    const id = String(p.id || "").trim() || "a-" + Date.now().toString(36);
+    let tipo = String(p.tipo || "texto").toLowerCase(); if (!["texto", "video", "pdf", "quiz"].includes(tipo)) tipo = "texto";
+    let quiz = ""; if (tipo === "quiz" && p.quiz != null) { try { quiz = JSON.stringify(p.quiz); } catch (_) { quiz = ""; } }
+    await sqlite.execute({
+      sql: "INSERT INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,url,ordem,quiz,min_nota,u) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET modulo_id=excluded.modulo_id,titulo=excluded.titulo,tipo=excluded.tipo,conteudo=excluded.conteudo,url=excluded.url,ordem=excluded.ordem,quiz=excluded.quiz,min_nota=excluded.min_nota,u=excluded.u",
+      args: [u.tenant_id, id, curso_id, String(p.modulo_id || "").slice(0, 60), String(p.titulo || "").slice(0, 200), tipo, String(p.conteudo || "").slice(0, 8000), String(p.url || "").slice(0, 600), Math.floor(Number(p.ordem) || 0), quiz, Math.max(0, Math.min(100, Number(p.min_nota) || 70)), u.slug],
+    });
+    await audit("academia", u.slug, "aula " + id + " (" + tipo + ")", ip);
+    return { ok: true, id };
   }
 
   // ===== COMERCIAL · Leads Ambientais (allowlist perm:comercial) =====

@@ -192,6 +192,23 @@ test("Onda 2: Inteligência e Vitrine migradas (Daily Brief, Escritório, cases)
   assert.match(app, /area\.id === "vitrine"/);
 });
 
+test("Onda 4: Academia (cursos/aulas/quiz/certificado ligado à ficha)", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS curso \(/);
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS certificado \(/);
+  for (const ac of ["academia", "cursoDetalhe", "matricular", "aulaConcluir"]) assert.ok(ts.includes('action === "' + ac + '"'), "falta ação " + ac);
+  // a nota do quiz é calculada no servidor e a correta não vai ao cliente.
+  assert.match(ts, /\.map\(\(q\) => \(\{ q: q\.q, opc: q\.opc \}\)\)/);
+  assert.match(ts, /resp\[i\] === Number\(\(perg\[i\] as P\)\.correta\)/);
+  // o certificado grava um treinamento na ficha.
+  assert.match(ts, /INSERT OR IGNORE INTO pessoa_treino/);
+  assert.match(read("migrations/0006_academia.sql"), /CREATE TABLE IF NOT EXISTS curso_aula/);
+  // front: catálogo + player.
+  assert.match(read("app/src/academia.tsx"), /export function AcademiaCatalogo/);
+  assert.match(read("app/src/academia.tsx"), /export function CursoPlayer/);
+  assert.match(read("app/src/App.tsx"), /area\.id === "academia"/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

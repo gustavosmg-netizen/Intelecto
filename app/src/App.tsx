@@ -11,6 +11,7 @@ import { Pessoas } from "./pessoas";
 import { Administracao } from "./admin";
 import { Inteligencia } from "./inteligencia";
 import { Vitrine } from "./vitrine";
+import { AcademiaCatalogo, CursoPlayer } from "./academia";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
@@ -76,6 +77,10 @@ export function App() {
           <><h1>{area.label}</h1><p className="sub">Radar de editais e notícias, e o escritório de IA da casa.</p><Inteligencia /></>
         ) : area.id === "vitrine" ? (
           <><h1>{area.label}</h1><p className="sub">Cases e trabalhos entregues pela casa.</p><Vitrine /></>
+        ) : area.id === "academia" ? (
+          sub
+            ? <CursoPlayer cid={sub} />
+            : (<><h1>{area.label}</h1><p className="sub">Cursos, trilhas e certificados da casa.</p><AcademiaCatalogo /></>)
         ) : area.id === "inicio" ? (
           <><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Cockpit /></>
         ) : (
