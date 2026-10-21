@@ -6423,8 +6423,13 @@ async function restauraBackup(opts: { key?: string; aplicar?: boolean; confirmar
     try {
       await sqlite.execute('DELETE FROM "' + t + '"');
       let inseridas = 0;
-      for (let i = 0; i < rows.length; i += 40) {
-        const lote = rows.slice(i, i + 40);
+      // D1 limita o nº de variáveis VINCULADAS por statement (~100). O lote precisa respeitar
+      // linhas×colunas ≤ ~90 (margem), senão estoura "too many SQL variables". Ajusta ao nº de
+      // colunas da tabela (descoberto no drill E-05, com tabelas largas como crm_deal/proj/lanc).
+      const nCols = rows.length ? Object.keys(rows[0]).length : 0;
+      const porLote = nCols ? Math.max(1, Math.floor(90 / nCols)) : 50;
+      for (let i = 0; i < rows.length; i += porLote) {
+        const lote = rows.slice(i, i + porLote);
         if (!lote.length) continue;
         const cols = Object.keys(lote[0]);
         if (!cols.length) continue;
