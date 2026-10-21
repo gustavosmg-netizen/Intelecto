@@ -111,6 +111,18 @@ test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", ()
   assert.match(read("app/src/api.ts"), /credentials:\s*"same-origin"/);
 });
 
+test("Onda 2: Projeto 360 na casca nova (abas + endereço por CC)", () => {
+  const p = read("app/src/projetos.tsx");
+  assert.match(p, /export function Projeto360/);
+  assert.match(p, /export function Carteira/);
+  for (const aba of ["Visão", "Equipe e horas", "Entregáveis", "Financeiro", "Documentos", "Histórico"]) {
+    assert.ok(p.includes(aba), "falta a aba: " + aba);
+  }
+  assert.match(p, /projdetalhe/);                 // consome a ação rica do servidor
+  // sub-rota por CC (#/projetos/<cc>) dá endereço próprio a cada projeto.
+  assert.match(read("app/src/routes.ts"), /export function parseHash/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

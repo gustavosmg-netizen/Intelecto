@@ -24,6 +24,16 @@ export const AREAS: Area[] = [
 ];
 
 export function rotaAtual(): string {
-  const h = (location.hash || "#/inicio").replace(/^#\//, "").split(/[?&]/)[0];
-  return AREAS.some((a) => a.id === h) ? h : "inicio";
+  return parseHash().area;
+}
+
+// Rota com sub-caminho: #/<area>/<sub> (ex.: #/projetos/1.25.2.3 abre o Projeto 360 daquele CC).
+// É o que dá ENDEREÇO próprio a cada projeto — o laudo apontava a ausência disso.
+export function parseHash(): { area: string; sub: string | null } {
+  const raw = (location.hash || "#/inicio").replace(/^#\//, "");
+  const path = raw.split("?")[0];
+  const segs = path.split("/").filter(Boolean);
+  const area = AREAS.some((a) => a.id === segs[0]) ? segs[0] : "inicio";
+  const sub = segs[1] ? decodeURIComponent(segs[1]) : null;
+  return { area, sub };
 }

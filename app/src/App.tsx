@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { AREAS, rotaAtual } from "./routes";
+import { AREAS, parseHash } from "./routes";
 import { CommandPalette } from "./palette";
 import { Cockpit } from "./cockpit";
+import { Carteira, Projeto360 } from "./projetos";
 
 export function App() {
-  const [rota, setRota] = useState(rotaAtual());
+  const [{ area: rota, sub }, setLoc] = useState(parseHash());
   const [palOpen, setPalOpen] = useState(false);
 
   useEffect(() => {
-    const onHash = () => setRota(rotaAtual());
+    const onHash = () => setLoc(parseHash());
     window.addEventListener("hashchange", onHash);
     if (!location.hash) location.hash = "#/inicio";
     return () => window.removeEventListener("hashchange", onHash);
@@ -40,19 +41,24 @@ export function App() {
       </header>
 
       <main className="wrap">
-        <h1>{area.label}</h1>
-        <p className="sub">{area.resumo}</p>
-
-        {area.id === "inicio" ? (
-          <Cockpit />
+        {area.id === "projetos" ? (
+          sub
+            ? <Projeto360 cc={sub} />
+            : (<><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Carteira /></>)
+        ) : area.id === "inicio" ? (
+          <><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Cockpit /></>
         ) : (
-          <div className="card">
-            <p style={{ margin: "0 0 6px" }}>Esta área ainda vive no portal atual.</p>
-            <p className="muted" style={{ margin: "0 0 14px", fontSize: 14 }}>
-              A casca nova está sendo montada por estrangulamento: cada tela migra uma a uma. Enquanto isso, ela abre no portal de hoje.
-            </p>
-            <a className="btn primary" href={area.legado || "/"}>Abrir “{area.label}” no portal →</a>
-          </div>
+          <>
+            <h1>{area.label}</h1>
+            <p className="sub">{area.resumo}</p>
+            <div className="card">
+              <p style={{ margin: "0 0 6px" }}>Esta área ainda vive no portal atual.</p>
+              <p className="muted" style={{ margin: "0 0 14px", fontSize: 14 }}>
+                A casca nova está sendo montada por estrangulamento: cada tela migra uma a uma. Enquanto isso, ela abre no portal de hoje.
+              </p>
+              <a className="btn primary" href={area.legado || "/"}>Abrir “{area.label}” no portal →</a>
+            </div>
+          </>
         )}
       </main>
 
