@@ -98,4 +98,22 @@ h1 { font-size: 22px; margin: 0 0 2px; }
 .ktoggle button { border: 0; background: var(--surface); color: var(--muted); padding: 7px 14px; cursor: pointer; font-size: 14px; }
 .ktoggle button.on { background: var(--brand); color: var(--brand-ink); }
 
+/* Cronograma (gantt simples com arraste de prazo) */
+.gant { border: 1px solid var(--line); border-radius: 12px; overflow: auto; background: var(--surface); }
+.gant-row { display: grid; grid-template-columns: 220px 1fr; border-top: 1px solid var(--line); }
+.gant-row:first-child { border-top: 0; }
+.gant-head { position: sticky; top: 0; z-index: 3; background: var(--sunk); }
+.gant-name { padding: 8px 12px; font-size: 13px; border-right: 1px solid var(--line); position: sticky; left: 0; background: var(--surface); z-index: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gant-head .gant-name { background: var(--sunk); }
+.gant-track { position: relative; height: 34px; }
+.gant-months { position: relative; height: 26px; }
+.gant-mo { position: absolute; top: 0; height: 100%; border-left: 1px solid var(--line); font: 600 10.5px var(--fm); color: var(--muted); padding: 5px 0 0 5px; box-sizing: border-box; white-space: nowrap; }
+.gant-grid { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); opacity: .5; }
+.gant-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--crit); opacity: .6; z-index: 1; }
+.gant-bar { position: absolute; top: 6px; height: 22px; background: var(--brand-soft); border: 1px solid var(--brand); border-radius: 6px; cursor: grab; display: flex; align-items: center; z-index: 2; touch-action: none; }
+.gant-bar.ro { cursor: default; }
+.gant-bar:active { cursor: grabbing; }
+.gant-bar .hdl { width: 8px; align-self: stretch; cursor: ew-resize; border-radius: 6px; }
+.gant-bar .lbl { flex: 1; font-size: 11px; padding: 0 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

@@ -4,11 +4,12 @@ import { CommandPalette } from "./palette";
 import { Cockpit } from "./cockpit";
 import { Carteira, Projeto360 } from "./projetos";
 import { PipelineBoard, ProjetosBoardLoader } from "./boards";
+import { CronogramaLoader } from "./cronograma";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
   const [palOpen, setPalOpen] = useState(false);
-  const [projView, setProjView] = useState<"lista" | "quadro">("lista");
+  const [projView, setProjView] = useState<"lista" | "quadro" | "cronograma">("lista");
 
   useEffect(() => {
     const onHash = () => setLoc(parseHash());
@@ -51,8 +52,9 @@ export function App() {
                 <div className="ktoggle" style={{ marginBottom: 14 }}>
                   <button className={projView === "lista" ? "on" : ""} onClick={() => setProjView("lista")}>Lista</button>
                   <button className={projView === "quadro" ? "on" : ""} onClick={() => setProjView("quadro")}>Quadro</button>
+                  <button className={projView === "cronograma" ? "on" : ""} onClick={() => setProjView("cronograma")}>Cronograma</button>
                 </div>
-                {projView === "lista" ? <Carteira /> : <ProjetosBoardLoader />}
+                {projView === "lista" ? <Carteira /> : projView === "quadro" ? <ProjetosBoardLoader /> : <CronogramaLoader />}
               </>)
         ) : area.id === "comercial" ? (
           <><h1>{area.label}</h1><p className="sub">Pipeline comercial — mova os negócios entre as fases.</p><PipelineBoard /></>

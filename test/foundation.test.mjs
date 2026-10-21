@@ -138,6 +138,16 @@ test("Onda 2: kanbans arrastáveis (pipeline + projetos) com mutação segura", 
   assert.match(b, /"setproj"/); // quadro de projetos usa setproj (update parcial seguro)
 });
 
+test("Onda 2: cronograma com arraste de prazo auditado (via setproj)", () => {
+  const c = read("app/src/cronograma.tsx");
+  assert.match(c, /export function Cronograma/);
+  assert.match(c, /onPointerDown/);        // arraste por ponteiro/toque
+  assert.match(c, /"setproj"/);            // persiste a mudança de data
+  assert.match(c, /previsto = fromDays|payload\.previsto/); // muda o previsto
+  // setproj audita a mudança de datas no servidor (trilha projeto_gestao).
+  assert.match(read("src/index.ts"), /audit\("projeto_gestao"/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);
