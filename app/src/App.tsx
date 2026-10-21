@@ -9,6 +9,8 @@ import { MeuTrabalho } from "./meutrabalho";
 import { Financeiro } from "./financeiro";
 import { Pessoas } from "./pessoas";
 import { Administracao } from "./admin";
+import { Inteligencia } from "./inteligencia";
+import { Vitrine } from "./vitrine";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
@@ -70,6 +72,10 @@ export function App() {
           <><h1>{area.label}</h1><p className="sub">Equipe e cargos da casa.</p><Pessoas /></>
         ) : area.id === "admin" ? (
           <><h1>{area.label}</h1><p className="sub">Painel de Consistência e administração.</p><Administracao /></>
+        ) : area.id === "inteligencia" ? (
+          <><h1>{area.label}</h1><p className="sub">Radar de editais e notícias, e o escritório de IA da casa.</p><Inteligencia /></>
+        ) : area.id === "vitrine" ? (
+          <><h1>{area.label}</h1><p className="sub">Cases e trabalhos entregues pela casa.</p><Vitrine /></>
         ) : area.id === "inicio" ? (
           <><h1>{area.label}</h1><p className="sub">{area.resumo}</p><Cockpit /></>
         ) : (

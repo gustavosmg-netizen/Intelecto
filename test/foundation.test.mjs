@@ -180,6 +180,18 @@ test("Onda 2: Pessoas e Administração (Painel de Consistência operacional)", 
   assert.match(app, /area\.id === "admin"/);
 });
 
+test("Onda 2: Inteligência e Vitrine migradas (Daily Brief, Escritório, cases)", () => {
+  const i = read("app/src/inteligencia.tsx");
+  assert.match(i, /export function Inteligencia/);
+  assert.match(i, /"brief"/);
+  assert.match(i, /"escritorio"/);
+  assert.match(read("app/src/vitrine.tsx"), /export function Vitrine/);
+  assert.match(read("app/src/vitrine.tsx"), /"vitrine"/);
+  const app = read("app/src/App.tsx");
+  assert.match(app, /area\.id === "inteligencia"/);
+  assert.match(app, /area\.id === "vitrine"/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);
