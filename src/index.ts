@@ -1236,6 +1236,7 @@ const SENSIVEIS = new Set<string>([
   "fluxoSet", "fluxoDel", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
   "capacidadeSet", "resumoExecFechar",
   "permset", "acset", "resetpin",
+  "restore_backup",
 ]);
 /** Exige que a sessão do token tenha reautenticado nos últimos REAUTH_MIN minutos. Senão lança um
  *  erro marcado (REAUTH_NECESSARIO:) que o front reconhece para pedir a senha e repetir a ação. */
@@ -1838,6 +1839,8 @@ const MIN: Record<string, Papel> = {
   brieffontes: "coordenacao", brieffonteset: "coordenacao", brieffontedel: "coordenacao", briefrun: "coordenacao",
   // Backup manual do D1 (verificacao sob demanda); o handler ainda exige isOwner.
   backup_now: "coordenacao",
+  // Restauracao do backup (R2->D1) — drill de recuperacao; handler exige isOwner + reauth (SENSIVEIS).
+  restore_backup: "coordenacao",
   // T4 — Hub/Launcher: piso = cliente (TODO logado pode perguntar o PROPRIO Hub). A acao
   // 'hub' apenas DEVOLVE a lista de modulos liberados; a liberacao de cada card deriva do
   // piso MIN da acao que o governa (ver MODULOS/modulosLiberados), nunca de flag de front.
@@ -2162,6 +2165,8 @@ const EVENTOS_SENSIVEIS: string[] = [
   "portfolio_serv", "portfolio_serv_del", "portfolio_ver", "portfolio_ver_del", "portfolio_skill",
   // M4 — falha de entrega de e-mail (retida para rastreio operacional).
   "email_falha",
+  // E-05 — restauração do backup (R2->D1): evento crítico, sempre retido na trilha.
+  "restore_backup",
 ];
 /** T6 — tamanho maximo do avatar (comprimento da data URL, em caracteres). ~64 KB: a foto
  *  e PEQUENA e sem upload externo; o front reduz a imagem a um quadrado pequeno antes de
@@ -2265,6 +2270,25 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const r = await backupD1(ENV);
     if (!r.ok) throw new Error("Backup falhou: " + (r.erro || "erro desconhecido"));
     return { ok: true, backup: r } as P;
+  }
+  if (action === "restore_backup") {
+    // Drill de recuperacao (E-05): le um dump do bucket BACKUP e o reescreve no D1 DESTE Worker.
+    // Em staging, restaura um backup de producao e confere contagens (prova de recuperabilidade).
+    // Gate: dono-only + reauth (SENSIVEIS). Em producao e um caminho de recuperacao de incidente.
+    // Trava extra: 'apply' real so no D1 de STAGING (database_name termina em -staging), a menos
+    // que o dono passe prod:true EXPLICITO — defesa contra apagar producao por engano no drill.
+    const u = await auth(p);
+    if (!isOwner(u.slug)) throw new Error("Apenas o dono pode restaurar o backup.");
+    const aplicar = p.aplicar === true || p.aplicar === "true";
+    const confirmar = p.confirmar === true || p.confirmar === "true";
+    const ehStaging = String((ENV as any).AMBIENTE || "").toLowerCase() === "staging";
+    if (aplicar && confirmar && !ehStaging && p.prod !== true && p.prod !== "true") {
+      throw new Error("Restauração com 'apply' fora de staging exige prod:true explícito (proteção contra apagar produção).");
+    }
+    const r = await restauraBackup({ key: p.key ? String(p.key) : undefined, aplicar, confirmar });
+    if (!r.ok) throw new Error("Restauração falhou: " + (r.erro || "erro desconhecido"));
+    if (r.modo === "aplicado") await audit("restore_backup", u.slug, r.key || "", ip);
+    return { ok: true, restore: r } as P;
   }
 
   if (action === "escritorio") {
@@ -6303,13 +6327,21 @@ async function keepAlive(env: any) {
  * DB.dump() (indisponivel no D1 remoto): varre sqlite_master e serializa linha a linha via
  * o helper sqlite. Retencao simples por data no nome do arquivo. Nunca lanca (cron robusto). */
 const BACKUP_RET_DIAS = 90;
+// Tabelas EXCLUÍDAS do backup/restauração: projeções reconstruíveis e volumosas (os leads
+// ambientais, ~151k linhas, recarregados da fonte Base Empreendimentos MG por wrangler). Mantê-las
+// fora do dump deixa o backup pequeno e restaurável dentro dos limites de memória do Worker.
+const BACKUP_SKIP = new Set<string>(["amb_registro", "amb_agg"]);
 async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?: number; linhas?: number; bytes?: number; removidos?: number; erro?: string }> {
   ENV = env; /* mesmo padrao do keepAlive: helpers usam o ENV global */
   if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
   try {
     await ensureSchema();
     const tb = await sqlite.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%' ORDER BY name");
-    const nomes = tb.rows.map((r: any) => r.name as string);
+    // Exclui as PROJEÇÕES reconstruíveis e volumosas (leads ambientais, ~151k linhas): elas são
+    // recarregadas da fonte (Base Empreendimentos MG), não do backup. Isso mantém o backup pequeno
+    // e, sobretudo, RESTAURÁVEL dentro dos limites do Worker (um backup com elas estouraria a memória
+    // na restauração). O dado IRREPARÁVEL — operação, horas, financeiro, CRM, academia — é o que entra.
+    const nomes = tb.rows.map((r: any) => r.name as string).filter((n: string) => !BACKUP_SKIP.has(n));
     const dump: any = { gerado_em: new Date().toISOString(), db: "portal-intelecto", tabelas: {} };
     let linhas = 0;
     for (const t of nomes) {
@@ -6334,6 +6366,75 @@ async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?
   } catch (e: any) {
     return { ok: false, erro: e && e.message ? e.message : String(e) };
   }
+}
+
+/* ---------- Restauração do backup (R2 -> D1) — drill de recuperação (E-05) ----------
+ * Lê um dump JSON gerado por backupD1() do bucket BACKUP e o escreve de volta no D1 ligado a
+ * ESTE Worker. Em staging (que reusa o bucket de produção), isso é o DRILL: restaura um backup
+ * de produção no D1 de staging e confere as contagens — prova, de verdade, que o backup é
+ * recuperável. Em produção, é o caminho de recuperação de um incidente de perda de dados.
+ *
+ * Dois modos, deliberadamente separados para não haver apagão acidental:
+ *  - modo "verify" (padrão): só LÊ o backup e devolve o manifesto (tabelas + linhas + gerado_em).
+ *    Não escreve nada. É o que se roda primeiro, sempre.
+ *  - modo "apply": para cada tabela do dump, DELETE + reinserção em lotes. EXIGE confirmar:true.
+ *    Pula tabelas de BACKUP_SKIP e tabelas ausentes no schema atual (best-effort por tabela).
+ *
+ * Nunca restaura as projeções volumosas (BACKUP_SKIP) mesmo que um backup antigo as contenha.
+ * A ação que expõe isto é dono-only + reauth (ver SENSIVEIS/MIN). */
+async function listaBackups(): Promise<string[]> {
+  if (!ENV.BACKUP) return [];
+  const lista: any = await ENV.BACKUP.list({ prefix: "d1/" });
+  return (lista.objects || []).map((o: any) => o.key as string).filter((k: string) => /\.json$/.test(k)).sort();
+}
+async function restauraBackup(opts: { key?: string; aplicar?: boolean; confirmar?: boolean }): Promise<any> {
+  ENV = ENV; /* helpers sqlite usam o ENV global, já setado no middleware de fetch */
+  if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
+  await ensureSchema();
+  const chaves = await listaBackups();
+  let key = (opts.key || "").trim();
+  if (!key) key = chaves[chaves.length - 1] || ""; /* mais recente */
+  if (!key) return { ok: false, erro: "Nenhum backup encontrado no bucket (prefixo d1/)." };
+  const obj: any = await ENV.BACKUP.get(key);
+  if (!obj) return { ok: false, erro: "Backup não encontrado: " + key };
+  let dump: any;
+  try { dump = JSON.parse(await obj.text()); } catch (e: any) { return { ok: false, erro: "Backup ilegível (JSON inválido): " + (e && e.message ? e.message : String(e)) }; }
+  const tabelas = dump && dump.tabelas ? dump.tabelas : {};
+  const manifesto = Object.keys(tabelas)
+    .filter((t) => !BACKUP_SKIP.has(t))
+    .map((t) => ({ tabela: t, linhas: Array.isArray(tabelas[t]) ? tabelas[t].length : 0 }));
+  const totalLinhas = manifesto.reduce((s, m) => s + m.linhas, 0);
+  const base = { ok: true, key, gerado_em: dump.gerado_em || null, disponiveis: chaves.length, tabelas: manifesto, totalLinhas };
+  if (!opts.aplicar) return { ...base, modo: "verify" };
+  if (!opts.confirmar) return { ...base, modo: "verify", aviso: "modo apply exige confirmar:true — nada foi escrito." };
+  /* APLICAR: por tabela, DELETE + reinserção em lotes. Best-effort por tabela. */
+  const restauradas: any[] = [];
+  const falhas: any[] = [];
+  for (const m of manifesto) {
+    const t = m.tabela;
+    const rows: any[] = Array.isArray(tabelas[t]) ? tabelas[t] : [];
+    try {
+      await sqlite.execute('DELETE FROM "' + t + '"');
+      let inseridas = 0;
+      for (let i = 0; i < rows.length; i += 40) {
+        const lote = rows.slice(i, i + 40);
+        if (!lote.length) continue;
+        const cols = Object.keys(lote[0]);
+        if (!cols.length) continue;
+        const colSql = cols.map((c) => '"' + c + '"').join(",");
+        const ph = "(" + cols.map(() => "?").join(",") + ")";
+        const args: any[] = [];
+        for (const r of lote) for (const c of cols) { const v = (r as any)[c]; args.push(v === undefined ? null : v); }
+        const sql = 'INSERT OR REPLACE INTO "' + t + '" (' + colSql + ") VALUES " + lote.map(() => ph).join(",");
+        await sqlite.execute({ sql, args });
+        inseridas += lote.length;
+      }
+      restauradas.push({ tabela: t, linhas: inseridas });
+    } catch (e: any) {
+      falhas.push({ tabela: t, erro: e && e.message ? e.message : String(e) });
+    }
+  }
+  return { ...base, modo: "aplicado", restauradas, falhas, tabelasRestauradas: restauradas.length };
 }
 
 /* ============================================================================

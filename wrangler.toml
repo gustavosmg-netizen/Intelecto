@@ -45,6 +45,9 @@ bucket_name = "portal-intelecto-backup"
 REPO_URL = ""
 MAIL_FROM = ""
 MAIL_TO = ""
+# Identifica o ambiente em runtime. A acao restore_backup so aplica 'apply' real sem prod:true
+# quando AMBIENTE == "staging" (trava contra restaurar por engano sobre producao).
+AMBIENTE = "producao"
 # RESEND_API_KEY entra como secret:  npx wrangler secret put RESEND_API_KEY
 
 # AI Search (AutoRAG) - acervo-intelecto (adicionado p/ acervo_search)
@@ -110,6 +113,8 @@ binding = "AI"
 REPO_URL = ""
 MAIL_FROM = ""
 MAIL_TO = ""
+# Marca staging: libera o 'apply' do restore_backup sem prod:true (o drill de recuperacao roda aqui).
+AMBIENTE = "staging"
 
 [env.staging.triggers]
 crons = []

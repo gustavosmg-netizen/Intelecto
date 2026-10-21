@@ -240,6 +240,32 @@ test("Observabilidade (E-04): logs estruturados + Workers Logs ligado", () => {
   assert.match(toml, /\[env\.staging\.observability\]/);
 });
 
+test("Recuperação (E-05): restore_backup com verify/apply, dono+reauth e trava de ambiente", () => {
+  const ts = read("src/index.ts");
+  // o backup exclui a projeção reconstruível (leads) para ser restaurável no Worker.
+  assert.match(ts, /const BACKUP_SKIP = new Set<string>\(\["amb_registro", "amb_agg"\]\)/);
+  assert.match(ts, /\.filter\(\(n: string\) => !BACKUP_SKIP\.has\(n\)\)/);   // backup aplica o skip
+  // helper de restauração (verify não escreve; apply exige confirmar).
+  assert.match(ts, /async function restauraBackup/);
+  assert.match(ts, /modo: "verify"/);
+  assert.match(ts, /if \(!opts\.aplicar\) return \{ \.\.\.base, modo: "verify" \}/);
+  assert.match(ts, /modo apply exige confirmar:true/);
+  assert.match(ts, /INSERT OR REPLACE INTO/);
+  // ação: dono-only + reauth (SENSIVEIS) + trava de ambiente (só staging sem prod:true) + auditada.
+  assert.match(ts, /action === "restore_backup"/);
+  assert.match(ts, /Apenas o dono pode restaurar o backup/);
+  assert.match(ts, /exige prod:true explícito/);
+  assert.match(ts, /audit\("restore_backup"/);
+  assert.ok(/const SENSIVEIS = new Set<string>\(\[[\s\S]*?"restore_backup"[\s\S]*?\]\)/.test(ts), "restore_backup em SENSIVEIS");
+  assert.ok(/const EVENTOS_SENSIVEIS[\s\S]*?"restore_backup"[\s\S]*?\];/.test(ts), "restore_backup retido na trilha");
+  // a trava de ambiente depende do var AMBIENTE nos dois ambientes do wrangler.
+  const toml = read("wrangler.toml");
+  assert.match(toml, /AMBIENTE = "producao"/);
+  assert.match(toml, /AMBIENTE = "staging"/);
+  // runbook com RPO/RTO existe.
+  assert.match(read("docs/RESTORE_DRILL.md"), /\*\*RPO\*\*[\s\S]*\*\*RTO\*\*/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);
