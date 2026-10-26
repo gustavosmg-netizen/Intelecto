@@ -1,0 +1,29 @@
+-- ============================================================================
+-- Migration 0005 — crm_time → livro único de horas (lanc)  [TEMPLATE, NÃO RODAR AINDA]
+-- ----------------------------------------------------------------------------
+-- Objetivo (Onda 1): aposentar o segundo livro de horas. crm_time tem 73 registros
+-- com horas (~120 h) que não entram no custo nem na capacidade.
+--
+-- BLOQUEIO DE DADO (honesto): crm_time é hora de ÁREA, não de pessoa. Suas colunas
+-- são (id, d, area, hours, note) — NÃO há `slug` (quem fez) nem `cc` (qual projeto).
+-- lanc EXIGE slug e cc. Portanto a migração NÃO pode ser automática sem duas decisões
+-- da casa, que não devem ser inventadas:
+--   (1) QUEM: a qual colaborador (slug) atribuir as horas de cada área (ex.: comercial
+--       → marcelo). Pode ser um slug por área.
+--   (2) ONDE: a qual centro de custo lançar (ex.: um CC não-faturável de comercial).
+--
+-- Enquanto a decisão não é tomada, a regra de consistência C9 segue medindo o resíduo.
+-- Quando decidida, descomente e preencha o SELECT abaixo (um por área, ou um CASE),
+-- rode em STAGING, confira a soma de horas e só então em produção.
+--
+-- Idempotência: id estável CRMT-<id> + origem='crm_time' (não duplica em re-execução).
+-- ============================================================================
+
+-- EXEMPLO (preencher :slug e :cc por área antes de usar):
+-- INSERT OR IGNORE INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id, origem)
+-- SELECT 'CRMT-' || id, '<slug_responsavel_da_area>', d,
+--        '<centro_de_custo_comercial>', hours,
+--        'Comercial · ' || area || CASE WHEN note<>'' THEN ' — ' || note ELSE '' END,
+--        'LANÇADO', '', '', '', 'migracao_crm_time', tenant_id, 'crm_time'
+-- FROM crm_time
+-- WHERE deleted = 0 AND hours > 0;

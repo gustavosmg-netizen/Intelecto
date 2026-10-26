@@ -300,12 +300,19 @@ function addMeses(iso,n){const d=new Date(iso+"T00:00:00");d.setMonth(d.getMonth
 function addAnos(iso,n){const d=new Date(iso+"T00:00:00");d.setFullYear(d.getFullYear()+n);return d.toISOString().slice(0,10)}
 function nomeMes(m){return ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][Number(m)-1]||""}
 function nomeMesLongo(m){return ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][Number(m)-1]||""}
-async function api(action,extra){
+async function api(action,extra,_noreauth){
   const body=Object.assign({action},extra||{});
   /* M2: a sessão vai pelo cookie HttpOnly (enviado automaticamente no fetch same-origin); nada de token no corpo. */
   const r=await fetch(BASE+"/api",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
   const j=await r.json();
-  if(!j.ok) throw new Error(j.error||"Erro inesperado.");
+  if(!j.ok){
+    /* S-03: ação sensível (R$, exclusão, acesso) pede senha reconfirmada. Confirma e repete uma vez. */
+    if(!_noreauth && typeof j.error==="string" && j.error.indexOf("REAUTH_NECESSARIO")===0){
+      var s=null; try{s=prompt("Confirme a sua senha para esta ação sensível:");}catch(_){s=null;}
+      if(s){ await api("reauth",{senha:s},true); return api(action,extra,true); }
+    }
+    throw new Error(j.error||"Erro inesperado.");
+  }
   return j;
 }
 /* Capabilities do usuário (modelo por cargo): o servidor devolve state.caps/hub.caps.
@@ -519,6 +526,9 @@ async function carregarHub(){
   const j=await api("hub");
   state.hub=j; state.slug=state.slug||j.slug; state.papel=j.papel;
   state.coord=j.coord; state.owner=j.owner;
+  /* E-06 — corte REVERSÍVEL: com a flag `casca_auto` ligada, leva direto à casca nova (/app).
+     Padrão desligada → ninguém é redirecionado. Guard contra loop se já estivermos em /app. */
+  try{ if(j.flags&&j.flags.casca_auto&&location.pathname.indexOf("/app")!==0){ location.replace("/app/"); return; } }catch(_){ /* nunca derruba o boot */ }
 }
 /* A navegação é derivada do que o SERVIDOR liberou (state.hub.modulos, vindo da ação
    'hub'), mais o próprio Hub no topo. Assim a sidebar nunca mostra atalho que a API
@@ -588,6 +598,17 @@ function viewHub(){
     '</div>'+
     (logo?'<span class="hub-banner-logo"><img src="'+esc(logo)+'" alt="Intelecto"></span>':'')+
   '</section>';
+  /* E-06 — entrada REVERSÍVEL para a casca nova (/app): só aparece com a flag `casca_nova` LIGADA
+     (padrão desligada → nada muda). O dono liga/desliga em Administração › Feature flags, sem
+     redeploy. Com `casca_auto` o redirecionamento acontece no carregarHub, antes de montar esta tela. */
+  var _fl=(state.hub&&state.hub.flags)||{};
+  if(_fl.casca_nova){
+    banner+='<a class="card" href="/app/" style="display:flex;align-items:center;gap:12px;margin:0 0 14px;border-color:var(--brand);text-decoration:none">'+
+      '<span style="font-size:1.4rem">✨</span>'+
+      '<span style="flex:1"><strong style="color:var(--brand)">Experimente a nova interface</strong>'+
+      '<span class="muted" style="display:block;font-size:.85rem">Uma versão mais rápida e arrastável do portal está em testes.</span></span>'+
+      '<span class="hub-cta">Abrir →</span></a>';
+  }
   /* ENTRADA ÚNICA: o Painel do Dia / Resumo Executivo entra AQUI, no topo da tela Início,
      seguido da grade de módulos. Acaba a duplicidade das duas "Início". */
   var painel="";try{painel=viewInicio();}catch(e){painel="";}
@@ -1047,7 +1068,7 @@ function _colabBloco(j){
   var cs=j.colab||[];if(!cs.length)return '<div style="margin-top:10px"><div class="muted" style="font-size:.76rem;margin-bottom:4px">Horas por colaborador</div><p class="muted" style="font-size:.82rem;margin:0">Sem horas efetivas (aprovadas/lançadas) neste projeto.</p></div>';
   var tot=cs.reduce(function(s,c){return s+(Number(c.h)||0);},0);
   var linhas=cs.map(function(c){
-    var dir=j.podeFin?('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span><span class="muted" style="font-size:.74rem;margin-left:8px">× '+fmtBRL(c.custoHora||0)+'/h = <b>'+fmtBRL(c.custo||0)+'</b></span>'):('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span>');
+    var dir=j.podeFin?('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span><span class="muted" style="font-size:.74rem;margin-left:8px">× '+fmtBRL(c.custoHora||0)+'/h = <b>'+fmtBRL(c.custo||0)+'</b>'+(c.custoReal!=null?' · real c/ rateio <b>'+fmtBRL(c.custoReal)+'</b>':'')+'</span>'):('<span style="font-variant-numeric:tabular-nums">'+fmtH(c.h)+'</span>');
     return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:.84rem;padding:2px 0;border-bottom:1px dashed var(--line)"><span>'+esc(c.nome||c.slug)+'</span><span>'+dir+'</span></div>';
   }).join("");
   return '<div style="margin-top:12px"><div class="muted" style="font-size:.76rem;margin-bottom:4px">Horas por colaborador <span style="font-size:.72rem">· total '+fmtH(tot)+'</span></div>'+linhas+'</div>';
@@ -1079,16 +1100,56 @@ function _finBloco(j){
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:.82rem;font-weight:600">💰 Financeiro (dono)'+badge+'</span>'+
       (j.coord?'<button id="pjfin" class="btn sec sm">Editar contrato</button>':'')+'</div>'+
     linha("Mão de obra (horas × custo/hora, c/ encargos)",fmtBRL(f.moCusto))+
+    ((f.imposto||0)?linha("Imposto ("+(f.pct_imposto||0)+"% sobre o contratado)",fmtBRL(f.imposto)):"")+
     linha("Consumíveis",fmtBRL(f.consumiveis||0))+
     linha("Terceiros / contratações",fmtBRL(f.terceiros||0))+
     linha("Outros",fmtBRL(f.outros))+
     (f.rateioFix?linha("Rateio de fixos (overhead, por horas)",fmtBRL(f.rateioFix)):"")+
-    linha("Custo total",fmtBRL(f.custoTotal),true)+
+    linha("Custo real total",fmtBRL(f.custoTotal),true)+
     linha("Valor contratado",temContrato?fmtBRL(f.contratado):"— não informado")+
     '<div style="display:flex;justify-content:space-between;gap:10px;font-size:.9rem;padding:6px 0 0;margin-top:4px;border-top:2px solid '+cor+';font-weight:700"><span>Margem (lucro real)</span><span style="color:'+cor+';font-variant-numeric:tabular-nums">'+(temContrato?fmtBRL(f.margem):"—")+'</span></div>'+
     (temContrato&&f.lucroAlvo?'<div class="muted" style="font-size:.72rem;margin-top:4px">Lucro-alvo ('+f.pct_lucro+'% do contratado): '+fmtBRL(f.lucroAlvo)+'</div>':'')+
-    '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora embute encargos da mão de obra. Consumíveis, terceiros e o rateio dos custos fixos (overhead, por horas apontadas) entram à parte, antes da margem.</div>'+
+    '<div class="muted" style="font-size:.68rem;margin-top:6px">O custo/hora embute os encargos da mão de obra. Imposto (sobre o contratado), consumíveis, terceiros, outros e o rateio dos custos fixos (overhead, por horas apontadas) entram no custo real, antes da margem.</div>'+
     '</div>';
+}
+/* Painel CONTRATO & PARCELAS (só dono/financeiro): o contrato é o dono do valor; as parcelas são o
+   plano de recebimento e a base da conciliação do caixa. Dados vêm de j.contratos (projdetalhe). */
+function _contratoBloco(j){
+  if(!j.podeFin||!j.coord)return "";
+  var cts=j.contratos||[];
+  var stBadge=function(s){var c=s==='confirmado'?'var(--ok,#1f7a3d)':(s==='cancelado'?'var(--crit)':'var(--muted,#888)');return '<span class="tag" style="font-size:.64rem;background:'+c+';color:#fff">'+esc((s||'rascunho').toUpperCase())+'</span>';};
+  var pSt=function(s){var c=s==='recebida'?'var(--ok,#1f7a3d)':'var(--muted,#888)';return '<span style="font-size:.66rem;color:'+c+';font-weight:600">'+esc((s||'prevista').toUpperCase())+'</span>';};
+  var entradaOpts=(j.caixaSemCc||[]).map(function(e){return '<option value="'+esc(e.id)+'">'+esc((e.data_real||e.data_prev||''))+' · '+esc((e.descricao||'').slice(0,40))+' · '+fmtBRL(e.valor)+'</option>';}).join("");
+  var ctHtml=cts.map(function(c){
+    var parc=(c.parcelas||[]);
+    var somaP=parc.reduce(function(s,p){return s+(Number(p.valor)||0);},0);
+    var dif=(Number(c.valor)||0)-somaP;
+    var plinhas=parc.map(function(p){
+      var baixa=(p.status!=='recebida')?('<select class="sm pc-baixa" data-pid="'+esc(p.id)+'" style="max-width:220px"><option value="">— baixar com entrada do caixa —</option>'+entradaOpts+'</select>'):('<button class="linkbtn pc-desfaz" data-pid="'+esc(p.id)+'" style="font-size:.72rem">desfazer baixa</button>'+(p.recebido_em?' <span class="muted" style="font-size:.7rem">em '+esc(p.recebido_em)+'</span>':''));
+      return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.8rem;padding:3px 0;border-top:1px dashed var(--line)"><span style="min-width:28px">#'+esc(p.numero)+'</span><span style="font-variant-numeric:tabular-nums;min-width:90px">'+fmtBRL(p.valor)+'</span><span class="muted" style="min-width:86px">'+esc(p.venc_prev||'sem venc.')+'</span>'+pSt(p.status)+'<span style="margin-left:auto">'+baixa+'</span></div>';
+    }).join("");
+    var addParc='<div class="row" style="gap:6px;align-items:flex-end;flex-wrap:wrap;margin:6px 0 0">'+
+      '<div class="field" style="margin:0;max-width:70px"><label style="font-size:.68rem">Nº</label><input class="sm" id="pc-n-'+esc(c.id)+'" type="number" min="1" step="1" value="'+(parc.length+1)+'"></div>'+
+      '<div class="field" style="margin:0;max-width:120px"><label style="font-size:.68rem">Valor (R$)</label><input class="sm" id="pc-v-'+esc(c.id)+'" type="number" min="0" step="0.01"></div>'+
+      '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.68rem">Vencimento</label><input class="sm" id="pc-d-'+esc(c.id)+'" type="date"></div>'+
+      '<button class="btn sec sm pc-add" data-cid="'+esc(c.id)+'">+ parcela</button></div>';
+    return '<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:.86rem">'+esc(c.titulo||('Contrato '+c.tipo))+'</b> '+stBadge(c.status)+'<span class="muted" style="font-size:.7rem">'+esc(c.tipo||'base')+(c.assinado?' · assinado '+esc(c.assinado):'')+'</span>'+
+        '<span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">'+fmtBRL(c.valor)+'</span></div>'+
+      (c.status!=='confirmado'?'<div style="margin-top:4px"><button class="btn sm ct-conf" data-cid="'+esc(c.id)+'">Confirmar contrato</button> <span class="muted" style="font-size:.7rem">só contrato confirmado vira o valor do Financeiro</span></div>':'')+
+      '<div style="margin-top:6px"><div class="muted" style="font-size:.72rem">Parcelas · previsto '+fmtBRL(somaP)+(Math.abs(dif)>0.01?' · <span style="color:'+(dif>0?'var(--crit)':'var(--muted)')+'">falta '+fmtBRL(dif)+'</span>':' · fecha com o contrato')+'</div>'+(plinhas||'<div class="muted" style="font-size:.78rem">Sem parcelas.</div>')+addParc+'</div>'+
+    '</div>';
+  }).join("");
+  var novo='<div style="border-top:1px dashed var(--line);margin-top:6px;padding-top:8px"><div class="row" style="gap:6px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
+    '<div class="field" style="margin:0;flex:1;min-width:120px"><label style="font-size:.68rem">Novo contrato — título</label><input class="sm" id="ct-tit" maxlength="120" placeholder="ex.: Contrato base"></div>'+
+    '<div class="field" style="margin:0;max-width:130px"><label style="font-size:.68rem">Valor (R$)</label><input class="sm" id="ct-val" type="number" min="0" step="0.01"></div>'+
+    '<div class="field" style="margin:0;max-width:110px"><label style="font-size:.68rem">Tipo</label><select class="sm" id="ct-tipo"><option value="base">base</option><option value="aditivo">aditivo</option></select></div>'+
+    '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.68rem">Assinado em</label><input class="sm" id="ct-ass" type="date"></div>'+
+    '<button class="btn sm ct-novo">+ contrato</button></div></div>';
+  return '<div style="background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px">'+
+    '<div style="font-size:.82rem;font-weight:600;margin-bottom:8px">📄 Contrato &amp; parcelas</div>'+
+    (ctHtml||'<p class="muted" style="font-size:.8rem;margin:0 0 4px">Nenhum contrato neste centro de custo. O valor contratado ainda vem do campo antigo (fallback) até um contrato ser confirmado.</p>')+
+    novo+'<div id="ct-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>';
 }
 function _funcLabel(code){var c=(state.data&&state.data.catFuncoes)||[];for(var i=0;i<c.length;i++){if(c[i][0]===code)return c[i][1];}return code;}
 function _pjRender(){
@@ -1109,7 +1170,10 @@ function _pjRender(){
   var gutBloco='<div style="display:flex;gap:18px;flex-wrap:wrap;margin:0 0 12px">'+
     '<div><div class="muted" style="font-size:.72rem;margin-bottom:3px">Prioridade (1–100)</div>'+_gutChip(_prio)+
       ((x.gravidade||x.impacto)?'<span class="muted" style="font-size:.72rem;margin-left:6px">G'+(x.gravidade||0)+'·U'+(x.urgencia||0)+'·T'+(x.tendencia||0)+' · Imp'+(x.impacto||0)+'·Esf'+(x.esforco||0)+'</span>':'')+'</div>'+
-    '<div style="flex:1;min-width:160px"><div class="muted" style="font-size:.72rem;margin-bottom:3px">Progresso</div>'+_progBar(x.progresso)+'</div>'+
+    '<div style="flex:1;min-width:160px"><div class="muted" style="font-size:.72rem;margin-bottom:3px">Progresso</div>'+
+      _progBar((et&&et.progressoDerivado!=null)?et.progressoDerivado:(x.progresso||0))+
+      '<div class="muted" style="font-size:.68rem;margin-top:2px">'+((et&&et.progressoDerivado!=null)?('derivado dos marcos ('+et.atual+'/'+et.total+')'+(et.divergente?' · <span style="color:var(--crit)">campo manual diz '+(x.progresso||0)+'%</span>':'')):'informado manualmente — registre marcos abaixo para derivar')+'</div>'+
+    '</div>'+
   '</div>';
   /* etapa atual/total + andamento */
   var etTxt=et.total?("Etapa "+et.atual+" de "+et.total):(et.atual?("Etapa "+et.atual):"");
@@ -1144,7 +1208,7 @@ function _pjRender(){
     corpo=_pjEditForm(j);
   }else{
     corpo='<div style="padding:14px 16px">'+
-      horasBloco+_finBloco(j)+gutBloco+
+      horasBloco+_finBloco(j)+_contratoBloco(j)+gutBloco+
       '<div class="grid2" style="gap:0 18px">'+
         '<div>'+_rw("Empresa",p.empresa)+_rw("Cliente",p.cliente)+_rw("Tipo",p.tipo)+_rw("Subtipo",p.subtipo)+_rw("Responsável",x.resp?nomeDe(x.resp):"")+_rw("Setor",x.setor)+'</div>'+
         '<div>'+_rw("Início",p.inicio)+_rw("Previsto",p.previsto)+_rw("Fim",p.fim)+_rw("Situação comercial",x.com)+_rw("Assinatura",x.assin)+'</div>'+
@@ -1189,8 +1253,34 @@ function _pjRender(){
         .then(function(nj){PJDET=nj;PJDET.edit=false;_pjRender();toast("Registro excluído.");})
         .catch(function(e){alert(e.message||"Erro ao excluir.");});
     };});
+    _contratoLiga(j);
   }
   if(j.edit)_pjEditLiga(j);
+}
+/* Fiação do painel Contrato & parcelas: criar/confirmar contrato, criar/baixar parcela. Cada ação
+   re-busca o projdetalhe e re-renderiza (mesmo padrão do andamento). */
+function _contratoLiga(j){
+  var cc=j.cc; var V=function(id){var e=$("#"+id);return e?e.value:"";};
+  var msg=function(t,err){var m=$("#ct-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
+  var reload=function(ok){return api("projdetalhe",{cc:cc}).then(function(nj){PJDET=nj;PJDET.edit=false;_pjRender();if(ok)toast(ok);});};
+  var nv=document.querySelector(".ct-novo");if(nv)nv.onclick=function(){
+    var val=Number(V("ct-val"))||0; if(!(val>0)){msg("Informe o valor do contrato.",true);return;}
+    msg("Salvando…");api("contratoSet",{cc:cc,titulo:V("ct-tit"),valor:val,tipo:V("ct-tipo"),assinado:V("ct-ass"),status:"rascunho"}).then(function(){return reload("Contrato criado.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };
+  document.querySelectorAll(".ct-conf").forEach(function(b){b.onclick=function(){
+    if(!confirm("Confirmar o contrato? O valor confirmado passa a ser o valor do Financeiro deste projeto."))return;
+    msg("Confirmando…");api("contratoSet",{id:b.getAttribute("data-cid"),cc:cc,status:"confirmado"}).then(function(){return reload("Contrato confirmado.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
+  document.querySelectorAll(".pc-add").forEach(function(b){b.onclick=function(){
+    var cid=b.getAttribute("data-cid");var val=Number(V("pc-v-"+cid))||0;if(!(val>0)){msg("Informe o valor da parcela.",true);return;}
+    msg("Salvando…");api("parcelaSet",{contrato_id:cid,numero:Number(V("pc-n-"+cid))||1,valor:val,venc_prev:V("pc-d-"+cid)}).then(function(){return reload("Parcela adicionada.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
+  document.querySelectorAll(".pc-baixa").forEach(function(s){s.onchange=function(){
+    if(!s.value)return;msg("Baixando…");api("parcelaBaixar",{parcela_id:s.getAttribute("data-pid"),fluxo_id:s.value}).then(function(){return reload("Parcela baixada; centro de custo preenchido no caixa.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
+  document.querySelectorAll(".pc-desfaz").forEach(function(b){b.onclick=function(){
+    msg("Desfazendo…");api("parcelaBaixar",{parcela_id:b.getAttribute("data-pid"),fluxo_id:""}).then(function(){return reload("Baixa desfeita.");}).catch(function(e){msg(e.message||"Erro",true);});
+  };});
 }
 function _opt(list,sel){return list.map(function(o){var v=Array.isArray(o)?o[0]:o,l=Array.isArray(o)?o[1]:o;return '<option value="'+esc(v)+'"'+(String(sel)===String(v)?" selected":"")+'>'+esc(l)+'</option>';}).join("");}
 function _pjEditForm(j){
@@ -1229,9 +1319,10 @@ function _pjEditForm(j){
         '<div class="field"><label>Consumíveis (R$)</label><input id="ed-consumiveis" type="number" min="0" step="0.01" value="'+esc(x.consumiveis||0)+'"></div>'+
         '<div class="field"><label>Terceiros / contratações (R$)</label><input id="ed-terceiros" type="number" min="0" step="0.01" value="'+esc(x.terceiros||0)+'"></div>'+
         '<div class="field"><label>Outros custos (R$)</label><input id="ed-outros" type="number" min="0" step="0.01" value="'+esc(x.outros||0)+'"></div>'+
+        '<div class="field"><label>Imposto (% s/ contratado — vazio = padrão da empresa)</label><input id="ed-imposto" type="number" min="0" max="100" step="0.01" placeholder="'+esc((j.fin&&j.fin.pct_imposto&&!(x.pct_imposto>0))?('padrão '+j.fin.pct_imposto+'%'):'padrão da empresa')+'" value="'+esc(x.pct_imposto>0?x.pct_imposto:"")+'"></div>'+
         '<div class="field"><label>Lucro-alvo (% s/ contratado)</label><input id="ed-luc" type="number" min="0" max="100" step="0.1" value="'+esc(x.pct_lucro||0)+'"></div>'+
       '</div>'+
-      '<p class="muted" style="font-size:.72rem;margin:0 0 4px">Mão de obra = horas × custo/hora de cada colaborador (que já inclui impostos, rateio e encargos). Some aqui só consumíveis e terceiros.</p></div>'
+      '<p class="muted" style="font-size:.72rem;margin:0 0 4px">Mão de obra = horas × custo/hora de cada colaborador (custo/hora = só a MO com seus encargos). <b>Imposto</b> incide sobre o valor contratado (faturamento), não sobre as horas — deixe em branco para herdar a alíquota padrão da empresa. Consumíveis, terceiros, outros e o overhead entram à parte.</p></div>'
     ):'')+
     '<div id="ed-msg" class="muted" style="font-size:.8rem;min-height:18px"></div>'+
     '<div style="display:flex;gap:8px;justify-content:flex-end">'+
@@ -1261,7 +1352,7 @@ function _pjEditLiga(j){
         if(!j.podeFin||!$("#ed-contratado"))return;
         return api("projfinSet",{cc:cc,contratado:Number(v("ed-contratado"))||0,outros:Number(v("ed-outros"))||0,
           consumiveis:Number(v("ed-consumiveis"))||0,terceiros:Number(v("ed-terceiros"))||0,
-          pct_lucro:Number(v("ed-luc"))||0});
+          pct_imposto:Number(v("ed-imposto"))||0,pct_lucro:Number(v("ed-luc"))||0});
       })
       .then(function(){
         toast("Gestão do projeto atualizada.");
@@ -2531,6 +2622,7 @@ function viewFinanceiro(el){
       '<button class="subnav-btn" data-tab="fin-tab-ch" type="button">Custo/hora por colaborador</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cf" type="button">Custos fixos &amp; overhead</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cap" type="button">Capacidade × apontado</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-conc" type="button">Conciliação</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-fx" type="button">Fluxo de caixa</button>'+
     '</nav>'+
     '<section class="tabpanel" id="fin-tab-res"><div id="fin-res"><p class="muted" style="padding:8px 0">Carregando resumo…</p></div></section>'+
@@ -2538,9 +2630,10 @@ function viewFinanceiro(el){
     '<section class="tabpanel hidden" id="fin-tab-ch"><div id="fin-ch"><p class="muted" style="padding:8px 0">Carregando custos…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cf"><div id="fin-cf"><p class="muted" style="padding:8px 0">Carregando custos fixos…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-cap"><div id="fin-cap"><p class="muted" style="padding:8px 0">Carregando capacidade…</p></div></section>'+
+    '<section class="tabpanel hidden" id="fin-tab-conc"><div id="fin-conc"><p class="muted" style="padding:8px 0">Carregando conciliação…</p></div></section>'+
     '<section class="tabpanel hidden" id="fin-tab-fx"><div id="fin-fx"><p class="muted" style="padding:8px 0">Carregando fluxo de caixa…</p></div></section>'+
     '</div>';
-  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finCapacidade();_finFluxo();
+  _finResumo();_finCarteira();_finCustoHora();_finCustoFixo();_finCapacidade();_finConciliacao();_finFluxo();
 }
 /* RESUMO EXECUTIVO — consolidado ao vivo + materialização (snapshot datado). Tudo derivado do
    D1 (sem número inventado): financeiro da carteira, pipeline do CRM, horas e fluxo de caixa. */
@@ -2605,7 +2698,11 @@ function _finCustoFixo(){
         '<td style="'+td+';text-align:right"><button class="linkbtn cf-del" data-id="'+esc(x.id)+'">excluir</button></td></tr>';
     }).join("");
     var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Categoria</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor (pool)</th><th></th></tr></thead><tbody>'+linhas+'<tr style="border-top:2px solid var(--line);font-weight:700"><td style="'+td+'" colspan="2">Total do overhead</td><td style="'+td+';text-align:right">'+fmtBRL(j.total)+'</td><td></td></tr></tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum custo fixo cadastrado. Enquanto estiver vazio, a margem usa só mão de obra + consumíveis — nenhum overhead é inventado.</p></div>';
-    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). O portal rateia este total sobre os projetos contratados <b>por horas apontadas</b> — cada projeto absorve <code>total × (horas do projeto ÷ horas da carteira)</code> — somando ao custo real antes da margem. Base de horas da carteira: <b>'+fmtH(j.horasBase||0)+'</b>. Comece por onde tiver número real.</p>'+form+tabela;
+    var impBox='<div class="card" style="margin-bottom:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Imposto padrão da empresa</div>'+
+      '<p class="muted" style="font-size:.72rem;margin:0 0 8px">Alíquota sobre o <b>faturamento (valor contratado)</b> — o regime tributário da casa (ex.: Simples, Presumido). Todo projeto herda este percentual; dá para ajustar caso a caso no detalhe do projeto. Não incide sobre as horas.</p>'+
+      '<div style="display:flex;gap:8px;align-items:center"><input id="imp-pad" type="number" min="0" max="100" step="0.01" value="'+esc(j.impostoPadrao||0)+'" style="max-width:120px"><span class="muted" style="font-size:.8rem">% sobre o contratado</span><button id="imp-save" class="btn sec sm">Salvar</button><span id="imp-msg" class="muted" style="font-size:.78rem"></span></div></div>';
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). O portal rateia este total sobre os projetos contratados <b>por horas apontadas</b> — cada projeto absorve <code>total × (horas do projeto ÷ horas da carteira)</code> — somando ao custo real antes da margem. Base de horas da carteira: <b>'+fmtH(j.horasBase||0)+'</b>. Comece por onde tiver número real.</p>'+impBox+form+tabela;
+    var imps=$("#imp-save");if(imps)imps.onclick=function(){var im=$("#imp-msg");if(im)im.textContent="Salvando…";api("impostoPadraoSet",{pct:Number($("#imp-pad").value)||0}).then(function(){if(im){im.textContent="Salvo.";im.classList.remove("err");}_finResumo();_finCarteira();}).catch(function(e){if(im){im.textContent=e.message||"Erro";im.classList.add("err");}});};
     var m=$("#cf-msg");var msg=function(t,err){if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
     var add=$("#cf-add");if(add)add.onclick=function(){
       var val=Number($("#cf-val").value)||0;
@@ -2648,15 +2745,68 @@ function _finCapacidade(){
           '<div style="overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:4px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Mês</th><th style="'+tdr+'">Esper.</th><th style="'+tdr+'">Real.</th><th style="'+tdr+'">Saldo</th><th style="'+tdr+'">Feriado</th><th style="'+tdr+'">Férias</th><th style="'+tdr+'">Aus.J</th><th style="'+tdr+'">Aus.NJ</th><th style="'+tdr+'">Custo extra</th></tr></thead><tbody>'+det+'</tbody></table></div></td></tr>';
     }).join("");
     var totExtra=ps.reduce(function(s,p){return s+(p.tCustoExtra||0);},0);
-    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Capacidade esperada (dias úteis × 8h; estagiário 4h) menos feriados, férias e ausências justificadas, comparada ao efetivamente apontado. <b>Saldo +</b> = horas extras (pagar/folga); <b>saldo −</b> = déficit a compensar. Ausência não justificada puxa p/ déficit. Custo da extra = saldo+ × custo/hora vigente no mês.</p>'+
+    // EDITOR de capacidade (h/semana com vigência) — tira a lista fixa do código.
+    var caps=j.capacidades||{}; var slugs={}; Object.keys(caps).forEach(function(s){slugs[s]=1;}); ps.forEach(function(p){slugs[p.slug]=1;});
+    var capRows=Object.keys(slugs).sort(function(a,b){return nomeDe(a).localeCompare(nomeDe(b));}).map(function(s){
+      return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82rem;padding:3px 0;border-top:1px dashed var(--line)"><span style="min-width:150px">'+esc(nomeDe(s))+'</span>'+
+        '<input class="sm cap-h" data-slug="'+esc(s)+'" type="number" min="0" max="80" step="0.5" value="'+esc(caps[s]!=null?caps[s]:40)+'" style="max-width:90px"><span class="muted" style="font-size:.74rem">h/sem a partir de</span>'+
+        '<input class="sm cap-d" data-slug="'+esc(s)+'" type="date" value="'+hoje()+'" style="max-width:150px"><button class="btn sec sm cap-save" data-slug="'+esc(s)+'">salvar</button></div>';
+    }).join("");
+    var capCard='<div class="card" style="margin-top:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Capacidade por pessoa (h/semana, com vigência)</div><p class="muted" style="font-size:.72rem;margin:0 0 6px">Datada como o custo/hora: a mudança vale a partir da data; meses anteriores mantêm a capacidade da época. hdia = h/semana ÷ 5.</p>'+(capRows||'<p class="muted" style="margin:0">Sem colaboradores.</p>')+'<div id="cap-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>';
+    // EDITOR do catálogo de classes de atividade (feriado/férias/ausência) — tira os termos do código.
+    var cls=j.classes||[];
+    var clsRows=cls.map(function(c){return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82rem;padding:3px 0;border-top:1px dashed var(--line)"><span style="min-width:170px">'+esc(c.nome||c.cid)+'</span>'+
+      '<input class="sm cls-p" data-cid="'+esc(c.cid)+'" value="'+esc(c.padroes||"")+'" placeholder="termos separados por |" style="flex:1;min-width:180px"><button class="btn sec sm cls-save" data-cid="'+esc(c.cid)+'">salvar</button></div>';}).join("");
+    var clsCard=cls.length?('<div class="card" style="margin-top:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Catálogo de atividades (classificação de ausências)</div><p class="muted" style="font-size:.72rem;margin:0 0 6px">Os termos que marcam feriado, férias e ausência no apontamento. Editáveis por empresa (ex.: "Folga", "PTO"). Casam por trecho do texto do apontamento; separe variações por |.</p>'+clsRows+'<div id="cls-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>'):'';
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Capacidade esperada (dias úteis × h/dia da pessoa) menos feriados, férias e ausências justificadas, comparada ao efetivamente apontado. <b>Saldo +</b> = horas extras (pagar/folga); <b>saldo −</b> = déficit a compensar. Ausência não justificada puxa p/ déficit. Custo da extra = saldo+ × custo/hora vigente no mês.</p>'+
       '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)">'+
       '<th style="'+td+';text-align:left">Colaborador</th><th style="'+tdr+'">Esperado</th><th style="'+tdr+'">Realizado</th><th style="'+tdr+'">Saldo</th><th style="'+tdr+'">Extra</th><th style="'+tdr+'">Déficit</th><th style="'+tdr+'">Custo extra</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
-      '<p class="muted" style="font-size:.74rem;margin-top:8px">Custo total de horas extras no período: <b>'+fmtBRL(totExtra)+'</b>. Clique em "meses" para o detalhe mensal. Saldo negativo = horas a compensar pelo colaborador.</p>';
+      '<p class="muted" style="font-size:.74rem;margin-top:8px">Custo total de horas extras no período: <b>'+fmtBRL(totExtra)+'</b>. Clique em "meses" para o detalhe mensal. Saldo negativo = horas a compensar pelo colaborador.</p>'+capCard+clsCard;
     box.querySelectorAll(".cap-det").forEach(function(b){b.onclick=function(){var i=b.getAttribute("data-i");var row=box.querySelector('.cap-detrow[data-i="'+i+'"]');if(row){var vis=row.style.display!=="none";row.style.display=vis?"none":"";b.textContent=vis?"meses ▾":"meses ▴";}};});
+    box.querySelectorAll(".cap-save").forEach(function(b){b.onclick=function(){var s=b.getAttribute("data-slug");var h=box.querySelector('.cap-h[data-slug="'+s+'"]'),d=box.querySelector('.cap-d[data-slug="'+s+'"]');var m=$("#cap-msg");if(m)m.textContent="Salvando…";api("capacidadeSet",{slug:s,horas_semana:Number(h.value)||0,desde:d.value}).then(function(){if(m)m.textContent="Capacidade de "+nomeDe(s)+" salva.";_finCapacidade();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};});
+    box.querySelectorAll(".cls-save").forEach(function(b){b.onclick=function(){var cid=b.getAttribute("data-cid");var inp=box.querySelector('.cls-p[data-cid="'+cid+'"]');var m=$("#cls-msg");if(m)m.textContent="Salvando…";api("atividadeClasseSet",{cid:cid,padroes:inp.value}).then(function(){if(m)m.textContent="Catálogo atualizado.";_finCapacidade();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};});
   }).catch(function(e){var box=$("#fin-cap");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 /* FLUXO DE CAIXA — base de lançamentos (entrada/saída, previsto × realizado), editável e
    auditada. Nasce vazia; a casa lança o que é real. */
+/* CONCILIAÇÃO — fila dos movimentos de caixa SEM centro de custo, paginada no servidor. Atribuir o
+   CC aqui liga o caixa ao projeto (resolve o "1.831 movimentos, 0 com centro de custo"). Entradas
+   que correspondem a uma parcela de contrato são baixadas no detalhe do contrato (preenche o CC só). */
+function _finConciliacao(){
+  if(window.__concOffset==null)window.__concOffset=0; if(!window.__concTipo)window.__concTipo="";
+  var LIM=50;
+  api("conciliacao",{limit:LIM,offset:window.__concOffset,tipo:window.__concTipo}).then(function(j){
+    var box=$("#fin-conc");if(!box)return;var fila=j.fila||[];
+    var projs=(state.data&&state.data.proj)||[];
+    var projOpts=projs.map(function(p){return [p.cc,(p.cc+' — '+(p.cliente||p.projeto||''))];}).sort(function(a,b){return String(a[1]).localeCompare(String(b[1]));});
+    var sel=function(id){return '<select class="sm conc-cc" id="'+id+'" data-id="'+id.slice(3)+'"><option value="">— escolher centro de custo —</option>'+projOpts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("")+'</select>';};
+    var td='padding:7px 8px;border-bottom:1px solid var(--line);font-size:.82rem';
+    if(j.total===0){box.innerHTML='<div class="card"><p style="margin:0">✅ Todos os movimentos de caixa têm centro de custo. Nada na fila de conciliação.</p></div>';return;}
+    var filtro='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px"><span class="muted" style="font-size:.78rem">Mostrar:</span>'+
+      ['','entrada','saida'].map(function(t){var lbl=t===''?'Tudo':(t==='entrada'?'Entradas':'Saídas');return '<button class="btn '+(window.__concTipo===t?'':'sec')+' sm conc-f" data-t="'+t+'">'+lbl+'</button>';}).join('')+'</div>';
+    var ini=j.total?(j.offset+1):0, fim=Math.min(j.offset+LIM,j.total);
+    var linhas=fila.map(function(x){
+      var dtt=x.data_real||x.data_prev||"";
+      var sinal=x.tipo==='entrada'?'+':'−';var cor=x.tipo==='entrada'?'var(--ok,#1f7a3d)':'var(--crit)';
+      return '<tr><td style="'+td+'">'+esc(dtt)+'</td><td style="'+td+'">'+esc(x.descricao||'')+(x.categoria?' <span class="muted" style="font-size:.72rem">· '+esc(x.categoria)+'</span>':'')+'</td>'+
+        '<td style="'+td+';text-align:right;color:'+cor+';font-variant-numeric:tabular-nums">'+sinal+fmtBRL(x.valor)+'</td>'+
+        '<td style="'+td+'">'+sel('cc-'+x.id)+'</td></tr>';
+    }).join("");
+    box.innerHTML='<div class="card" style="margin-bottom:10px;border-color:var(--crit)"><b>'+j.total+'</b> movimento(s) de caixa sem centro de custo · <span class="muted">'+fmtBRL(j.valorPendente)+' pendente de conciliação</span>'+
+      '<div class="muted" style="font-size:.72rem;margin-top:4px">Escolha o projeto de cada movimento para ligar o caixa ao centro de custo. O vínculo é manual (nunca inferido) e fica na auditoria.</div></div>'+
+      filtro+
+      '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Data</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor</th><th style="'+td+';text-align:left">Centro de custo</th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:.8rem"><span class="muted">'+ini+'–'+fim+' de '+j.total+'</span><span><button class="btn sec sm conc-prev"'+(j.offset<=0?' disabled':'')+'>← anteriores</button> <button class="btn sec sm conc-next"'+(j.temMais?'':' disabled')+'>próximos →</button></span></div>'+
+      '<div id="conc-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div>';
+    box.querySelectorAll(".conc-f").forEach(function(b){b.onclick=function(){window.__concTipo=b.getAttribute("data-t");window.__concOffset=0;_finConciliacao();};});
+    var pv=box.querySelector(".conc-prev");if(pv)pv.onclick=function(){window.__concOffset=Math.max(0,window.__concOffset-LIM);_finConciliacao();};
+    var nx=box.querySelector(".conc-next");if(nx)nx.onclick=function(){window.__concOffset=window.__concOffset+LIM;_finConciliacao();};
+    box.querySelectorAll(".conc-cc").forEach(function(s){s.onchange=function(){
+      if(!s.value)return;var m=$("#conc-msg");if(m)m.textContent="Conciliando…";
+      api("fluxoCc",{id:s.getAttribute("data-id"),cc:s.value}).then(function(){if(m)m.textContent="Conciliado.";_finConciliacao();_finResumo();_finCarteira();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
+    };});
+  }).catch(function(e){var box=$("#fin-conc");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
 function _finFluxo(){
   api("fluxoList").then(function(j){
     var box=$("#fin-fx");if(!box)return;var xs=j.fluxos||[];
