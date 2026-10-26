@@ -154,6 +154,10 @@ export function CursoPlayer({ cid }: { cid: string }) {
                 {aula.feito && <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>✓ feito{aula.nota != null && aula.tipo === "quiz" ? " · " + aula.nota + "%" : ""}</span>}
               </div>
               {aula.conteudo && <p style={{ fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{aula.conteudo}</p>}
+              {/* D-5 — vídeo self-hosted (R2): o <video> busca pela rota por ID da aula (gated, com Range). */}
+              {aula.tipo === "video" && aula.temVideo && (
+                <video controls preload="metadata" style={{ width: "100%", maxHeight: 420, borderRadius: 8, background: "#000", marginTop: 10 }} src={"/academia/video/" + encodeURIComponent(aula.id)} />
+              )}
               {aula.url && aula.tipo !== "quiz" && <a className="btn" href={aula.url} target="_blank" rel="noreferrer">Abrir {aula.tipo} →</a>}
 
               {aula.tipo === "quiz" && (aula.quiz || []).length > 0 && (
@@ -206,14 +210,14 @@ function CursoEditor({ j, onSair }: { j: any; onSair: () => void }) {
   };
   const salvarAula = () => {
     if (!aula || String(aula.titulo || "").trim().length < 2) { setMsg("Dê um título à aula."); return; }
-    const payload: any = { curso_id: cid, id: aula.id || "", modulo_id: aula.modulo_id || "", titulo: aula.titulo, tipo: aula.tipo, conteudo: aula.conteudo || "", url: aula.url || "", ordem: Number(aula.ordem) || 0, min_nota: Number(aula.min_nota) || 70 };
+    const payload: any = { curso_id: cid, id: aula.id || "", modulo_id: aula.modulo_id || "", titulo: aula.titulo, tipo: aula.tipo, conteudo: aula.conteudo || "", url: aula.url || "", video_key: aula.video_key || "", ordem: Number(aula.ordem) || 0, min_nota: Number(aula.min_nota) || 70 };
     if (aula.tipo === "quiz") payload.quiz = (aula.quiz || []).filter((q: any) => String(q.q || "").trim()).map((q: any) => ({ q: q.q, opc: (q.opc || []).filter((o: string) => String(o).trim()), correta: Number(q.correta) || 0 }));
     setMsg("Salvando aula…");
     api("aulaSet", payload).then(() => { setMsg("Aula salva."); setAula(null); return reload(); }).catch((e: ApiError) => setMsg(e.message || "Erro"));
   };
 
   const mods: any[] = d.modulos || []; const aulas: any[] = d.aulas || [];
-  const novaAula = () => setAula({ titulo: "", tipo: "texto", conteudo: "", url: "", modulo_id: mods[0]?.id || "", ordem: aulas.length, min_nota: 70, quiz: [] });
+  const novaAula = () => setAula({ titulo: "", tipo: "texto", conteudo: "", url: "", video_key: "", modulo_id: mods[0]?.id || "", ordem: aulas.length, min_nota: 70, quiz: [] });
 
   return (
     <>
@@ -274,7 +278,8 @@ function CursoEditor({ j, onSair }: { j: any; onSair: () => void }) {
                   </select></div>
               </div>
               {aula.tipo !== "quiz" && <><label style={lbl}>Conteúdo (texto)</label><textarea style={{ ...inp, minHeight: 70 }} value={aula.conteudo} onChange={(e) => setAula({ ...aula, conteudo: e.target.value })} /></>}
-              {(aula.tipo === "video" || aula.tipo === "pdf") && <><label style={lbl}>URL do {aula.tipo}</label><input style={inp} value={aula.url} onChange={(e) => setAula({ ...aula, url: e.target.value })} placeholder="https://…" /></>}
+              {(aula.tipo === "video" || aula.tipo === "pdf") && <><label style={lbl}>URL do {aula.tipo} (embed externo)</label><input style={inp} value={aula.url} onChange={(e) => setAula({ ...aula, url: e.target.value })} placeholder="https://… (YouTube, Vimeo, Drive)" /></>}
+              {aula.tipo === "video" && <><label style={lbl}>Vídeo hospedado (chave no R2)</label><input style={inp} value={aula.video_key || ""} onChange={(e) => setAula({ ...aula, video_key: e.target.value })} placeholder="ex.: cursos/portal/intro.mp4" /><div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Suba o arquivo ao bucket <code>portal-intelecto-video</code> (ver docs/VIDEO_ACADEMIA.md) e informe a chave. Toca embutido, com seek, servido de forma privada.</div></>}
               {aula.tipo === "quiz" && <QuizBuilder quiz={aula.quiz || []} onChange={(q) => setAula({ ...aula, quiz: q })} />}
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button className="btn primary" onClick={salvarAula}>Salvar aula</button>

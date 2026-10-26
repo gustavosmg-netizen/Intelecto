@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-26a";
+const SCHEMA_VER = "2026-10-26b";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -760,8 +760,12 @@ function ensureSchema(): Promise<void> {
       await sqlite.execute(`CREATE TABLE IF NOT EXISTS curso_aula (
         tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, curso_id TEXT NOT NULL, modulo_id TEXT DEFAULT '',
         titulo TEXT DEFAULT '', tipo TEXT DEFAULT 'texto', conteudo TEXT DEFAULT '', url TEXT DEFAULT '',
-        ordem INTEGER DEFAULT 0, quiz TEXT DEFAULT '', min_nota REAL DEFAULT 70, u TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+        ordem INTEGER DEFAULT 0, quiz TEXT DEFAULT '', min_nota REAL DEFAULT 70, u TEXT DEFAULT '', video_key TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
       try { await sqlite.execute("CREATE INDEX IF NOT EXISTS curso_aula_c ON curso_aula (tenant_id, curso_id, ordem)"); } catch (_) {}
+      // D-5 — vídeo self-hosted no R2 (bucket VIDEO): a aula guarda a CHAVE do objeto; o Worker serve
+      // de forma privada e gated pela rota GET /academia/video/:aula (com Range). `url` segue para
+      // embeds externos (YouTube/Vimeo/Drive). ALTER idempotente p/ bases já existentes.
+      try { await sqlite.execute("ALTER TABLE curso_aula ADD COLUMN video_key TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
       await sqlite.execute(`CREATE TABLE IF NOT EXISTS matricula (
         tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, curso_id TEXT NOT NULL,
         status TEXT DEFAULT 'ativa', iniciado TEXT DEFAULT '', concluido TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, curso_id))`);
@@ -2467,7 +2471,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const curso = cr.rows[0] as P;
     if (!Number(curso.publicado) && !u.coord) throw new Error("Curso ainda não publicado.");
     const mods = await sqlite.execute({ sql: "SELECT id, titulo, ordem FROM curso_modulo WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
-    const aur = await sqlite.execute({ sql: "SELECT id, modulo_id, titulo, tipo, conteudo, url, ordem, quiz, min_nota FROM curso_aula WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
+    const aur = await sqlite.execute({ sql: "SELECT id, modulo_id, titulo, tipo, conteudo, url, ordem, quiz, min_nota, video_key FROM curso_aula WHERE tenant_id = ? AND curso_id = ? ORDER BY ordem", args: [u.tenant_id, cid] });
     const pr = await sqlite.execute({ sql: "SELECT aula_id, nota, concluido_em FROM aula_prog WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
     const prog: Record<string, P> = {}; for (const x of pr.rows as P[]) prog[String(x.aula_id)] = x;
     const aulas = (aur.rows as P[]).map((a) => {
@@ -2477,7 +2481,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         // coordenação, como AUTORA, recebe o quiz completo (precisa editar a resposta certa).
         try { quiz = (JSON.parse(String(a.quiz)) as P[]).map((q) => (u.coord ? q : { q: q.q, opc: q.opc })); } catch (_) { quiz = []; }
       }
-      return { id: a.id, modulo_id: a.modulo_id, titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo, url: a.url, ordem: a.ordem, min_nota: a.min_nota, quiz, feito: !!prog[String(a.id)], nota: prog[String(a.id)] ? Number(prog[String(a.id)].nota) || 0 : null };
+      // temVideo (bool) vai p/ todos — o player decide renderizar o <video> (que busca pela rota por
+      // ID da aula, não pela chave). A video_key bruta só p/ a coordenação (autora), que a edita.
+      return { id: a.id, modulo_id: a.modulo_id, titulo: a.titulo, tipo: a.tipo, conteudo: a.conteudo, url: a.url, temVideo: !!String(a.video_key || ""), video_key: u.coord ? String(a.video_key || "") : undefined, ordem: a.ordem, min_nota: a.min_nota, quiz, feito: !!prog[String(a.id)], nota: prog[String(a.id)] ? Number(prog[String(a.id)].nota) || 0 : null };
     });
     const mr = await sqlite.execute({ sql: "SELECT status, concluido FROM matricula WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
     const ce = await sqlite.execute({ sql: "SELECT id, emitido, carga_h FROM certificado WHERE tenant_id = ? AND slug = ? AND curso_id = ?", args: [u.tenant_id, u.slug, cid] });
@@ -2556,9 +2562,13 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const id = String(p.id || "").trim() || "a-" + Date.now().toString(36);
     let tipo = String(p.tipo || "texto").toLowerCase(); if (!["texto", "video", "pdf", "quiz"].includes(tipo)) tipo = "texto";
     let quiz = ""; if (tipo === "quiz" && p.quiz != null) { try { quiz = JSON.stringify(p.quiz); } catch (_) { quiz = ""; } }
+    // D-5 — chave do vídeo self-hosted no R2 (só para tipo=video). Sanitizada: sem barra inicial
+    // nem "..", para nunca virar path traversal quando a rota de serviço montar o get(key).
+    const videoKey = tipo === "video" ? String(p.video_key || "").replace(/^\/+/, "").slice(0, 300) : "";
+    if (videoKey.includes("..")) throw new Error("Chave de vídeo inválida.");
     await sqlite.execute({
-      sql: "INSERT INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,url,ordem,quiz,min_nota,u) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET modulo_id=excluded.modulo_id,titulo=excluded.titulo,tipo=excluded.tipo,conteudo=excluded.conteudo,url=excluded.url,ordem=excluded.ordem,quiz=excluded.quiz,min_nota=excluded.min_nota,u=excluded.u",
-      args: [u.tenant_id, id, curso_id, String(p.modulo_id || "").slice(0, 60), String(p.titulo || "").slice(0, 200), tipo, String(p.conteudo || "").slice(0, 8000), String(p.url || "").slice(0, 600), Math.floor(Number(p.ordem) || 0), quiz, Math.max(0, Math.min(100, Number(p.min_nota) || 70)), u.slug],
+      sql: "INSERT INTO curso_aula (tenant_id,id,curso_id,modulo_id,titulo,tipo,conteudo,url,ordem,quiz,min_nota,u,video_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET modulo_id=excluded.modulo_id,titulo=excluded.titulo,tipo=excluded.tipo,conteudo=excluded.conteudo,url=excluded.url,ordem=excluded.ordem,quiz=excluded.quiz,min_nota=excluded.min_nota,u=excluded.u,video_key=excluded.video_key",
+      args: [u.tenant_id, id, curso_id, String(p.modulo_id || "").slice(0, 60), String(p.titulo || "").slice(0, 200), tipo, String(p.conteudo || "").slice(0, 8000), String(p.url || "").slice(0, 600), Math.floor(Number(p.ordem) || 0), quiz, Math.max(0, Math.min(100, Number(p.min_nota) || 70)), u.slug, videoKey],
     });
     await audit("academia", u.slug, "aula " + id + " (" + tipo + ")", ip);
     return { ok: true, id };
@@ -6254,6 +6264,54 @@ app.post("/vitrine/arquivo", async (c) => {
       : "application/octet-stream";
     await audit("vitrine_arquivo", u.slug, (cid + "/" + id).slice(0, 80), c.req.header("cf-connecting-ip") || "");
     return new Response(o.body, { headers: { "content-type": tipo, "cache-control": "private, max-age=120" } });
+  } catch (e: any) {
+    return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);
+  }
+});
+
+/* D-5 — ACADEMIA: serve o VÍDEO self-hosted de uma aula a partir do bucket R2 VIDEO, de forma
+ * PRIVADA e gated. É GET (não POST) para o elemento <video> consumir direto, com suporte a Range
+ * (seek/streaming progressivo). A CHAVE vem do BANCO pela id da aula — nunca do cliente, sem path
+ * injection. Gate: login (cookie ce_t) + curso publicado (ou coordenação). Reusa R2+Worker como o
+ * Acervo/Vitrine (sem serviço pago novo); Cloudflare Stream fica como upgrade p/ bitrate adaptativo
+ * e audiência externa grande (ver docs/VIDEO_ACADEMIA.md). Não audita (Range gera muitos hits). */
+app.get("/academia/video/:aula", async (c) => {
+  try {
+    await ensureSchema();
+    const u = await auth({ token: cookieVal(c.req.header("cookie") || "", "ce_t") } as P);
+    const aid = String(c.req.param("aula") || "").trim();
+    if (!aid) return c.text("Aula inválida.", 400);
+    const r = await sqlite.execute({
+      sql: "SELECT a.video_key AS vk, c.publicado AS pub FROM curso_aula a JOIN curso c ON c.tenant_id = a.tenant_id AND c.cid = a.curso_id WHERE a.tenant_id = ? AND a.id = ? LIMIT 1",
+      args: [u.tenant_id, aid],
+    });
+    if (!r.rows.length) return c.text("Aula não encontrada.", 404);
+    const row = r.rows[0] as P;
+    if (!Number(row.pub) && !u.coord) return c.text("Curso ainda não publicado.", 403);
+    const key = String(row.vk || "").replace(/^\/+/, "");
+    if (!key || key.includes("..")) return c.text("Esta aula não tem vídeo hospedado.", 404);
+    if (!ENV.VIDEO) return c.text("Armazenamento de vídeo indisponível.", 503);
+    const low = key.toLowerCase();
+    const tipo = low.endsWith(".webm") ? "video/webm" : low.endsWith(".ogg") || low.endsWith(".ogv") ? "video/ogg"
+      : low.endsWith(".mov") ? "video/quicktime" : "video/mp4";
+    const range = c.req.header("range");
+    if (range) {
+      const m = /bytes=(\d+)-(\d*)/.exec(range);
+      if (m) {
+        const head: any = await ENV.VIDEO.head(key);
+        if (!head) return c.text("Vídeo não encontrado.", 404);
+        const size = head.size as number;
+        const start = Number(m[1]);
+        const end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+        if (start >= size || start > end) return new Response(null, { status: 416, headers: { "content-range": "bytes */" + size } });
+        const part: any = await ENV.VIDEO.get(key, { range: { offset: start, length: end - start + 1 } });
+        if (!part) return c.text("Vídeo não encontrado.", 404);
+        return new Response(part.body, { status: 206, headers: { "content-type": tipo, "accept-ranges": "bytes", "content-range": "bytes " + start + "-" + end + "/" + size, "content-length": String(end - start + 1), "cache-control": "private, max-age=120" } });
+      }
+    }
+    const obj: any = await ENV.VIDEO.get(key);
+    if (!obj) return c.text("Vídeo não encontrado.", 404);
+    return new Response(obj.body, { headers: { "content-type": tipo, "accept-ranges": "bytes", "content-length": String(obj.size), "cache-control": "private, max-age=120" } });
   } catch (e: any) {
     return c.text("Erro: " + (e && e.message ? e.message : String(e)), 401);
   }

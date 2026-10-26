@@ -41,6 +41,13 @@ bucket_name = "acervo-intelecto"
 binding = "BACKUP"
 bucket_name = "portal-intelecto-backup"
 
+# R2: vídeos self-hosted da Academia (D-5). Servidos de forma PRIVADA e com Range pela rota
+# GET /academia/video/:aula (gate por login + curso publicado). Criar o bucket antes do deploy:
+#   npx wrangler r2 bucket create portal-intelecto-video
+[[r2_buckets]]
+binding = "VIDEO"
+bucket_name = "portal-intelecto-video"
+
 [vars]
 REPO_URL = ""
 MAIL_FROM = ""
@@ -105,6 +112,10 @@ bucket_name = "acervo-intelecto"
 [[env.staging.r2_buckets]]
 binding = "BACKUP"
 bucket_name = "portal-intelecto-backup"
+
+[[env.staging.r2_buckets]]
+binding = "VIDEO"
+bucket_name = "portal-intelecto-video"
 
 [env.staging.ai]
 binding = "AI"

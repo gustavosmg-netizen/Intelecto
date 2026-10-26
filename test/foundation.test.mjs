@@ -348,6 +348,26 @@ test("D-6: config isolado por tenant (PK composta + cfg* tenant-aware)", () => {
   assert.match(read("migrations/0008_config_tenant_pk.sql"), /PRIMARY KEY \(tenant_id, k\)/);
 });
 
+test("D-5: vídeo self-hosted da Academia (R2 + rota com Range)", () => {
+  const ts = read("src/index.ts");
+  // schema: curso_aula ganha video_key (CREATE + ALTER idempotente).
+  assert.match(ts, /ALTER TABLE curso_aula ADD COLUMN video_key TEXT DEFAULT ''/);
+  // rota GET com Range, chave do banco (não do cliente), gate login + publicado.
+  assert.match(ts, /app\.get\("\/academia\/video\/:aula"/);
+  assert.match(ts, /ENV\.VIDEO\.get\(key, \{ range: \{ offset: start, length: end - start \+ 1 \} \}\)/);
+  assert.match(ts, /status: 206/);
+  assert.match(ts, /Curso ainda não publicado\./);
+  // aulaSet grava video_key sanitizada (sem path traversal); cursodetalhe expõe temVideo.
+  assert.match(ts, /if \(videoKey\.includes\("\.\."\)\) throw new Error/);
+  assert.match(ts, /temVideo: !!String\(a\.video_key/);
+  // binding VIDEO e migração espelho.
+  assert.match(read("wrangler.toml"), /binding = "VIDEO"/);
+  assert.match(read("migrations/0009_curso_aula_video.sql"), /ADD COLUMN video_key/);
+  // front: player embute <video> gated e editor tem o campo da chave.
+  assert.match(read("app/src/academia.tsx"), /\/academia\/video\/" \+ encodeURIComponent\(aula\.id\)/);
+  assert.match(read("app/src/academia.tsx"), /Vídeo hospedado \(chave no R2\)/);
+});
+
 test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   const files = readdirSync(join(root, "migrations")).filter((f) => f.endsWith(".sql"));
   assert.ok(files.length >= 1, "nenhuma migração");

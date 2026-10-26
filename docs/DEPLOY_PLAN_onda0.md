@@ -46,8 +46,12 @@ ações `/api`, Onda 1, Academia, segurança S-02/S-03/CSP/HSTS, observabilidade
 
 **Schema:** `ensureSchema` provisiona em runtime, no 1º request após o bump de `SCHEMA_VER`, tudo o
 que falta (`contrato_parcela`, `atividade_classe`, `capacidade_vig`, `curso*`, `ALTER TABLE sess ADD
-reauth`). As migrações 0001–0007 são o espelho versionado; aplicá-las explicitamente
+reauth`). As migrações 0001–0009 são o espelho versionado; aplicá-las explicitamente
 (`wrangler d1 migrations apply portal-intelecto --remote`) é opcional (cinto e suspensório).
+
+**Recursos R2 antes do deploy:** o binding `VIDEO` (D-5, vídeos da Academia) exige o bucket
+`portal-intelecto-video` — criar antes de publicar, senão o deploy falha ao resolver o binding:
+`npx wrangler r2 bucket create portal-intelecto-video` (já criado em staging/conta).
 
 **Pré-requisitos / riscos a tratar ANTES do merge:**
 1. **Validação logada ao vivo em staging com dados reais** (`popula_staging.py`) — click-through de
