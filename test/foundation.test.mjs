@@ -331,6 +331,23 @@ test("Onda 1: conciliação do caixa (fila paginada + baixa que preenche o CC)",
   assert.match(read("migrations/0003_conciliacao.sql"), /CREATE INDEX IF NOT EXISTS fluxo_cc/);
 });
 
+test("D-6: config isolado por tenant (PK composta + cfg* tenant-aware)", () => {
+  const ts = read("src/index.ts");
+  // rebuild idempotente da PK composta no ensureSchema (guardado por contagem de colunas PK).
+  assert.match(ts, /pragma_table_info\('config'\) WHERE pk > 0/);
+  assert.match(ts, /PRIMARY KEY \(tenant_id, k\)/);
+  assert.match(ts, /ALTER TABLE config_mt RENAME TO config/);
+  // upsert passa a usar ON CONFLICT(tenant_id, k); não sobra nenhum ON CONFLICT(k) de config.
+  assert.match(ts, /ON CONFLICT\(tenant_id, k\) DO UPDATE SET v = excluded\.v/);
+  assert.doesNotMatch(ts, /ON CONFLICT\(k\)/);
+  // helpers tenant-aware (param opcional, default Intelecto) — não quebra os call-sites atuais.
+  assert.match(ts, /async function cfgGet\(k: string, tenant: string = TENANT_INTELECTO\)/);
+  assert.match(ts, /async function cfgSet\(k: string, v: string, tenant: string = TENANT_INTELECTO\)/);
+  assert.match(ts, /async function cfgDel\(k: string, tenant: string = TENANT_INTELECTO\)/);
+  // migração espelho existe.
+  assert.match(read("migrations/0008_config_tenant_pk.sql"), /PRIMARY KEY \(tenant_id, k\)/);
+});
+
 test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   const files = readdirSync(join(root, "migrations")).filter((f) => f.endsWith(".sql"));
   assert.ok(files.length >= 1, "nenhuma migração");

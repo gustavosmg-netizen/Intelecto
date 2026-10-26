@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-21b";
+const SCHEMA_VER = "2026-10-26a";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -865,6 +865,23 @@ function ensureSchema(): Promise<void> {
       sql: "UPDATE " + t + " SET tenant_id = ? WHERE tenant_id IS NULL OR tenant_id = ''",
       args: [TENANT_INTELECTO],
     })));
+    /* D-6 — config isolado por TENANT: PK (tenant_id, k) em vez de só (k), para que dois tenants
+     * possam ter a mesma chave (pin:, flag:, allow:, salt, …). O SQLite não altera PK: rebuild
+     * IDEMPOTENTE (só quando a PK ainda não é composta) e ATÔMICO (batch = transação implícita do D1),
+     * preservando todos os dados. O tenant_id já existe (ALTER acima). Se falhar, o cfg* segue
+     * funcionando pela PK antiga (degradação segura). Ver migração 0008 (mesmo efeito, via wrangler). */
+    try {
+      const pk = await sqlite.execute("SELECT COUNT(*) AS n FROM pragma_table_info('config') WHERE pk > 0");
+      const n = pk.rows.length ? Number((pk.rows[0] as P).n) : 1;
+      if (n < 2) {
+        await sqlite.batch([
+          "CREATE TABLE config_mt (k TEXT NOT NULL, v TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT '" + TENANT_INTELECTO + "', PRIMARY KEY (tenant_id, k))",
+          "INSERT OR IGNORE INTO config_mt (tenant_id, k, v) SELECT COALESCE(tenant_id, '" + TENANT_INTELECTO + "'), k, v FROM config",
+          "DROP TABLE config",
+          "ALTER TABLE config_mt RENAME TO config",
+        ]);
+      }
+    } catch (_) { /* rebuild best-effort; cfg* seguem pela PK antiga se isto falhar */ }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS lanc_tenant ON lanc (tenant_id)"); } catch (_) {}
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS proj_tenant ON proj (tenant_id)"); } catch (_) {}
     // Tabela formal de papel (substitui a inferência por listas de slug). Fornecedor é lateral.
@@ -1195,15 +1212,18 @@ function ensureSchema(): Promise<void> {
  * ancoradas explicitamente em TENANT_INTELECTO — o filtro de tenant NUNCA fica implicito.
  * Os dados de NEGOCIO (lanc, proj, conteudo, solic, projx, prevf, andam, evento, biblio,
  * param, progcurso, prod) filtram sempre por u.tenant_id vindo de auth(). */
-async function cfgGet(k: string): Promise<string | null> {
-  const r = await sqlite.execute({ sql: "SELECT v FROM config WHERE k = ? AND tenant_id = ?", args: [k, TENANT_INTELECTO] });
+// D-6 — config isolado por tenant. As três helpers aceitam um `tenant` OPCIONAL (padrão Intelecto),
+// então os ~97 call-sites atuais seguem iguais; quem souber o tenant (p.ex. de auth()) pode passá-lo.
+// O upsert usa ON CONFLICT(tenant_id, k) — a PK composta garantida pelo rebuild no ensureSchema.
+async function cfgGet(k: string, tenant: string = TENANT_INTELECTO): Promise<string | null> {
+  const r = await sqlite.execute({ sql: "SELECT v FROM config WHERE k = ? AND tenant_id = ?", args: [k, tenant] });
   return r.rows.length ? String(r.rows[0].v) : null;
 }
-async function cfgSet(k: string, v: string) {
-  await sqlite.execute({ sql: "INSERT INTO config (k, v, tenant_id) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", args: [k, v, TENANT_INTELECTO] });
+async function cfgSet(k: string, v: string, tenant: string = TENANT_INTELECTO) {
+  await sqlite.execute({ sql: "INSERT INTO config (k, v, tenant_id) VALUES (?, ?, ?) ON CONFLICT(tenant_id, k) DO UPDATE SET v = excluded.v", args: [k, v, tenant] });
 }
-async function cfgDel(k: string) {
-  await sqlite.execute({ sql: "DELETE FROM config WHERE k = ? AND tenant_id = ?", args: [k, TENANT_INTELECTO] });
+async function cfgDel(k: string, tenant: string = TENANT_INTELECTO) {
+  await sqlite.execute({ sql: "DELETE FROM config WHERE k = ? AND tenant_id = ?", args: [k, tenant] });
 }
 /** Acesso à aba Comercial (Leads Ambientais): allowlist de slugs em config `perm:comercial`
  *  (lista separada por vírgula), além do dono. Mesmo padrão do `perm:escritorio`. */
@@ -3616,7 +3636,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "impostoPadraoSet") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
     const pct = Math.max(0, Math.min(100, Number(p.pct) || 0));
-    await sqlite.execute({ sql: "INSERT INTO config (k, v, tenant_id) VALUES ('imposto_padrao', ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", args: [String(pct), u.tenant_id] });
+    await sqlite.execute({ sql: "INSERT INTO config (k, v, tenant_id) VALUES ('imposto_padrao', ?, ?) ON CONFLICT(tenant_id, k) DO UPDATE SET v = excluded.v", args: [String(pct), u.tenant_id] });
     await audit("imposto_padrao", u.slug, "pct=" + pct, ip);
     return { ok: true, pct };
   }
