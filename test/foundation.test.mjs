@@ -376,6 +376,21 @@ test("Acervo/MCP: catset unifica cat:json + cat:b64 (buscar_norma enxerga o impo
   assert.match(ts, /if \(!raw\) raw = \(await cfgGet\("cat:json"\)\) \|\| "";/);
 });
 
+test("D-4: aprovação de horas opt-in (flag; Intelecto semeada ON; add respeita)", () => {
+  const ts = read("src/index.ts");
+  // flag opt-in (default OFF) + seed ON para a Intelecto (preserva o fluxo atual).
+  assert.match(ts, /horas_aprovacao: \{ desc:[^}]*def: false \}/);
+  assert.match(ts, /if \(\(await cfgGet\("flag:horas_aprovacao"\)\) === null\) await cfgSet\("flag:horas_aprovacao", "1"\)/);
+  // add: PENDENTE quando a aprovação está ligada; APROVADO imediato quando desligada.
+  assert.match(ts, /const aprovReq = \(await flagsAtivas\(u\.tenant_id\)\)\.horas_aprovacao;/);
+  assert.match(ts, /const st = aprovReq \? "PENDENTE" : "APROVADO";/);
+  // edit/del liberam o próprio autor quando a aprovação está OFF.
+  assert.match(ts, /!\(!aprovReq && \(cur\.slug === u\.slug \|\| u\.coord\)\)/);
+  assert.match(ts, /!\(!aprovReqDel && \(cur\.slug === u\.slug \|\| u\.coord\)\)/);
+  // flagsAtivas é tenant-aware (param opcional).
+  assert.match(ts, /async function flagsAtivas\(tenant: string = TENANT_INTELECTO\)/);
+});
+
 test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   const files = readdirSync(join(root, "migrations")).filter((f) => f.endsWith(".sql"));
   assert.ok(files.length >= 1, "nenhuma migração");

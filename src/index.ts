@@ -300,7 +300,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-26b";
+const SCHEMA_VER = "2026-10-26c";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -314,12 +314,16 @@ const API_VER = "2026-10-26";
 const FLAGS: Record<string, { desc: string; def: boolean }> = {
   casca_nova: { desc: "Oferece a nova interface (/app) no portal clássico (link/banner).", def: false },
   casca_auto: { desc: "Leva automaticamente para a nova interface (/app) ao entrar.", def: false },
+  // D-4 — aprovação de horas (opt-in). Padrão OFF: numa empresa nova as horas entram já efetivas
+  // (sem fila de aprovação). LIGADA: todo lançamento nasce PENDENTE e só conta após a coordenação
+  // aprovar. A Intelecto é semeada com ela LIGADA (ensureSchema), preservando o fluxo atual.
+  horas_aprovacao: { desc: "Exige aprovação da coordenação para as horas entrarem nos indicadores.", def: false },
 };
-async function flagsAtivas(): Promise<Record<string, boolean>> {
+async function flagsAtivas(tenant: string = TENANT_INTELECTO): Promise<Record<string, boolean>> {
   const out: Record<string, boolean> = {};
   for (const k of Object.keys(FLAGS)) out[k] = FLAGS[k].def;
   try {
-    const r = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE k LIKE 'flag:%' AND tenant_id = ?", args: [TENANT_INTELECTO] });
+    const r = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE k LIKE 'flag:%' AND tenant_id = ?", args: [tenant] });
     for (const row of r.rows) { const n = String((row as P).k).slice(5); if (n in out) out[n] = String((row as P).v) === "1"; }
   } catch (_) { /* sem config ainda: fica nos padrões */ }
   return out;
@@ -886,6 +890,10 @@ function ensureSchema(): Promise<void> {
         ]);
       }
     } catch (_) { /* rebuild best-effort; cfg* seguem pela PK antiga se isto falhar */ }
+    // D-4 — a aprovação de horas é opt-in (padrão OFF), mas a Intelecto SEMPRE a usou: semeia a flag
+    // LIGADA para este tenant se ainda não houver valor, preservando o fluxo atual. Idempotente — não
+    // sobrescreve uma decisão posterior do dono (se ele desligar, fica desligada).
+    try { if ((await cfgGet("flag:horas_aprovacao")) === null) await cfgSet("flag:horas_aprovacao", "1"); } catch (_) {}
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS lanc_tenant ON lanc (tenant_id)"); } catch (_) {}
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS proj_tenant ON proj (tenant_id)"); } catch (_) {}
     // Tabela formal de papel (substitui a inferência por listas de slug). Fornecedor é lateral.
@@ -5196,9 +5204,14 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const e = validEntry(p.entry);
     await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
     const id = crypto.randomUUID().slice(0, 8);
+    // D-4 — opt-in: com a aprovação LIGADA o lançamento nasce PENDENTE (coordenação aprova depois);
+    // DESLIGADA, nasce já APROVADO (efetivo na hora, a=data), sem fila de aprovação.
+    const aprovReq = (await flagsAtivas(u.tenant_id)).horas_aprovacao;
+    const st = aprovReq ? "PENDENTE" : "APROVADO";
+    const ap = aprovReq ? "" : now.slice(0, 10);
     await sqlite.execute({
-      sql: "INSERT INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id) VALUES (?,?,?,?,?,?,'PENDENTE','','',?,?,?)",
-      args: [id, u.slug, e.d, e.cc, e.h, e.t, now, now, u.tenant_id],
+      sql: "INSERT INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id) VALUES (?,?,?,?,?,?,?,'',?,?,?,?)",
+      args: [id, u.slug, e.d, e.cc, e.h, e.t, st, ap, now, now, u.tenant_id],
     });
     return { ok: true, id };
   }
@@ -5207,12 +5220,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const cur = await getLanc(String(p.id), u.tenant_id);
     if (cur.slug !== u.slug && !u.coord) throw new Error("Só é possível editar o próprio lançamento.");
-    if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO") throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
+    // D-4: com aprovação LIGADA, só PENDENTE/DEVOLVIDO são editáveis. DESLIGADA, o próprio autor (ou a
+    // coordenação) corrige o seu lançamento já efetivo — não há gate de aprovação protegendo-o.
+    const aprovReq = (await flagsAtivas(u.tenant_id)).horas_aprovacao;
+    if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO" && !(!aprovReq && (cur.slug === u.slug || u.coord)))
+      throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
     await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
+    const st = aprovReq ? "PENDENTE" : "APROVADO";
+    const ap = aprovReq ? "" : now.slice(0, 10);
     await sqlite.execute({
-      sql: "UPDATE lanc SET d=?, cc=?, h=?, t=?, s='PENDENTE', m='', a='', u=? WHERE id=? AND tenant_id=?",
-      args: [e.d, e.cc, e.h, e.t, now, String(p.id), u.tenant_id],
+      sql: "UPDATE lanc SET d=?, cc=?, h=?, t=?, s=?, m='', a=?, u=? WHERE id=? AND tenant_id=?",
+      args: [e.d, e.cc, e.h, e.t, st, ap, now, String(p.id), u.tenant_id],
     });
     return { ok: true };
   }
@@ -5221,7 +5240,10 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const cur = await getLanc(String(p.id), u.tenant_id);
     if (cur.slug !== u.slug && !u.coord) throw new Error("Só é possível excluir o próprio lançamento.");
-    if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO") throw new Error("Lançamento " + cur.s + " não pode ser excluído.");
+    // D-4: aprovação OFF → o autor/coordenação pode excluir o próprio lançamento já efetivo.
+    const aprovReqDel = (await flagsAtivas(u.tenant_id)).horas_aprovacao;
+    if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO" && !(!aprovReqDel && (cur.slug === u.slug || u.coord)))
+      throw new Error("Lançamento " + cur.s + " não pode ser excluído.");
     await sqlite.execute({ sql: "DELETE FROM lanc WHERE id = ? AND tenant_id = ?", args: [String(p.id), u.tenant_id] });
     return { ok: true };
   }
