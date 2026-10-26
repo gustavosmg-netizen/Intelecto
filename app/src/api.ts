@@ -14,6 +14,20 @@ export async function api<T = any>(action: string, extra?: Record<string, unknow
   return apiCall<T>(action, extra, true);
 }
 
+// E-06 — contrato de API versionado. Toda resposta do /api carrega `apiVer`. Guardamos o valor do
+// primeiro contato; se uma resposta posterior vier com outro, o Worker foi atualizado por baixo
+// (esta casca está servida do cache antigo) e avisamos a UI para recarregar — em vez de seguir
+// chamando um contrato que pode ter mudado. Best-effort: nunca derruba a chamada em si.
+let bootApiVer: string | null = null;
+let verListener: ((v: string) => void) | null = null;
+export function apiVerAtual(): string | null { return bootApiVer; }
+export function onApiVerChange(cb: (v: string) => void): void { verListener = cb; }
+function registraApiVer(v: unknown): void {
+  if (typeof v !== "string" || !v) return;
+  if (!bootApiVer) { bootApiVer = v; return; }
+  if (v !== bootApiVer && verListener) { try { verListener(v); } catch (_) { /* listener nunca derruba */ } }
+}
+
 async function apiCall<T = any>(action: string, extra: Record<string, unknown> | undefined, permiteReauth: boolean): Promise<T> {
   let r: Response;
   try {
@@ -28,6 +42,7 @@ async function apiCall<T = any>(action: string, extra: Record<string, unknown> |
   }
   let j: any = null;
   try { j = await r.json(); } catch (_) { /* resposta não-JSON */ }
+  if (j) registraApiVer(j.apiVer); // E-06 — detecta contrato mudado (sucesso ou erro)
   if (!r.ok || !j || j.ok === false) {
     const msg = (j && (j.error as string)) || (r.status === 401 ? "Faça login no portal para continuar." : "Erro inesperado.");
     // S-03 — ação sensível pede senha reconfirmada: confirma e repete a ação uma vez.

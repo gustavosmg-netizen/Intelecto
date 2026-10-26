@@ -526,6 +526,9 @@ async function carregarHub(){
   const j=await api("hub");
   state.hub=j; state.slug=state.slug||j.slug; state.papel=j.papel;
   state.coord=j.coord; state.owner=j.owner;
+  /* E-06 — corte REVERSÍVEL: com a flag `casca_auto` ligada, leva direto à casca nova (/app).
+     Padrão desligada → ninguém é redirecionado. Guard contra loop se já estivermos em /app. */
+  try{ if(j.flags&&j.flags.casca_auto&&location.pathname.indexOf("/app")!==0){ location.replace("/app/"); return; } }catch(_){ /* nunca derruba o boot */ }
 }
 /* A navegação é derivada do que o SERVIDOR liberou (state.hub.modulos, vindo da ação
    'hub'), mais o próprio Hub no topo. Assim a sidebar nunca mostra atalho que a API
@@ -595,6 +598,17 @@ function viewHub(){
     '</div>'+
     (logo?'<span class="hub-banner-logo"><img src="'+esc(logo)+'" alt="Intelecto"></span>':'')+
   '</section>';
+  /* E-06 — entrada REVERSÍVEL para a casca nova (/app): só aparece com a flag `casca_nova` LIGADA
+     (padrão desligada → nada muda). O dono liga/desliga em Administração › Feature flags, sem
+     redeploy. Com `casca_auto` o redirecionamento acontece no carregarHub, antes de montar esta tela. */
+  var _fl=(state.hub&&state.hub.flags)||{};
+  if(_fl.casca_nova){
+    banner+='<a class="card" href="/app/" style="display:flex;align-items:center;gap:12px;margin:0 0 14px;border-color:var(--brand);text-decoration:none">'+
+      '<span style="font-size:1.4rem">✨</span>'+
+      '<span style="flex:1"><strong style="color:var(--brand)">Experimente a nova interface</strong>'+
+      '<span class="muted" style="display:block;font-size:.85rem">Uma versão mais rápida e arrastável do portal está em testes.</span></span>'+
+      '<span class="hub-cta">Abrir →</span></a>';
+  }
   /* ENTRADA ÚNICA: o Painel do Dia / Resumo Executivo entra AQUI, no topo da tela Início,
      seguido da grade de módulos. Acaba a duplicidade das duas "Início". */
   var painel="";try{painel=viewInicio();}catch(e){painel="";}

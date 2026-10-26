@@ -301,6 +301,29 @@ const SESS_DIAS = 30;
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
 const SCHEMA_VER = "2026-10-21b";
+/* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
+ * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
+ * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
+ * contra um contrato que mudou. Bumpar SÓ quando o contrato do /api mudar de forma incompatível. */
+const API_VER = "2026-10-26";
+/* E-06 — FEATURE FLAGS. Registro das flags conhecidas com seu padrão (default-safe = OFF: ligar é
+ * decisão explícita). O valor efetivo vem de config `flag:<nome>` (dono liga/desliga em runtime via
+ * ação `flagset`, SEM redeploy), caindo no padrão quando não há chave. Servem para o corte da casca
+ * nova ser REVERSÍVEL por um toggle. Exposto no `hub` e na ação `flags`; o gate real de cada AÇÃO
+ * continua sendo o MIN no servidor — flag é de PRODUTO (o que o front oferece), não de autorização. */
+const FLAGS: Record<string, { desc: string; def: boolean }> = {
+  casca_nova: { desc: "Oferece a nova interface (/app) no portal clássico (link/banner).", def: false },
+  casca_auto: { desc: "Leva automaticamente para a nova interface (/app) ao entrar.", def: false },
+};
+async function flagsAtivas(): Promise<Record<string, boolean>> {
+  const out: Record<string, boolean> = {};
+  for (const k of Object.keys(FLAGS)) out[k] = FLAGS[k].def;
+  try {
+    const r = await sqlite.execute({ sql: "SELECT k, v FROM config WHERE k LIKE 'flag:%' AND tenant_id = ?", args: [TENANT_INTELECTO] });
+    for (const row of r.rows) { const n = String((row as P).k).slice(5); if (n in out) out[n] = String((row as P).v) === "1"; }
+  } catch (_) { /* sem config ainda: fica nos padrões */ }
+  return out;
+}
 /** Prioridade 1-100 = média de (G×U×T)/125 e (Impacto×Esforço)/25, ambas em %. 0 = não avaliado. */
 function prioridade100(g: unknown, u: unknown, t: unknown, imp: unknown, esf: unknown): number {
   const gut = (Number(g) || 0) * (Number(u) || 0) * (Number(t) || 0); // 0-125
@@ -1243,7 +1266,7 @@ const SENSIVEIS = new Set<string>([
   "fluxoSet", "fluxoDel", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
   "capacidadeSet", "resumoExecFechar",
   "permset", "acset", "resetpin",
-  "restore_backup",
+  "restore_backup", "flagset",
 ]);
 /** Exige que a sessão do token tenha reautenticado nos últimos REAUTH_MIN minutos. Senão lança um
  *  erro marcado (REAUTH_NECESSARIO:) que o front reconhece para pedir a senha e repetir a ação. */
@@ -1848,6 +1871,8 @@ const MIN: Record<string, Papel> = {
   backup_now: "coordenacao",
   // Restauracao do backup (R2->D1) — drill de recuperacao; handler exige isOwner + reauth (SENSIVEIS).
   restore_backup: "coordenacao",
+  // E-06 — flags de produto: leitura por qualquer logado; escrita so o dono (handler) + reauth.
+  flags: "cliente", flagset: "coordenacao",
   // T4 — Hub/Launcher: piso = cliente (TODO logado pode perguntar o PROPRIO Hub). A acao
   // 'hub' apenas DEVOLVE a lista de modulos liberados; a liberacao de cada card deriva do
   // piso MIN da acao que o governa (ver MODULOS/modulosLiberados), nunca de flag de front.
@@ -2174,6 +2199,8 @@ const EVENTOS_SENSIVEIS: string[] = [
   "email_falha",
   // E-05 — restauração do backup (R2->D1): evento crítico, sempre retido na trilha.
   "restore_backup",
+  // E-06 — liga/desliga de feature flag (controla o que o front oferece): retido na trilha.
+  "flag_set",
 ];
 /** T6 — tamanho maximo do avatar (comprimento da data URL, em caracteres). ~64 KB: a foto
  *  e PEQUENA e sem upload externo; o front reduz a imagem a um quadrado pequeno antes de
@@ -3882,7 +3909,29 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       ok: true, slug: u.slug, nome: NOMES[u.slug] || u.slug, papel: u.papel,
       papelLabel: PAPEL_LABEL[u.papel] || u.papel, coord: u.coord,
       owner: isOwner(u.slug), tenant: u.tenant_id, modulos, caps,
+      // E-06 — handshake de boot: versão do contrato, versão do schema e flags de produto ativas.
+      apiVer: API_VER, schemaVer: SCHEMA_VER, flags: await flagsAtivas(),
     };
+  }
+
+  if (action === "flags") {
+    // E-06 — flags ativas para o front (produto, não autorização). Piso 'cliente': todo logado lê
+    // as suas (o portal clássico usa p/ decidir se oferece a nova interface). Dono inclui o catálogo.
+    const u = await auth(p);
+    const flags = await flagsAtivas();
+    return isOwner(u.slug) ? { ok: true, flags, catalogo: FLAGS } : { ok: true, flags };
+  }
+
+  if (action === "flagset") {
+    // E-06 — liga/desliga uma flag em runtime (SEM redeploy). Dono-only + reauth (SENSIVEIS). Auditado.
+    const u = await auth(p);
+    if (!isOwner(u.slug)) throw new Error("Apenas o dono altera as flags.");
+    const nome = String(p.flag || "");
+    if (!(nome in FLAGS)) throw new Error("Flag desconhecida: " + nome);
+    const on = p.on === true || p.on === "true" || p.on === 1 || p.on === "1";
+    await cfgSet("flag:" + nome, on ? "1" : "0");
+    await audit("flag_set", u.slug, nome + "=" + (on ? "1" : "0"), ip);
+    return { ok: true, flag: nome, on, flags: await flagsAtivas() };
   }
 
   /* ============================================================================
@@ -5922,6 +5971,8 @@ app.post("/api", async (c) => {
     } else if (action === "logout") {
       c.header("Set-Cookie", "ce_t=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
     }
+    // E-06 — carimba a versão do contrato em toda resposta-objeto (o front detecta mismatch).
+    if (out && typeof out === "object") (out as any).apiVer = API_VER;
     // RED (Rate/Errors/Duration): sem PII (só ação, duração, ok). Lento vira sinal por si.
     logEvent({ ev: "api", reqId, action, ms: Date.now() - t0, ok: true });
     return c.json(out);
@@ -5935,9 +5986,9 @@ app.post("/api", async (c) => {
     logEvent({ ev: "api", reqId, action, ms: Date.now() - t0, ok: false, kind: interno ? "interno" : reauth ? "reauth" : "negocio", msg: interno ? msg : undefined });
     if (interno) {
       try { await audit("erro_interno", "-", reqId + " " + msg, ip); } catch { /* auditoria nunca derruba a resposta */ }
-      return c.json({ ok: false, error: "Não foi possível concluir. Tente de novo; se persistir, avise a Coordenação (ref " + reqId + ")." });
+      return c.json({ ok: false, error: "Não foi possível concluir. Tente de novo; se persistir, avise a Coordenação (ref " + reqId + ").", apiVer: API_VER });
     }
-    return c.json({ ok: false, error: msg });
+    return c.json({ ok: false, error: msg, apiVer: API_VER });
   }
 });
 

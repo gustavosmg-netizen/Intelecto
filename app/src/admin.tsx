@@ -10,6 +10,46 @@ function ErroCard({ e }: { e: ApiError }) {
 const th: React.CSSProperties = { textAlign: "left", padding: "8px 10px", font: "600 11px var(--fm)", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)" };
 const td: React.CSSProperties = { padding: "8px 10px", verticalAlign: "top" };
 
+// E-06 — painel de feature flags (só o dono recebe o `catalogo`; para os demais o card não aparece).
+// Liga/desliga recursos em runtime (sem redeploy); o toggle chama `flagset` (dono + reauth, tratado
+// no api.ts). Torna o corte da nova interface reversível por aqui.
+function FlagsCard() {
+  const [j, setJ] = useState<any>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api<any>("flags").then(setJ).catch(() => setJ({})); }, []);
+  if (!j || !j.catalogo) return null;
+  const cat: Record<string, { desc: string; def: boolean }> = j.catalogo;
+  const flags: Record<string, boolean> = j.flags || {};
+  const toggle = async (nome: string, on: boolean) => {
+    setBusy(nome); setErr(null);
+    try { const r = await api<any>("flagset", { flag: nome, on }); setJ({ ...j, flags: r.flags }); }
+    catch (e) { setErr((e as ApiError).message); }
+    finally { setBusy(null); }
+  };
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div style={{ fontWeight: 700 }}>Feature flags</div>
+      <div className="muted" style={{ fontSize: 12, margin: "2px 0 8px" }}>Ligam/desligam recursos em runtime, sem redeploy. O corte da nova interface é reversível por aqui.</div>
+      {err && <p style={{ color: "var(--crit)", fontSize: 13, margin: "0 0 8px" }}>{err}</p>}
+      {Object.keys(cat).map((nome) => {
+        const on = !!flags[nome];
+        return (
+          <div key={nome} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line)" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: "var(--fm)", fontSize: 12 }}>{nome}</div>
+              <div className="muted" style={{ fontSize: 12.5 }}>{cat[nome].desc}</div>
+            </div>
+            <button className={"btn " + (on ? "primary" : "")} disabled={busy === nome} onClick={() => toggle(nome, !on)}>
+              {busy === nome ? "…" : on ? "Ligada" : "Desligada"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const sevCor = (s: string) => s === "crit" ? "var(--crit)" : s === "alto" ? "var(--warn)" : "var(--muted)";
 const sevNome = (s: string) => s === "crit" ? "Crítico" : s === "alto" ? "Alto" : "Médio";
 const atalhoHash: Record<string, string> = {
@@ -37,6 +77,7 @@ export function Administracao() {
 
   return (
     <>
+      <FlagsCard />
       <div className="card" style={{ marginBottom: 14, borderColor: j.criticosAbertos > 0 ? "var(--crit)" : "var(--line)" }}>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline" }}>
           <div><b style={{ fontSize: 20, color: j.criticosAbertos > 0 ? "var(--crit)" : "var(--ok)" }}>{j.criticosAbertos || 0}</b> <span className="muted">regra(s) crítica(s) aberta(s)</span></div>

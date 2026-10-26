@@ -275,6 +275,30 @@ test("Auth: PBKDF2 respeita o teto de 100000 iterações do runtime do Worker", 
   assert.match(ts, /if \(iter > 100000\) return false;/);
 });
 
+test("E-06: contrato de API versionado + feature flags", () => {
+  const ts = read("src/index.ts");
+  // contrato versionado: API_VER existe e é carimbado em toda resposta do /api.
+  assert.match(ts, /const API_VER = "/);
+  assert.match(ts, /\(out as any\)\.apiVer = API_VER/);
+  // feature flags: registro + leitura efetiva + ações flags/flagset (dono + auditada).
+  assert.match(ts, /const FLAGS: Record<string, \{ desc: string; def: boolean \}>/);
+  assert.match(ts, /async function flagsAtivas/);
+  assert.match(ts, /action === "flags"/);
+  assert.match(ts, /action === "flagset"/);
+  assert.match(ts, /Apenas o dono altera as flags/);
+  assert.match(ts, /audit\("flag_set"/);
+  // flagset é sensível (dono + reauth) e retido na trilha; hub carrega o handshake.
+  assert.ok(/const SENSIVEIS = new Set<string>\(\[[\s\S]*?"flagset"[\s\S]*?\]\)/.test(ts), "flagset em SENSIVEIS");
+  assert.ok(/const EVENTOS_SENSIVEIS[\s\S]*?"flag_set"[\s\S]*?\];/.test(ts), "flag_set retido na trilha");
+  assert.match(ts, /apiVer: API_VER, schemaVer: SCHEMA_VER, flags: await flagsAtivas\(\)/);
+  // front: detecta mismatch de contrato e oferece recarregar; entrada reversível no portal clássico.
+  assert.match(read("app/src/api.ts"), /export function onApiVerChange/);
+  assert.match(read("app/src/App.tsx"), /onApiVerChange\(\(\) => setNovaVersao\(true\)\)/);
+  assert.match(read("app/src/admin.tsx"), /function FlagsCard/);
+  assert.match(read("public/index.html"), /_fl\.casca_nova/);
+  assert.match(read("public/index.html"), /casca_auto/);
+});
+
 test("Onda 1: catálogo de atividades + capacidade com vigência (CAP20 só como semente)", () => {
   const ts = read("src/index.ts");
   assert.match(ts, /CREATE TABLE IF NOT EXISTS atividade_classe/);

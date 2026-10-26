@@ -12,11 +12,13 @@ import { Administracao } from "./admin";
 import { Inteligencia } from "./inteligencia";
 import { Vitrine } from "./vitrine";
 import { AcademiaCatalogo, CursoPlayer } from "./academia";
+import { onApiVerChange } from "./api";
 
 export function App() {
   const [{ area: rota, sub }, setLoc] = useState(parseHash());
   const [palOpen, setPalOpen] = useState(false);
   const [projView, setProjView] = useState<"lista" | "quadro" | "cronograma">("lista");
+  const [novaVersao, setNovaVersao] = useState(false); // E-06 — contrato de API mudou sob os pés
 
   useEffect(() => {
     const onHash = () => setLoc(parseHash());
@@ -33,10 +35,20 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // E-06 — se o /api passar a responder com outra versão de contrato, a casca está servida do cache
+  // antigo: oferece recarregar em vez de seguir chamando um contrato que mudou.
+  useEffect(() => { onApiVerChange(() => setNovaVersao(true)); }, []);
+
   const area = AREAS.find((a) => a.id === rota) || AREAS[0];
 
   return (
     <>
+      {novaVersao && (
+        <div role="alert" style={{ background: "#1f7a3d", color: "#fff", padding: "8px 16px", display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
+          <span>Uma versão mais nova do portal está disponível.</span>
+          <button className="btn" style={{ background: "#fff", color: "#1f7a3d", border: 0, padding: "4px 10px", borderRadius: 6, cursor: "pointer" }} onClick={() => location.reload()}>Recarregar</button>
+        </div>
+      )}
       <header className="topbar">
         <span className="brand"><span className="dot">I</span> Portal Intelecto</span>
         <nav className="nav">
