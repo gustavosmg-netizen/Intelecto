@@ -368,6 +368,14 @@ test("D-5: vídeo self-hosted da Academia (R2 + rota com Range)", () => {
   assert.match(read("app/src/academia.tsx"), /Vídeo hospedado \(chave no R2\)/);
 });
 
+test("Acervo/MCP: catset unifica cat:json + cat:b64 (buscar_norma enxerga o import)", () => {
+  const ts = read("src/index.ts");
+  // catset grava os dois formatos; o /mcp lê cat:b64 com fallback para cat:json.
+  assert.match(ts, /function b64FromStr/);
+  assert.match(ts, /await cfgSet\("cat:b64", b64FromStr\(j\)\)/);
+  assert.match(ts, /if \(!raw\) raw = \(await cfgGet\("cat:json"\)\) \|\| "";/);
+});
+
 test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   const files = readdirSync(join(root, "migrations")).filter((f) => f.endsWith(".sql"));
   assert.ok(files.length >= 1, "nenhuma migração");

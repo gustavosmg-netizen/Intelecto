@@ -1229,6 +1229,14 @@ async function cfgSet(k: string, v: string, tenant: string = TENANT_INTELECTO) {
 async function cfgDel(k: string, tenant: string = TENANT_INTELECTO) {
   await sqlite.execute({ sql: "DELETE FROM config WHERE k = ? AND tenant_id = ?", args: [k, tenant] });
 }
+/** Base64 de uma string UTF-8, no formato que o loader do /mcp decodifica (atob -> bytes -> UTF-8).
+ *  Em chunks para não estourar a pilha em catálogos grandes (centenas de entradas). */
+function b64FromStr(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = ""; const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
 /** Acesso à aba Comercial (Leads Ambientais): allowlist de slugs em config `perm:comercial`
  *  (lista separada por vírgula), além do dono. Mesmo padrão do `perm:escritorio`. */
 async function podeComercial(slug: string): Promise<boolean> {
@@ -5347,7 +5355,12 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p); if (!u.coord) throw new Error("Apenas a Coordenação importa o catálogo.");
     const j = String(p.json || ""); if (j.length < 2) throw new Error("JSON do catálogo vazio.");
     try { JSON.parse(j); } catch { throw new Error("JSON do catálogo inválido."); }
-    await cfgSet("cat:json", j); await audit("catset", u.slug, "catalogo " + j.length + " bytes", ip);
+    // Grava o catálogo nos DOIS formatos: cat:json (lido por catinfo/UI) e cat:b64 (lido pelo /mcp).
+    // Antes só cat:json era escrito, então importar pela UI NÃO atualizava o buscar_norma/acervo do
+    // MCP — a integração ficava pendente. Unificado aqui: um import alimenta os dois canais.
+    await cfgSet("cat:json", j);
+    try { await cfgSet("cat:b64", b64FromStr(j)); } catch (_) { /* best-effort: o fallback do loader cai em cat:json */ }
+    await audit("catset", u.slug, "catalogo " + j.length + " bytes (json+b64)", ip);
     return { ok: true, bytes: j.length };
   }
 
@@ -6382,9 +6395,14 @@ app.post("/mcp", async (c) => {
    * Carrega sob demanda (loadCat, chamado no ramo tools/call) para o handshake de tools ficar leve. */
   let AC: any[] = [], PR: any[] = [], PA: any = {};
   const loadCat = async () => {
+    // Fonte primária: cat:b64. Fallback: cat:json (catálogo importado pela UI antes da unificação
+    // catset→cat:b64 — assim o MCP enxerga o que já foi importado, sem reimportar).
+    let raw = "";
     const b64 = (await cfgGet("cat:b64")) || "";
-    if (!b64) return;
-    try { const cat = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)))); AC = cat.acervo || []; PR = cat.prec || []; PA = cat.param || {}; } catch { /* catalogo ausente/invalido: fns do acervo retornam vazio */ }
+    if (b64) { try { raw = new TextDecoder().decode(Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0))); } catch { raw = ""; } }
+    if (!raw) raw = (await cfgGet("cat:json")) || "";
+    if (!raw) return;
+    try { const cat = JSON.parse(raw); AC = cat.acervo || []; PR = cat.prec || []; PA = cat.param || {}; } catch { /* catalogo ausente/invalido: fns do acervo retornam vazio */ }
   };
   const nm = (s: any) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const mt = (hay: any[], termo: string) => { const t = nm(termo); if (!t) return true; return t.split(/\s+/).every((w) => hay.some((x) => nm(x).includes(w))); };
