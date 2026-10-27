@@ -5507,6 +5507,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug=a.slug AND c.tenant_id = ?)", args: [T, T] },
       { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
         sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
+      ...regrasExtra(T), // Onda 3-A: C17 (contrato sem projeto) e C18 (PROPOSTO parado)
     ];
     const out: P[] = [];
     for (const r of regras) {
