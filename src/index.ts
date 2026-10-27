@@ -5,6 +5,7 @@
  */
 import { Hono } from "hono";
 import { marked } from "marked";
+import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -318,6 +319,8 @@ const FLAGS: Record<string, { desc: string; def: boolean }> = {
   // (sem fila de aprovação). LIGADA: todo lançamento nasce PENDENTE e só conta após a coordenação
   // aprovar. A Intelecto é semeada com ela LIGADA (ensureSchema), preservando o fluxo atual.
   horas_aprovacao: { desc: "Exige aprovação da coordenação para as horas entrarem nos indicadores.", def: false },
+  // Onda 3-A — contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.
+  contrato_abre_projeto: { desc: "Contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.", def: false },
 };
 async function flagsAtivas(tenant: string = TENANT_INTELECTO): Promise<Record<string, boolean>> {
   const out: Record<string, boolean> = {};
@@ -3607,6 +3610,22 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       args: [id, u.tenant_id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u.slug, now, now],
     });
     await audit("contrato", u.slug, (isNew ? "novo " : "edit ") + id + " cc=" + cc + " " + status + " valor=" + valor, ip);
+    // Onda 3-A: contrato confirmado PROPÕE o projeto (PROPOSTO) + parcela inicial, atrás de flag.
+    // Idempotente (ON CONFLICT DO NOTHING no proj/projx; parcela só se ainda não houver). O valor
+    // NÃO é regravado em projx — o dono é o contrato (valorContratadoMap deriva dele).
+    if (status === "confirmado") {
+      const flagOn = (await flagsAtivas(u.tenant_id)).contrato_abre_projeto;
+      if (flagOn) {
+        const pc = await sqlite.execute({ sql: "SELECT 1 FROM contrato_parcela WHERE contrato_id = ? AND tenant_id = ? LIMIT 1", args: [id, u.tenant_id] });
+        const parcelaId = "PC-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+        const plano = planoProporProjeto(
+          { cc, valor, status, titulo, contratoId: id, tenant: u.tenant_id, now, parcelaId },
+          { flagOn, temParcela: pc.rows.length > 0 },
+        );
+        for (const s of plano) await sqlite.execute(s);
+        if (plano.length) await audit("projeto_proposto_de_contrato", u.slug, cc + " <- " + id, ip);
+      }
+    }
     return { ok: true, id, cc, isNew };
   }
   if (action === "financeiro") {

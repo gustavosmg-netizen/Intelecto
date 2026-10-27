@@ -77,6 +77,13 @@ test("Onda 1: imposto é sobre o contrato (faturamento), não sobre horas, com p
   assert.match(ts, /action === "impostoPadraoSet"/);
 });
 
+test("Onda 3-A: contratoSet dispara planoProporProjeto atrás da flag contrato_abre_projeto", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /from "\.\/onda3a\.mjs"/);
+  assert.match(ts, /planoProporProjeto\(/);
+  assert.match(ts, /contrato_abre_projeto/);
+});
+
 test("migração 0002 cria colunas de contrato e parcelas", () => {
   const sql = read("migrations/0002_contrato.sql");
   for (const c of ["status", "tipo", "deal_id"]) {
