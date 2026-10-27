@@ -5,6 +5,7 @@
  */
 import { Hono } from "hono";
 import { marked } from "marked";
+import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -318,6 +319,8 @@ const FLAGS: Record<string, { desc: string; def: boolean }> = {
   // (sem fila de aprovação). LIGADA: todo lançamento nasce PENDENTE e só conta após a coordenação
   // aprovar. A Intelecto é semeada com ela LIGADA (ensureSchema), preservando o fluxo atual.
   horas_aprovacao: { desc: "Exige aprovação da coordenação para as horas entrarem nos indicadores.", def: false },
+  // Onda 3-A — contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.
+  contrato_abre_projeto: { desc: "Contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.", def: false },
 };
 async function flagsAtivas(tenant: string = TENANT_INTELECTO): Promise<Record<string, boolean>> {
   const out: Record<string, boolean> = {};
@@ -1696,13 +1699,26 @@ async function impostoPadrao(tenant: string): Promise<number> {
 /** REGRA DE STATUS (Onda 1): um projeto CONCLUÍDO ou CANCELADO não recebe horas. Bloqueia o
  *  lançamento/edição na fonte (não só na tela) — é o que impede a recorrência de "concluído com
  *  horas novas". CC sem projeto cadastrado (reunião, ausência, treinamento) passa, como hoje. */
-async function bloqueiaSeFechado(cc: string, tenant: string): Promise<void> {
+async function bloqueiaSeFechado(cc: string, tenant: string, opts: { forcar?: boolean; podeAprovar?: boolean } = {}): Promise<boolean> {
   const r = await sqlite.execute({ sql: "SELECT status FROM proj WHERE cc = ? AND tenant_id = ?", args: [cc, tenant] });
-  if (!r.rows.length) return;
+  if (!r.rows.length) return false;
   const st = String((r.rows[0] as P).status || "").toUpperCase();
-  if (st.indexOf("CONCLU") >= 0 || st.indexOf("CANCEL") >= 0) {
-    throw new Error("Projeto " + st.toLowerCase() + " não recebe horas. Peça à Coordenação para reabrir o status antes de lançar.");
+  const encerrado = st.indexOf("CONCLU") >= 0 || st.indexOf("CANCEL") >= 0;
+  if (decideBloqueioHoras(st, { forcar: !!opts.forcar, podeAprovar: !!opts.podeAprovar }).bloqueia) {
+    // Sugere CCs ATIVOS do mesmo cliente, para o autor corrigir o destino do lançamento.
+    let sug = "";
+    try {
+      const s = await sqlite.execute({
+        sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO' AND cliente <> '' AND cliente = (SELECT cliente FROM proj WHERE cc = ? AND tenant_id = ?) AND cc <> ? ORDER BY cc LIMIT 5",
+        args: [tenant, cc, tenant, cc],
+      });
+      const ls = (s.rows as P[]).map((x) => String(x.cc)).join(", ");
+      if (ls) sug = " CCs ativos do mesmo cliente: " + ls + ".";
+    } catch (_) { /* sem coluna cliente: segue sem sugestão */ }
+    throw new Error("Projeto " + st.toLowerCase() + " não recebe horas." + sug + " A Coordenação pode lançar retroativo marcando 'forçar'.");
   }
+  // Passou: devolve true quando foi por EXCEÇÃO (projeto encerrado, forçado por quem aprova) — para auditar.
+  return encerrado && !!opts.forcar && !!opts.podeAprovar;
 }
 /** ANDAMENTO ÚNICO (Onda 1): o progresso DERIVA dos marcos (etapa atual ÷ total), não de um campo
  *  manual. Devolve o % 0-100 quando há total de etapas; null quando ainda não há marcos (aí a tela
@@ -3607,6 +3623,22 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       args: [id, u.tenant_id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u.slug, now, now],
     });
     await audit("contrato", u.slug, (isNew ? "novo " : "edit ") + id + " cc=" + cc + " " + status + " valor=" + valor, ip);
+    // Onda 3-A: contrato confirmado PROPÕE o projeto (PROPOSTO) + parcela inicial, atrás de flag.
+    // Idempotente (ON CONFLICT DO NOTHING no proj/projx; parcela só se ainda não houver). O valor
+    // NÃO é regravado em projx — o dono é o contrato (valorContratadoMap deriva dele).
+    if (status === "confirmado") {
+      const flagOn = (await flagsAtivas(u.tenant_id)).contrato_abre_projeto;
+      if (flagOn) {
+        const pc = await sqlite.execute({ sql: "SELECT 1 FROM contrato_parcela WHERE contrato_id = ? AND tenant_id = ? LIMIT 1", args: [id, u.tenant_id] });
+        const parcelaId = "PC-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+        const plano = planoProporProjeto(
+          { cc, valor, status, titulo, contratoId: id, tenant: u.tenant_id, now, parcelaId },
+          { flagOn, temParcela: pc.rows.length > 0 },
+        );
+        for (const s of plano) await sqlite.execute(s);
+        if (plano.length) await audit("projeto_proposto_de_contrato", u.slug, cc + " <- " + id, ip);
+      }
+    }
     return { ok: true, id, cc, isNew };
   }
   if (action === "financeiro") {
@@ -5202,7 +5234,10 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "add") {
     const u = await auth(p);
     const e = validEntry(p.entry);
-    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
+    const capsAdd = await capsDe({ slug: u.slug, papel: u.papel });
+    const podeAprovarAdd = temCapSet(capsAdd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
+    const forcadoAdd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarAdd });
+    if (forcadoAdd) await audit("hora_retroativa_forcada", u.slug, e.cc, ip); // regra de status + exceção auditada
     const id = crypto.randomUUID().slice(0, 8);
     // D-4 — opt-in: com a aprovação LIGADA o lançamento nasce PENDENTE (coordenação aprova depois);
     // DESLIGADA, nasce já APROVADO (efetivo na hora, a=data), sem fila de aprovação.
@@ -5226,7 +5261,10 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO" && !(!aprovReq && (cur.slug === u.slug || u.coord)))
       throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
-    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
+    const capsEd = await capsDe({ slug: u.slug, papel: u.papel });
+    const podeAprovarEd = temCapSet(capsEd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
+    const forcadoEd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarEd });
+    if (forcadoEd) await audit("hora_retroativa_forcada", u.slug, e.cc, ip); // regra de status + exceção auditada
     const st = aprovReq ? "PENDENTE" : "APROVADO";
     const ap = aprovReq ? "" : now.slice(0, 10);
     await sqlite.execute({
@@ -5469,6 +5507,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug=a.slug AND c.tenant_id = ?)", args: [T, T] },
       { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
         sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
+      ...regrasExtra(T), // Onda 3-A: C17 (contrato sem projeto) e C18 (PROPOSTO parado)
     ];
     const out: P[] = [];
     for (const r of regras) {

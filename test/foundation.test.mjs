@@ -77,6 +77,13 @@ test("Onda 1: imposto é sobre o contrato (faturamento), não sobre horas, com p
   assert.match(ts, /action === "impostoPadraoSet"/);
 });
 
+test("Onda 3-A: contratoSet dispara planoProporProjeto atrás da flag contrato_abre_projeto", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /from "\.\/onda3a\.mjs"/);
+  assert.match(ts, /planoProporProjeto\(/);
+  assert.match(ts, /contrato_abre_projeto/);
+});
+
 test("migração 0002 cria colunas de contrato e parcelas", () => {
   const sql = read("migrations/0002_contrato.sql");
   for (const c of ["status", "tipo", "deal_id"]) {
@@ -89,11 +96,37 @@ test("Onda 1: regra de status (concluído/cancelado não recebe horas) + andamen
   const ts = read("src/index.ts");
   assert.match(ts, /async function bloqueiaSeFechado/);
   assert.match(ts, /não recebe horas/);
-  // o bloqueio roda no lançar e no editar.
-  assert.match(ts, /await bloqueiaSeFechado\(e\.cc, u\.tenant_id\)/);
+  // o bloqueio roda no lançar e no editar (agora com 3º arg = opções de exceção).
+  assert.match(ts, /await bloqueiaSeFechado\(e\.cc, u\.tenant_id, \{/);
   // progresso derivado dos marcos.
   assert.match(ts, /function pctEtapa/);
   assert.match(ts, /progressoDerivado: pctEtapa/);
+});
+
+test("Onda 3-A: guard de horas usa decideBloqueioHoras + exceção auditada + sugestão de CC", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /decideBloqueioHoras\(/);
+  assert.match(ts, /hora_retroativa_forcada/);
+  assert.match(ts, /CCs ativos do mesmo cliente/);
+});
+
+test("Onda 3-A: Painel de Consistência inclui regrasExtra (C17/C18) sem perder as antigas", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /\.\.\.regrasExtra\(T\)/);
+  assert.match(ts, /rule: "C1"/); // regras antigas inline preservadas
+});
+
+test("Onda 3-A: UI clássica oferece lançamento retroativo forçado à Coordenação", () => {
+  const html = read("public/index.html");
+  assert.match(html, /forcar:true/);
+  assert.match(html, /não recebe horas/);
+});
+
+test("Onda 3-A: exceção do guard é cap-only (projetos.aprovar), coerente com projaprovar — sem || u.coord", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /podeAprovarAdd = temCapSet\(capsAdd, "projetos\.aprovar"\);/);
+  assert.match(ts, /podeAprovarEd = temCapSet\(capsEd, "projetos\.aprovar"\);/);
+  assert.doesNotMatch(ts, /podeAprovar(Add|Ed) = .*u\.coord/);
 });
 
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
