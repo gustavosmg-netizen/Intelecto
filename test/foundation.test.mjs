@@ -116,6 +116,12 @@ test("Onda 3-A: Painel de Consistência inclui regrasExtra (C17/C18) sem perder 
   assert.match(ts, /rule: "C1"/); // regras antigas inline preservadas
 });
 
+test("Onda 3-A: UI clássica oferece lançamento retroativo forçado à Coordenação", () => {
+  const html = read("public/index.html");
+  assert.match(html, /forcar:true/);
+  assert.match(html, /não recebe horas/);
+});
+
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
   const pkg = JSON.parse(read("app/package.json"));
   assert.ok(pkg.dependencies.react, "app sem react");

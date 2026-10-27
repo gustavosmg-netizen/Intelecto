@@ -4665,20 +4665,27 @@ function viewLancar(){
   </div>`;
 }
 function ligaLancar(){
-  $("#lc-btn").onclick=enviarLanc;
+  $("#lc-btn").onclick=function(){enviarLanc();}; // clique normal: forcar undefined (não o Event)
 }
-async function enviarLanc(){
+async function enviarLanc(forcar){
   const msg=$("#lc-msg");msg.textContent="";
   let cc=($("#lc-cc")?$("#lc-cc").value:"").trim();
   const entry={ d:$("#lc-d").value, cc:cc,
     h:Number(String($("#lc-h").value).replace(",",".")), t:$("#lc-t").value.trim() };
   const btn=$("#lc-btn");btn.disabled=true;
   try{
-    await api("add",{entry});
+    await api("add",forcar?{entry,forcar:true}:{entry});
     await carregarState();
-    toast("Lançamento registrado (pendente de aprovação).");
+    toast(forcar?"Lançamento retroativo registrado.":"Lançamento registrado (pendente de aprovação).");
     irPara("apont");
-  }catch(e){msg.textContent=e.message}
+  }catch(e){
+    msg.textContent=e.message;
+    // Exceção da Coordenação: projeto encerrado aceita lançamento retroativo forçado (auditado no servidor).
+    if(!forcar && /não recebe horas/.test(e.message) && (state.coord||state.owner)){
+      let ok=false; try{ ok=confirm("Projeto encerrado. Lançar retroativo como Coordenação (forçar)?"); }catch(_){ ok=false; }
+      if(ok){ btn.disabled=false; return enviarLanc(true); }
+    }
+  }
   btn.disabled=false;
 }
 
