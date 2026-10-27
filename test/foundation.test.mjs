@@ -475,3 +475,13 @@ test("Onda 3-B: cron diário + regras agendadas atrás da flag", () => {
   assert.match(ts, /await resumoExecutivo\(TENANT_INTELECTO\)/);
   assert.match(ts, /INSERT INTO fin_snapshot/);
 });
+
+test("Onda 3-B: casca clássica tem o sino de notificações", () => {
+  const html = read("public/index.html");
+  // Consome as duas ações novas (listar + marcar lida) e tem o gatilho na casca.
+  assert.match(html, /api\("notificacoes"\)/);
+  assert.match(html, /api\("notifLida"/);
+  assert.match(html, /id="ap-sino"/);
+  // Conteúdo vem escapado (o texto da notificação é gerado pelo servidor, mas nunca cru no DOM).
+  assert.match(html, /esc\(n\.titulo\)/);
+});
