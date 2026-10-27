@@ -301,7 +301,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-26c";
+const SCHEMA_VER = "2026-10-27a";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -1212,6 +1212,22 @@ function ensureSchema(): Promise<void> {
       try { await sqlite.execute({ sql: "DELETE FROM vitrine_case WHERE tenant_id = ? AND cid IN ('vexemplo-ete','vexemplo-tratabilidade') AND u = 'seed'", args: [TENANT_INTELECTO] }); } catch (_) {}
     } catch (_) { /* ja existe */ }
 
+    /* ONDA 3-B — NOTIFICACOES IN-PORTAL. Caixa de avisos gerada pelas REGRAS AGENDADAS (cron
+     * diario, atras da flag `regras_agendadas`). Nao ha e-mail (sem binding), entao o aviso
+     * mora aqui e e lido pelo "sino" do portal. `destino` e o slug do colaborador OU o token de
+     * grupo '@coordenacao' (proj nao tem campo responsavel; ver spec §2). O UNIQUE
+     * (tenant_id,tipo,ref,periodo) e a DEDUP POR JANELA: com `INSERT OR IGNORE`, re-rodar o cron
+     * no mesmo periodo nao duplica nada e nao reabre o que ja foi lido; a condicao que persistir
+     * reaparece no periodo seguinte (semana ISO / nivel de estouro / mes). */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS notificacao (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto',
+        destino TEXT NOT NULL, tipo TEXT NOT NULL, ref TEXT DEFAULT '', periodo TEXT DEFAULT '',
+        titulo TEXT DEFAULT '', texto TEXT DEFAULT '', criado TEXT DEFAULT '', lido INTEGER DEFAULT 0,
+        UNIQUE(tenant_id, tipo, ref, periodo))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS notificacao_cx ON notificacao (tenant_id, destino, lido, criado)"); } catch (_) {}
+    } catch (_) { /* ja existe */ }
+
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
      * os cold starts seguintes deste D1 (nova instancia = `ready` resetado) leem
      * schema_ver == SCHEMA_VER e pulam todo o setup. Em D1 EXISTENTE sem sentinela
@@ -1914,6 +1930,10 @@ const MIN: Record<string, Papel> = {
   // RITOS & CADENCIA (catalogo da Agenda): leitura p/ todo logado; editar/remover = coordenacao
   // (o handler ainda confere agenda.editar, alinhado ao resto da Agenda).
   ritos: "cliente", ritoset: "coordenacao", ritodel: "coordenacao",
+  // ONDA 3-B — caixa de notificações do portal ("sino"). Piso 'cliente': todo logado lê as SUAS;
+  // o recorte por destino (slug próprio + '@coordenacao' só para quem aprova projetos) é DENTRO
+  // da ação, no WHERE — o guard aqui é só o piso.
+  notificacoes: "cliente", notifLida: "cliente",
   progcurso: "equipe", setprog: "equipe", addparam: "equipe", delparam: "equipe",
   addbiblio: "equipe", delbiblio: "equipe", add: "equipe", edit: "equipe", del: "equipe",
   acervo_busca: "equipe",
@@ -4010,6 +4030,41 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await cfgSet("flag:" + nome, on ? "1" : "0");
     await audit("flag_set", u.slug, nome + "=" + (on ? "1" : "0"), ip);
     return { ok: true, flag: nome, on, flags: await flagsAtivas() };
+  }
+
+  /* ONDA 3-B — NOTIFICACOES IN-PORTAL (o "sino"). Caixa de avisos das REGRAS AGENDADAS. Piso
+   * 'cliente' no guard: todo logado le as SUAS. O recorte e por DESTINO, aqui dentro: o proprio
+   * slug SEMPRE, e o alvo de grupo '@coordenacao' SO para quem aprova projetos (coordenacao,
+   * spec §4) — para um nao-coordenador o parametro desliga a condicao, e as notificacoes de
+   * grupo nem aparecem na consulta. Filtrado por tenant: caixa de um tenant nunca vaza noutro. */
+  if (action === "notificacoes") {
+    const u = await auth(p);
+    const coord = temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "projetos.aprovar") ? 1 : 0;
+    const r = await sqlite.execute({
+      sql: "SELECT id, destino, tipo, ref, periodo, titulo, texto, criado, lido FROM notificacao "
+        + "WHERE tenant_id = ? AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)) "
+        + "ORDER BY lido ASC, criado DESC LIMIT 100",
+      args: [u.tenant_id, u.slug, coord],
+    });
+    const notificacoes = r.rows as P[];
+    const naoLidas = notificacoes.reduce((n, x) => n + (Number(x.lido) ? 0 : 1), 0);
+    return { ok: true, notificacoes, naoLidas, coord: coord === 1 };
+  }
+
+  /* ONDA 3-B — marcar como lida: uma (por `id`) ou TODAS as minhas (`id: "all"`). O mesmo
+   * recorte de destino do `notificacoes` vai no WHERE, então ninguém marca a notificação de
+   * outro: um id que não seja do usuário (nem de grupo visível a ele) simplesmente não casa. */
+  if (action === "notifLida") {
+    const u = await auth(p);
+    const coord = temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "projetos.aprovar") ? 1 : 0;
+    const id = String(p.id || "");
+    if (!id) throw new Error("Informe a notificação (ou \"all\").");
+    const r = await sqlite.execute({
+      sql: "UPDATE notificacao SET lido = 1 WHERE tenant_id = ? "
+        + "AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)) AND (? = 'all' OR id = ?) AND lido = 0",
+      args: [u.tenant_id, u.slug, coord, id, id],
+    });
+    return { ok: true, marcadas: Number((r as P).rowsAffected ?? (r as P).changes ?? 0) };
   }
 
   /* ============================================================================

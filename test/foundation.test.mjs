@@ -429,3 +429,24 @@ test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   assert.ok(files.length >= 1, "nenhuma migração");
   for (const f of files) assert.match(f, /^\d{4}_/, "migração sem prefixo numérico: " + f);
 });
+
+test("Onda 3-B: tabela notificacao + ações + SCHEMA_VER bump", () => {
+  const ts = read("src/index.ts");
+  // Tabela no ensureSchema (nasce em D1 novo) + dedup por janela no próprio schema.
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS notificacao/);
+  assert.match(ts, /UNIQUE\(tenant_id, ?tipo, ?ref, ?periodo\)/);
+  // Sem bump, o D1 existente pula o setup e a tabela nunca nasce lá.
+  assert.doesNotMatch(ts, /const SCHEMA_VER = "2026-10-26c"/, "SCHEMA_VER precisa ser bumpado");
+  // Ações novas + piso no guard (todo logado vê as SUAS; o recorte fino é dentro da ação).
+  assert.match(ts, /action === "notificacoes"/);
+  assert.match(ts, /action === "notifLida"/);
+  assert.match(ts, /notificacoes: "cliente"/);
+  assert.match(ts, /notifLida: "cliente"/);
+  // Visibilidade: o alvo de grupo só aparece para quem é coordenação (spec §4) — o parâmetro
+  // desliga a condição, então um não-coordenador NUNCA casa com destino='@coordenacao'.
+  assert.match(ts, /destino = '@coordenacao' AND \? = 1/);
+  // Migração versionada espelha o CREATE (D1 existente aplica por `d1 migrations apply`).
+  const mig = read("migrations/0010_notificacao.sql");
+  assert.match(mig, /CREATE TABLE IF NOT EXISTS notificacao/);
+  assert.match(mig, /UNIQUE\(tenant_id, ?tipo, ?ref, ?periodo\)/);
+});
