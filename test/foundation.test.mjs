@@ -122,6 +122,13 @@ test("Onda 3-A: UI clássica oferece lançamento retroativo forçado à Coordena
   assert.match(html, /não recebe horas/);
 });
 
+test("Onda 3-A: exceção do guard é cap-only (projetos.aprovar), coerente com projaprovar — sem || u.coord", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /podeAprovarAdd = temCapSet\(capsAdd, "projetos\.aprovar"\);/);
+  assert.match(ts, /podeAprovarEd = temCapSet\(capsEd, "projetos\.aprovar"\);/);
+  assert.doesNotMatch(ts, /podeAprovar(Add|Ed) = .*u\.coord/);
+});
+
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
   const pkg = JSON.parse(read("app/package.json"));
   assert.ok(pkg.dependencies.react, "app sem react");

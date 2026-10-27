@@ -5235,7 +5235,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const e = validEntry(p.entry);
     const capsAdd = await capsDe({ slug: u.slug, papel: u.papel });
-    const podeAprovarAdd = temCapSet(capsAdd, "projetos.aprovar") || !!u.coord;
+    const podeAprovarAdd = temCapSet(capsAdd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
     const forcadoAdd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarAdd });
     if (forcadoAdd) await audit("hora_retroativa_forcada", u.slug, e.cc, ip); // regra de status + exceção auditada
     const id = crypto.randomUUID().slice(0, 8);
@@ -5262,7 +5262,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
     const capsEd = await capsDe({ slug: u.slug, papel: u.papel });
-    const podeAprovarEd = temCapSet(capsEd, "projetos.aprovar") || !!u.coord;
+    const podeAprovarEd = temCapSet(capsEd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
     const forcadoEd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarEd });
     if (forcadoEd) await audit("hora_retroativa_forcada", u.slug, e.cc, ip); // regra de status + exceção auditada
     const st = aprovReq ? "PENDENTE" : "APROVADO";
