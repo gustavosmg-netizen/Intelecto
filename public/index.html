@@ -5089,7 +5089,9 @@ function pintaSino(){
 function htmlNotifs(){
   const ns=state.notifs||[];
   const head='<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><strong style="flex:1">Notificações</strong>'
-    +((state.notifsNaoLidas||0)>0?'<button class="btn ghost sm" onclick="marcarNotif(\'all\')">Marcar todas</button>':"")+"</div>";
+    /* "all" no servidor alcança só as do próprio slug: a caixa '@coordenacao' é compartilhada e
+       marcá-la em lote silenciaria o aviso para os outros coordenadores. O rótulo diz isso. */
+    +((state.notifsNaoLidas||0)>0?'<button class="btn ghost sm" title="Marca as notificações endereçadas a você (as da Coordenação são compartilhadas)" onclick="marcarNotif(\'all\')">Marcar as minhas</button>':"")+"</div>";
   if(!ns.length)return head+'<div class="muted" style="font-size:.85rem;padding:6px 0">Nada por aqui. Os avisos aparecem sozinhos quando um projeto fica parado, as horas passam do previsto ou falta apontamento na semana.</div>';
   return head+ns.map(function(n){
     const lida=Number(n.lido)===1;

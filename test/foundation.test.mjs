@@ -485,3 +485,29 @@ test("Onda 3-B: casca clássica tem o sino de notificações", () => {
   // Conteúdo vem escapado (o texto da notificação é gerado pelo servidor, mas nunca cru no DOM).
   assert.match(html, /esc\(n\.titulo\)/);
 });
+
+test("Onda 3-B (revisão): as regras alcançam exatamente quem devem alcançar", () => {
+  const ts = read("src/index.ts");
+  // R3: `membro` também guarda cliente/fornecedor (ensureMembroCliente/membroadd), que nunca
+  // lançam horas — sem filtro, receberiam "lance suas horas" toda sexta, para sempre.
+  assert.match(ts, /AND m\.papel NOT IN \('cliente','fornecedor'\)/);
+  // R2: `prevf` sobrevive ao encerramento do projeto. Sem filtro, a primeira rodada com a flag
+  // ligada alerta estouro de projeto CONCLUÍDO/CANCELADO — e a dedup por nível nunca reabre.
+  assert.match(ts, /FROM prevf f JOIN proj p ON p\.cc = f\.cc AND p\.tenant_id = f\.tenant_id/);
+  assert.match(ts, /p\.registro = 'ATIVO'/);
+  // Caixa '@coordenacao': mesmo predicado de autoridade do resto da gestão de projeto. Cap-only
+  // esvazia a caixa em silêncio para um coordenador com cargo coord_comercial/coord_financeira
+  // (nenhum dos dois concede projetos.aprovar, e capsDe deixa de cair no fallback por papel).
+  assert.equal((ts.match(/const coord = \(await podeGestaoProjeto\(u\)\) \? 1 : 0;/g) || []).length, 2);
+  // "Marcar todas" só alcança as MINHAS: senão o primeiro coordenador a clicar silencia o aviso
+  // de grupo para os outros até a próxima janela de dedup.
+  assert.match(ts, /\? = 'all' AND destino = \?/);
+  // Guarda da R4 não pode ser por autor: se a coordenação financeira fechar o resumo na manhã
+  // do dia 1, o cron gravaria um SEGUNDO snapshot do mesmo dia na linha do tempo.
+  assert.doesNotMatch(ts, /AND autor = 'cron' LIMIT 1/);
+});
+
+test("Onda 3-B (revisão): o botão de marcar em lote não promete o que o servidor não faz", () => {
+  // Depois do recorte no servidor, "all" só alcança as do próprio slug — o rótulo precisa dizer isso.
+  assert.match(read("public/index.html"), /Marcar as minhas/);
+});

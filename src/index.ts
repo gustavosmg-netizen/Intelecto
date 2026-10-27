@@ -4045,7 +4045,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
    * grupo nem aparecem na consulta. Filtrado por tenant: caixa de um tenant nunca vaza noutro. */
   if (action === "notificacoes") {
     const u = await auth(p);
-    const coord = temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "projetos.aprovar") ? 1 : 0;
+    const coord = (await podeGestaoProjeto(u)) ? 1 : 0;
     const r = await sqlite.execute({
       sql: "SELECT id, destino, tipo, ref, periodo, titulo, texto, criado, lido FROM notificacao "
         + "WHERE tenant_id = ? AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)) "
@@ -4062,13 +4062,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
    * outro: um id que não seja do usuário (nem de grupo visível a ele) simplesmente não casa. */
   if (action === "notifLida") {
     const u = await auth(p);
-    const coord = temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "projetos.aprovar") ? 1 : 0;
+    const coord = (await podeGestaoProjeto(u)) ? 1 : 0;
     const id = String(p.id || "");
     if (!id) throw new Error("Informe a notificação (ou \"all\").");
     const r = await sqlite.execute({
-      sql: "UPDATE notificacao SET lido = 1 WHERE tenant_id = ? "
-        + "AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)) AND (? = 'all' OR id = ?) AND lido = 0",
-      args: [u.tenant_id, u.slug, coord, id, id],
+      /* "all" alcança só as MINHAS. A caixa '@coordenacao' é COMPARTILHADA (uma linha, um `lido`
+         para os quatro), então um "marcar todas" silenciaria o aviso de projeto parado para os
+         outros coordenadores até a próxima janela de dedup. Marcar uma de grupo pelo id segue
+         valendo — ali é um ato deliberado de "estou cuidando disto". */
+      sql: "UPDATE notificacao SET lido = 1 WHERE tenant_id = ? AND lido = 0 AND ("
+        + "(? = 'all' AND destino = ?) OR (id = ? AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)))"
+        + ")",
+      args: [u.tenant_id, id, u.slug, id, u.slug, coord],
     });
     return { ok: true, marcadas: Number((r as P).rowsAffected ?? (r as P).changes ?? 0) };
   }
@@ -7013,7 +7018,14 @@ async function rodarRegrasAgendadas(env: any): Promise<P> {
    * (80/100/120) e tambem a chave de dedup, logo cada faixa avisa uma vez por CC. */
   if (deveRodar("estouro", hoje)) {
     try {
-      const pr = await sqlite.execute({ sql: "SELECT cc, COALESCE(SUM(h),0) p FROM prevf WHERE tenant_id = ? GROUP BY cc", args: [T] });
+      /* So CC de projeto VIVO: `prevf` sobrevive ao encerramento do projeto, e sem este JOIN a
+       * primeira rodada com a flag ligada alertaria estouro de projeto CONCLUIDO/CANCELADO (e a
+       * dedup por nivel nunca reabre, entao o alerta inutil ficaria na caixa para sempre). */
+      const pr = await sqlite.execute({
+        sql: "SELECT f.cc cc, COALESCE(SUM(f.h),0) p FROM prevf f JOIN proj p ON p.cc = f.cc AND p.tenant_id = f.tenant_id "
+          + "WHERE f.tenant_id = ? AND p.registro = 'ATIVO' AND p.status IN ('A INICIAR','EM ANDAMENTO','EM ESPERA') GROUP BY f.cc",
+        args: [T],
+      });
       const cr = await sqlite.execute({ sql: "SELECT cc, COALESCE(SUM(h),0) c FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') GROUP BY cc", args: [T] });
       const cons: Record<string, number> = {};
       for (const x of cr.rows as P[]) cons[String(x.cc)] = Number(x.c) || 0;
@@ -7045,7 +7057,10 @@ async function rodarRegrasAgendadas(env: any): Promise<P> {
       seg.setUTCDate(seg.getUTCDate() - ((seg.getUTCDay() || 7) - 1));
       const desde = seg.toISOString().slice(0, 10);
       const r = await sqlite.execute({
-        sql: "SELECT m.slug FROM membro m WHERE m.tenant_id = ? AND m.ativo = 1 "
+        /* Só gente DA CASA: `membro` também guarda cliente/fornecedor (ensureMembroCliente,
+         * membroadd), que nunca lançam horas — sem o filtro de papel eles receberiam o lembrete
+         * toda sexta. Mesmo recorte que o resto do portal usa ao listar o quadro. */
+        sql: "SELECT m.slug FROM membro m WHERE m.tenant_id = ? AND m.ativo = 1 AND m.papel NOT IN ('cliente','fornecedor') "
           + "AND NOT EXISTS (SELECT 1 FROM lanc l WHERE l.slug = m.slug AND l.tenant_id = m.tenant_id AND l.d >= ?) "
           + "ORDER BY m.slug",
         args: [T, desde],
@@ -7069,7 +7084,10 @@ async function rodarRegrasAgendadas(env: any): Promise<P> {
   if (deveRodar("snapshot", hoje)) {
     try {
       const d = now.slice(0, 10);
-      const ja = await sqlite.execute({ sql: "SELECT 1 FROM fin_snapshot WHERE tenant_id = ? AND d = ? AND autor = 'cron' LIMIT 1", args: [T, d] });
+      /* Pergunta certa: "ja existe snapshot de hoje?" — nao "ja existe o MEU". Se a coordenacao
+       * financeira fechar o resumo pela acao `resumoExecFechar` na manha do dia 1, o cron nao
+       * grava um segundo retrato do mesmo dia na linha do tempo de `resumoExecHist`. */
+      const ja = await sqlite.execute({ sql: "SELECT 1 FROM fin_snapshot WHERE tenant_id = ? AND d = ? LIMIT 1", args: [T, d] });
       if (!ja.rows.length) {
         const resumo = await resumoExecutivo(TENANT_INTELECTO);
         const id = "FS-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
