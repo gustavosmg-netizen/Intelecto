@@ -96,11 +96,18 @@ test("Onda 1: regra de status (concluído/cancelado não recebe horas) + andamen
   const ts = read("src/index.ts");
   assert.match(ts, /async function bloqueiaSeFechado/);
   assert.match(ts, /não recebe horas/);
-  // o bloqueio roda no lançar e no editar.
-  assert.match(ts, /await bloqueiaSeFechado\(e\.cc, u\.tenant_id\)/);
+  // o bloqueio roda no lançar e no editar (agora com 3º arg = opções de exceção).
+  assert.match(ts, /await bloqueiaSeFechado\(e\.cc, u\.tenant_id, \{/);
   // progresso derivado dos marcos.
   assert.match(ts, /function pctEtapa/);
   assert.match(ts, /progressoDerivado: pctEtapa/);
+});
+
+test("Onda 3-A: guard de horas usa decideBloqueioHoras + exceção auditada + sugestão de CC", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /decideBloqueioHoras\(/);
+  assert.match(ts, /hora_retroativa_forcada/);
+  assert.match(ts, /CCs ativos do mesmo cliente/);
 });
 
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {

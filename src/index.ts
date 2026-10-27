@@ -1699,13 +1699,26 @@ async function impostoPadrao(tenant: string): Promise<number> {
 /** REGRA DE STATUS (Onda 1): um projeto CONCLUÍDO ou CANCELADO não recebe horas. Bloqueia o
  *  lançamento/edição na fonte (não só na tela) — é o que impede a recorrência de "concluído com
  *  horas novas". CC sem projeto cadastrado (reunião, ausência, treinamento) passa, como hoje. */
-async function bloqueiaSeFechado(cc: string, tenant: string): Promise<void> {
+async function bloqueiaSeFechado(cc: string, tenant: string, opts: { forcar?: boolean; podeAprovar?: boolean } = {}): Promise<boolean> {
   const r = await sqlite.execute({ sql: "SELECT status FROM proj WHERE cc = ? AND tenant_id = ?", args: [cc, tenant] });
-  if (!r.rows.length) return;
+  if (!r.rows.length) return false;
   const st = String((r.rows[0] as P).status || "").toUpperCase();
-  if (st.indexOf("CONCLU") >= 0 || st.indexOf("CANCEL") >= 0) {
-    throw new Error("Projeto " + st.toLowerCase() + " não recebe horas. Peça à Coordenação para reabrir o status antes de lançar.");
+  const encerrado = st.indexOf("CONCLU") >= 0 || st.indexOf("CANCEL") >= 0;
+  if (decideBloqueioHoras(st, { forcar: !!opts.forcar, podeAprovar: !!opts.podeAprovar }).bloqueia) {
+    // Sugere CCs ATIVOS do mesmo cliente, para o autor corrigir o destino do lançamento.
+    let sug = "";
+    try {
+      const s = await sqlite.execute({
+        sql: "SELECT cc FROM proj WHERE tenant_id = ? AND registro = 'ATIVO' AND cliente <> '' AND cliente = (SELECT cliente FROM proj WHERE cc = ? AND tenant_id = ?) AND cc <> ? ORDER BY cc LIMIT 5",
+        args: [tenant, cc, tenant, cc],
+      });
+      const ls = (s.rows as P[]).map((x) => String(x.cc)).join(", ");
+      if (ls) sug = " CCs ativos do mesmo cliente: " + ls + ".";
+    } catch (_) { /* sem coluna cliente: segue sem sugestão */ }
+    throw new Error("Projeto " + st.toLowerCase() + " não recebe horas." + sug + " A Coordenação pode lançar retroativo marcando 'forçar'.");
   }
+  // Passou: devolve true quando foi por EXCEÇÃO (projeto encerrado, forçado por quem aprova) — para auditar.
+  return encerrado && !!opts.forcar && !!opts.podeAprovar;
 }
 /** ANDAMENTO ÚNICO (Onda 1): o progresso DERIVA dos marcos (etapa atual ÷ total), não de um campo
  *  manual. Devolve o % 0-100 quando há total de etapas; null quando ainda não há marcos (aí a tela
@@ -5221,7 +5234,10 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "add") {
     const u = await auth(p);
     const e = validEntry(p.entry);
-    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
+    const capsAdd = await capsDe({ slug: u.slug, papel: u.papel });
+    const podeAprovarAdd = temCapSet(capsAdd, "projetos.aprovar") || !!u.coord;
+    const forcadoAdd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarAdd });
+    if (forcadoAdd) await audit("hora_retroativa_forcada", u.slug, e.cc, ip); // regra de status + exceção auditada
     const id = crypto.randomUUID().slice(0, 8);
     // D-4 — opt-in: com a aprovação LIGADA o lançamento nasce PENDENTE (coordenação aprova depois);
     // DESLIGADA, nasce já APROVADO (efetivo na hora, a=data), sem fila de aprovação.
@@ -5245,7 +5261,10 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO" && !(!aprovReq && (cur.slug === u.slug || u.coord)))
       throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
-    await bloqueiaSeFechado(e.cc, u.tenant_id); // regra de status: concluído/cancelado não recebe horas
+    const capsEd = await capsDe({ slug: u.slug, papel: u.papel });
+    const podeAprovarEd = temCapSet(capsEd, "projetos.aprovar") || !!u.coord;
+    const forcadoEd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarEd });
+    if (forcadoEd) await audit("hora_retroativa_forcada", u.slug, e.cc, ip); // regra de status + exceção auditada
     const st = aprovReq ? "PENDENTE" : "APROVADO";
     const ap = aprovReq ? "" : now.slice(0, 10);
     await sqlite.execute({
