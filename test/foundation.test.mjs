@@ -450,3 +450,28 @@ test("Onda 3-B: tabela notificacao + ações + SCHEMA_VER bump", () => {
   assert.match(mig, /CREATE TABLE IF NOT EXISTS notificacao/);
   assert.match(mig, /UNIQUE\(tenant_id, ?tipo, ?ref, ?periodo\)/);
 });
+
+test("Onda 3-B: cron diário + regras agendadas atrás da flag", () => {
+  // Trigger novo (o scheduled() ramifica por event.cron; staging segue com crons=[]).
+  assert.match(read("wrangler.toml"), /"0 11 \* \* \*"/);
+  const ts = read("src/index.ts");
+  // Flag nasce OFF (def:false) e SEM seed — ligar é decisão explícita do dono.
+  assert.match(ts, /regras_agendadas: \{ desc:[^}]*def: false \}/);
+  assert.doesNotMatch(ts, /cfgSet\("flag:regras_agendadas"/, "a flag não pode ser semeada ligada");
+  // Função + branch do cron + observabilidade pelo wrapper run().
+  assert.match(ts, /async function rodarRegrasAgendadas/);
+  assert.match(ts, /event\.cron === "0 11 \* \* \*"/);
+  assert.match(ts, /run\("regras_agendadas"/);
+  // Reusa os helpers puros (lógica testada por comportamento em test/onda3b.test.mjs).
+  assert.match(ts, /from "\.\/onda3b\.mjs"/);
+  assert.match(ts, /deveRodar\("parado"/);
+  assert.match(ts, /deveRodar\("estouro"/);
+  assert.match(ts, /deveRodar\("sem_apontamento"/);
+  assert.match(ts, /deveRodar\("snapshot"/);
+  // Dedup: nenhuma regra grava notificação fora do notifStatements (que é INSERT OR IGNORE).
+  assert.match(ts, /notifStatements\(/);
+  assert.doesNotMatch(ts, /INSERT INTO notificacao/, "notificação só entra por INSERT OR IGNORE");
+  // R4 reusa o helper já existente do resumo executivo (não reimplementa o cálculo).
+  assert.match(ts, /await resumoExecutivo\(TENANT_INTELECTO\)/);
+  assert.match(ts, /INSERT INTO fin_snapshot/);
+});
