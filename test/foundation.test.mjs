@@ -499,15 +499,27 @@ test("Onda 3-B (revisão): as regras alcançam exatamente quem devem alcançar",
   // esvazia a caixa em silêncio para um coordenador com cargo coord_comercial/coord_financeira
   // (nenhum dos dois concede projetos.aprovar, e capsDe deixa de cair no fallback por papel).
   assert.equal((ts.match(/const coord = \(await podeGestaoProjeto\(u\)\) \? 1 : 0;/g) || []).length, 2);
-  // "Marcar todas" só alcança as MINHAS: senão o primeiro coordenador a clicar silencia o aviso
-  // de grupo para os outros até a próxima janela de dedup.
-  assert.match(ts, /\? = 'all' AND destino = \?/);
+  // (O recorte de "marcar todas" que entrou aqui foi SUPERADO pelo `lido` por pessoa — ver o
+  //  teste "`lido` é por pessoa (notificacao_lida)". Com notificacao_lida, marcar não silencia.)
   // Guarda da R4 não pode ser por autor: se a coordenação financeira fechar o resumo na manhã
   // do dia 1, o cron gravaria um SEGUNDO snapshot do mesmo dia na linha do tempo.
   assert.doesNotMatch(ts, /AND autor = 'cron' LIMIT 1/);
 });
 
-test("Onda 3-B (revisão): o botão de marcar em lote não promete o que o servidor não faz", () => {
-  // Depois do recorte no servidor, "all" só alcança as do próprio slug — o rótulo precisa dizer isso.
-  assert.match(read("public/index.html"), /Marcar as minhas/);
+test("Onda 3-B: `lido` é por pessoa (notificacao_lida), não compartilhado", () => {
+  const ts = read("src/index.ts");
+  // Tabela própria: uma linha por (notificação, pessoa). Sem ela, o primeiro coordenador a ler
+  // apagava o aviso de projeto parado para os outros três até a próxima janela de dedup.
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS notificacao_lida/);
+  assert.match(ts, /PRIMARY KEY \(tenant_id, notif_id, slug\)/);
+  assert.match(read("migrations/0011_notificacao_lida.sql"), /CREATE TABLE IF NOT EXISTS notificacao_lida/);
+  // `notificacao` deixa de ter coluna `lido`: o estado de leitura é derivado por pessoa.
+  assert.doesNotMatch(read("migrations/0010_notificacao.sql"), /lido INTEGER/);
+  assert.match(ts, /LEFT JOIN notificacao_lida x ON/);
+  assert.match(ts, /INSERT OR IGNORE INTO notificacao_lida/);
+  // Nova tabela => novo bump (senão o D1 existente pula o setup e ela não nasce lá).
+  assert.doesNotMatch(ts, /const SCHEMA_VER = "2026-10-27a"/);
+  // "all" volta a alcançar a caixa de grupo — marcar é por pessoa, não silencia mais ninguém.
+  assert.doesNotMatch(ts, /\? = 'all' AND destino = \?/);
+  assert.match(read("public/index.html"), /Marcar todas/);
 });

@@ -302,7 +302,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-27a";
+const SCHEMA_VER = "2026-10-28a";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -1229,9 +1229,18 @@ function ensureSchema(): Promise<void> {
       await sqlite.execute(`CREATE TABLE IF NOT EXISTS notificacao (
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto',
         destino TEXT NOT NULL, tipo TEXT NOT NULL, ref TEXT DEFAULT '', periodo TEXT DEFAULT '',
-        titulo TEXT DEFAULT '', texto TEXT DEFAULT '', criado TEXT DEFAULT '', lido INTEGER DEFAULT 0,
+        titulo TEXT DEFAULT '', texto TEXT DEFAULT '', criado TEXT DEFAULT '',
         UNIQUE(tenant_id, tipo, ref, periodo))`);
-      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS notificacao_cx ON notificacao (tenant_id, destino, lido, criado)"); } catch (_) {}
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS notificacao_cx ON notificacao (tenant_id, destino, criado)"); } catch (_) {}
+      /* QUEM JA LEU, POR PESSOA. A caixa '@coordenacao' e UMA linha compartilhada por quatro
+       * coordenadores: um `lido` unico na notificacao fazia o primeiro a ler apagar o aviso para
+       * os outros tres ate a proxima janela de dedup. Aqui "lido" e uma linha por (notificacao,
+       * pessoa), e o `lido` que a UI recebe e DERIVADO por LEFT JOIN com o slug de quem consulta. */
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS notificacao_lida (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', notif_id TEXT NOT NULL, slug TEXT NOT NULL,
+        lido_em TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, notif_id, slug))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS notificacao_lida_slug ON notificacao_lida (tenant_id, slug)"); } catch (_) {}
     } catch (_) { /* ja existe */ }
 
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
@@ -4047,33 +4056,38 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const coord = (await podeGestaoProjeto(u)) ? 1 : 0;
     const r = await sqlite.execute({
-      sql: "SELECT id, destino, tipo, ref, periodo, titulo, texto, criado, lido FROM notificacao "
-        + "WHERE tenant_id = ? AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)) "
-        + "ORDER BY lido ASC, criado DESC LIMIT 100",
-      args: [u.tenant_id, u.slug, coord],
+      /* `lido` e DERIVADO do slug de quem consulta (notificacao_lida), nao um estado da linha: a
+         caixa '@coordenacao' e compartilhada, e o que um coordenador leu nao e o que o outro leu. */
+      sql: "SELECT n.id id, n.destino destino, n.tipo tipo, n.ref ref, n.periodo periodo, n.titulo titulo, "
+        + "n.texto texto, n.criado criado, (CASE WHEN x.slug IS NULL THEN 0 ELSE 1 END) lido "
+        + "FROM notificacao n LEFT JOIN notificacao_lida x ON x.tenant_id = n.tenant_id AND x.notif_id = n.id AND x.slug = ? "
+        + "WHERE n.tenant_id = ? AND (n.destino = ? OR (n.destino = '@coordenacao' AND ? = 1)) "
+        + "ORDER BY lido ASC, n.criado DESC LIMIT 100",
+      args: [u.slug, u.tenant_id, u.slug, coord],
     });
     const notificacoes = r.rows as P[];
     const naoLidas = notificacoes.reduce((n, x) => n + (Number(x.lido) ? 0 : 1), 0);
     return { ok: true, notificacoes, naoLidas, coord: coord === 1 };
   }
 
-  /* ONDA 3-B — marcar como lida: uma (por `id`) ou TODAS as minhas (`id: "all"`). O mesmo
-   * recorte de destino do `notificacoes` vai no WHERE, então ninguém marca a notificação de
-   * outro: um id que não seja do usuário (nem de grupo visível a ele) simplesmente não casa. */
+  /* ONDA 3-B — marcar como lida: uma (por `id`) ou todas as que EU vejo (`id: "all"`). O mesmo
+   * recorte de destino do `notificacoes` vai no WHERE, então ninguém marca pela conta de outro:
+   * um id que o usuário não vê simplesmente não entra no SELECT. A marca é por PESSOA. */
   if (action === "notifLida") {
     const u = await auth(p);
     const coord = (await podeGestaoProjeto(u)) ? 1 : 0;
     const id = String(p.id || "");
     if (!id) throw new Error("Informe a notificação (ou \"all\").");
     const r = await sqlite.execute({
-      /* "all" alcança só as MINHAS. A caixa '@coordenacao' é COMPARTILHADA (uma linha, um `lido`
-         para os quatro), então um "marcar todas" silenciaria o aviso de projeto parado para os
-         outros coordenadores até a próxima janela de dedup. Marcar uma de grupo pelo id segue
-         valendo — ali é um ato deliberado de "estou cuidando disto". */
-      sql: "UPDATE notificacao SET lido = 1 WHERE tenant_id = ? AND lido = 0 AND ("
-        + "(? = 'all' AND destino = ?) OR (id = ? AND (destino = ? OR (destino = '@coordenacao' AND ? = 1)))"
-        + ")",
-      args: [u.tenant_id, id, u.slug, id, u.slug, coord],
+      /* Marca POR PESSOA: grava em notificacao_lida, nunca na notificacao. Por isso "all" pode
+         alcançar também a caixa '@coordenacao' — marcar como lida não silencia mais ninguém, e cada
+         coordenador segue vendo o aviso até ler o SEU. O SELECT embutido é o mesmo recorte de
+         visibilidade do `notificacoes`: um id que o usuário não vê simplesmente não entra. */
+      sql: "INSERT OR IGNORE INTO notificacao_lida (tenant_id, notif_id, slug, lido_em) "
+        + "SELECT n.tenant_id, n.id, ?, ? FROM notificacao n "
+        + "WHERE n.tenant_id = ? AND (n.destino = ? OR (n.destino = '@coordenacao' AND ? = 1)) "
+        + "AND (? = 'all' OR n.id = ?)",
+      args: [u.slug, now, u.tenant_id, u.slug, coord, id, id],
     });
     return { ok: true, marcadas: Number((r as P).rowsAffected ?? (r as P).changes ?? 0) };
   }

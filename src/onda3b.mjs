@@ -79,8 +79,8 @@ export function notifStatements(itens) {
     const tipo = txt(it.tipo);
     if (!destino || !tipo) continue;
     out.push({
-      sql: "INSERT OR IGNORE INTO notificacao (id,tenant_id,destino,tipo,ref,periodo,titulo,texto,criado,lido) "
-        + "VALUES (?,?,?,?,?,?,?,?,?,0)",
+      sql: "INSERT OR IGNORE INTO notificacao (id,tenant_id,destino,tipo,ref,periodo,titulo,texto,criado) "
+        + "VALUES (?,?,?,?,?,?,?,?,?)",
       args: [
         txt(it.id), txt(it.tenant), destino, tipo, txt(it.ref),
         txt(it.periodo), txt(it.titulo).slice(0, 200), txt(it.texto).slice(0, 1000), txt(it.now),

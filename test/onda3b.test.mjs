@@ -77,11 +77,12 @@ test("notifStatements: INSERT OR IGNORE por item; vazio => []", () => {
   assert.ok(s[0].args.includes("@coordenacao") && s[0].args.includes("proj_parado"));
 });
 
-test("notifStatements: args na ordem das colunas do INSERT, lido=0 fixo no SQL", () => {
+test("notifStatements: args na ordem das colunas do INSERT, sem coluna lido", () => {
   const s = notifStatements([item]);
   const cols = s[0].sql.match(/notificacao \(([^)]+)\)/)[1].split(",").map((x) => x.trim());
-  assert.deepEqual(cols, ["id", "tenant_id", "destino", "tipo", "ref", "periodo", "titulo", "texto", "criado", "lido"]);
-  // 10 colunas, 9 placeholders + o literal 0 de `lido` => 9 args na ordem das colunas.
+  // `lido` NAO e coluna de notificacao: quem leu vive em notificacao_lida (um por pessoa).
+  assert.deepEqual(cols, ["id", "tenant_id", "destino", "tipo", "ref", "periodo", "titulo", "texto", "criado"]);
+  assert.doesNotMatch(s[0].sql, /lido/);
   assert.deepEqual(s[0].args, ["N1", "intelecto", "@coordenacao", "proj_parado", "1.2.3.4", "2026-W44", "x", "y", "2026-10-27T00:00:00Z"]);
 });
 
