@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "build123d": {
+      "command": "uv",
+      "args": ["tool", "run", "--python", "3.12", "build123d-mcp@0.3.90"]
+    },
+    "freecad": {
+      "command": "uvx",
+      "args": ["freecad-mcp@0.1.27"]
+    },
+    "blender": {
+      "command": "uvx",
+      "args": ["mcp-for-blender@2.1.9"],
+      "env": { "DISABLE_TELEMETRY": "true" }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+build123d>=0.13,<0.14
+bd_warehouse==0.4.0
+trimesh
+matplotlib
