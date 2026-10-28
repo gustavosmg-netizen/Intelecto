@@ -5070,7 +5070,9 @@ async function devolver(id){
    projeto parado 30d, estouro de horas por CC, sexta sem apontamento e fechamento mensal. Quem vê
    O QUÊ é decisão do SERVIDOR (destino = o próprio slug, ou '@coordenacao' para quem aprova
    projetos) — aqui é só leitura e o marcar-lido. Com a flag OFF nada é gerado: o sino fica vazio. */
-const NOTIF_ICONE={proj_parado:"⏸",estouro:"⚠",sem_apontamento:"⏱",snapshot:"📊"};
+/* Sem cadeia de protótipos: um `tipo` igual a "constructor"/"toString" resolveria pelo Object
+   e despejaria o código da função na caixa em vez de cair no bullet. */
+const NOTIF_ICONE=Object.assign(Object.create(null),{proj_parado:"⏸",estouro:"⚠",sem_apontamento:"⏱",snapshot:"📊"});
 async function carregarNotifs(){
   try{
     const j=await api("notificacoes");
@@ -5084,14 +5086,21 @@ function pintaSino(){
   b.textContent=n>99?"99+":String(n);
   b.classList.toggle("hidden",n<1);
   const box=$("#ap-sino-box");
-  if(box&&!box.classList.contains("hidden"))box.innerHTML=htmlNotifs();
+  if(box&&!box.classList.contains("hidden"))pintaCaixa(box);
+}
+/* Pinta a caixa e RELIGA os botões. O id do item vai por `data-notif`, como no resto da casca
+   ([data-apr], [data-delandam]): interpolar o id dentro de um onclick é frágil, porque o parser
+   decodifica as entidades do atributo ANTES de compilá-lo como JS — esc() é o escape errado ali. */
+function pintaCaixa(box){
+  box.innerHTML=htmlNotifs();
+  box.querySelectorAll("[data-notif]").forEach(function(b){b.onclick=function(){marcarNotif(b.getAttribute("data-notif"));};});
 }
 function htmlNotifs(){
   const ns=state.notifs||[];
   const head='<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><strong style="flex:1">Notificações</strong>'
     /* "all" alcança tudo o que eu vejo, inclusive a caixa da Coordenação: o servidor marca POR
        PESSOA (notificacao_lida), então o que eu li não silencia o aviso para os outros. */
-    +((state.notifsNaoLidas||0)>0?'<button class="btn ghost sm" title="Marca como lidas, só para você" onclick="marcarNotif(\'all\')">Marcar todas</button>':"")+"</div>";
+    +((state.notifsNaoLidas||0)>0?'<button class="btn ghost sm" title="Marca como lidas, só para você" data-notif="all">Marcar todas</button>':"")+"</div>";
   if(!ns.length)return head+'<div class="muted" style="font-size:.85rem;padding:6px 0">Nada por aqui. Os avisos aparecem sozinhos quando um projeto fica parado, as horas passam do previsto ou falta apontamento na semana.</div>';
   return head+ns.map(function(n){
     const lida=Number(n.lido)===1;
@@ -5103,7 +5112,7 @@ function htmlNotifs(){
       +'<div class="muted" style="font-size:.8rem">'+esc(n.texto)+'</div>'
       +'<div class="muted" style="font-size:.72rem;margin-top:3px">'+esc(String(n.criado||"").slice(0,10))+(n.destino==="@coordenacao"?" · Coordenação":"")+'</div>'
       +'</div>'
-      +(lida?"":'<button class="btn ghost sm" title="Marcar como lida" aria-label="Marcar como lida" onclick="marcarNotif(\''+esc(n.id)+'\')">✓</button>')
+      +(lida?"":'<button class="btn ghost sm" title="Marcar como lida" aria-label="Marcar como lida" data-notif="'+esc(n.id)+'">✓</button>')
       +'</div></div>';
   }).join("");
 }
@@ -5114,7 +5123,7 @@ function toggleSino(){
   const box=$("#ap-sino-box"); if(!box)return;
   const abrir=box.classList.contains("hidden");
   box.classList.toggle("hidden",!abrir);
-  if(abrir){ box.innerHTML=htmlNotifs(); carregarNotifs(); }
+  if(abrir){ pintaCaixa(box); carregarNotifs(); }
 }
 
 /* ===================== BOOT ===================== */

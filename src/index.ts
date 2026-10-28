@@ -4065,8 +4065,16 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         + "ORDER BY lido ASC, n.criado DESC LIMIT 100",
       args: [u.slug, u.tenant_id, u.slug, coord],
     });
+    /* Contagem PRÓPRIA: contada sobre as 100 linhas da janela, o badge saturaria em 100 e
+       subnotificaria. Mesmo recorte de visibilidade, só as que EU não li (x.slug IS NULL). */
+    const cnt = await sqlite.execute({
+      sql: "SELECT COUNT(*) qtd FROM notificacao n LEFT JOIN notificacao_lida x "
+        + "ON x.tenant_id = n.tenant_id AND x.notif_id = n.id AND x.slug = ? "
+        + "WHERE n.tenant_id = ? AND (n.destino = ? OR (n.destino = '@coordenacao' AND ? = 1)) AND x.slug IS NULL",
+      args: [u.slug, u.tenant_id, u.slug, coord],
+    });
     const notificacoes = r.rows as P[];
-    const naoLidas = notificacoes.reduce((n, x) => n + (Number(x.lido) ? 0 : 1), 0);
+    const naoLidas = Number((cnt.rows[0] as P || {}).qtd) || 0;
     return { ok: true, notificacoes, naoLidas, coord: coord === 1 };
   }
 

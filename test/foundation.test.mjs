@@ -523,3 +523,20 @@ test("Onda 3-B: `lido` é por pessoa (notificacao_lida), não compartilhado", ()
   assert.doesNotMatch(ts, /\? = 'all' AND destino = \?/);
   assert.match(read("public/index.html"), /Marcar todas/);
 });
+
+test("Onda 3-B: sino segue o padrão da casca (data-*) e conta não-lidas fora do LIMIT", () => {
+  const html = read("public/index.html");
+  // O id não vai interpolado dentro de um onclick: o parser decodifica &#39; ANTES de compilar o
+  // atributo como JS, então esc() é o escape errado nesse contexto. A casca usa data-* em todo
+  // o resto (ver [data-apr]/[data-delandam]); o sino era a única exceção.
+  assert.doesNotMatch(html, /onclick="marcarNotif/);
+  assert.match(html, /data-notif="/);
+  assert.match(html, /querySelectorAll\("\[data-notif\]"\)\.forEach/);
+  // NOTIF_ICONE sem cadeia de protótipos: um tipo "constructor"/"toString" despejaria o código
+  // da função na caixa em vez de cair no bullet.
+  assert.match(html, /const NOTIF_ICONE=Object\.assign\(Object\.create\(null\)/);
+  const ts = read("src/index.ts");
+  // naoLidas vem de um COUNT próprio: contado sobre as 100 linhas da janela, o badge satura.
+  assert.match(ts, /SELECT COUNT\(\*\) qtd FROM notificacao n LEFT JOIN notificacao_lida/);
+  assert.doesNotMatch(ts, /notificacoes\.reduce/);
+});
