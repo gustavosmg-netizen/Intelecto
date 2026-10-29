@@ -588,3 +588,14 @@ test("Onda 3-B: sino segue o padrão da casca (data-*) e conta não-lidas fora d
   assert.match(ts, /SELECT COUNT\(\*\) qtd FROM notificacao n LEFT JOIN notificacao_lida/);
   assert.doesNotMatch(ts, /notificacoes\.reduce/);
 });
+
+test("Workers AI: nenhum modelo descontinuado em 2026-05-30 (triagem do Brief e conciliação)", () => {
+  const ts = read("src/index.ts");
+  // Sem sufixo, o llama-3.1-8b-instruct foi retirado pela Cloudflare: a chamada falha e o
+  // triagemIA cai no catch em silêncio (todo item fica A_TRIAR). Só -fast/-lora seguem ativos.
+  const usados = [...ts.matchAll(/"(@cf\/[^"]+)"/g)].map((m) => m[1]);
+  const descontinuados = ["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.1-8b-instruct-awq",
+    "@cf/meta/llama-3-8b-instruct", "@cf/meta/llama-3.1-70b-instruct", "@cf/mistral/mistral-7b-instruct-v0.1"];
+  assert.deepEqual(usados.filter((m) => descontinuados.includes(m)), []);
+  assert.match(ts, /const BRIEF_MODELO = "@cf\/meta\/llama-3\.1-8b-instruct-fast";/);
+});

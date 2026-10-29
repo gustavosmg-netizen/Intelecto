@@ -24,8 +24,9 @@
 1. Validação logada em staging de 3-A, 3-B e 3-C (roteiros nos corpos dos PRs #2–#4); só então
    ligar cada flag em Administração › Feature flags (dono + reauth), uma por vez.
 2. Conferir que o cron de backup `0 6 * * *` grava em `portal-intelecto-backup`.
-3. Trocar `BRIEF_MODELO` (Daily Brief) para `@cf/meta/llama-3.1-8b-instruct-fast` — o modelo atual
-   foi descontinuado em 2026-05-30.
+3. Daily Brief: `BRIEF_MODELO` trocado para `@cf/meta/llama-3.1-8b-instruct-fast` (o anterior foi
+   descontinuado em 2026-05-30). Conferir se a triagem voltou; itens
+   que ficaram `A_TRIAR` desde 30/05 não são retriados sozinhos (exigiria ação nova).
 4. Infra: Cloudflare Access na frente do domínio; branch protection em `main` exigindo `verify`.
 
 ## Regras de operação

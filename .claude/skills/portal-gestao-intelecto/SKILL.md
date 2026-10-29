@@ -169,8 +169,10 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
   `regras_agendadas` e `conciliacao_ia` (roteiros nos corpos dos PRs #2–#4). O cron de 3-B não roda
   em staging: disparar as regras por chamada direta.
 - Conferir que o cron de backup `0 6 * * *` está gravando em `portal-intelecto-backup`.
-- `BRIEF_MODELO` (Daily Brief) ainda aponta para `@cf/meta/llama-3.1-8b-instruct`, descontinuado
-  em 2026-05-30 — trocar para `-fast` (como `CONC_MODELO`) numa mudança própria.
+- Daily Brief: `BRIEF_MODELO` passou a `@cf/meta/llama-3.1-8b-instruct-fast` em 2026-10-29 (o modelo
+  sem sufixo foi descontinuado em 2026-05-30 e a triagem falhava em silêncio). Conferir no portal se
+  os itens novos voltaram a sair triados (score/resumo). Os que ficaram `A_TRIAR` nesse período não
+  são retriados sozinhos (a dedup por `chave` pula item já gravado); retriagem exige ação nova.
 - Pendências de infraestrutura do dono: Cloudflare Access na frente do domínio; branch protection
   em `main` exigindo o check `verify`.
 
