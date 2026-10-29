@@ -13,7 +13,7 @@
 export function montaPromptSugestaoCC(mov, candidatos, historico) {
   const m = mov || {};
   const cands = Array.isArray(candidatos) ? candidatos : [];
-  const hist = Array.isArray(historico) ? historico : [];
+  const hist = (Array.isArray(historico) ? historico : []).slice(0, 30); // teto: o prompt precisa caber no contexto do modelo
   const system = "Voce e o assistente de conciliacao financeira da Intelecto & CSTR. Dado um movimento de caixa sem centro de custo (CC), "
     + "sugira a qual projeto ele pertence. Responda SOMENTE um objeto JSON, sem texto fora dele, com as chaves: "
     + "cc (string), confianca (numero de 0 a 1) e motivo (1 frase curta em portugues). "
@@ -27,11 +27,11 @@ export function montaPromptSugestaoCC(mov, candidatos, historico) {
   linhas.push("");
   linhas.push("CCs candidatos (cc | cliente | projeto):");
   if (!cands.length) linhas.push("(nenhum)");
-  for (const c of cands) linhas.push("- " + [c.cc, c.cliente, c.projeto].map((x) => String(x == null ? "" : x).slice(0, 120)).join(" | "));
+  for (const c of cands) linhas.push("- " + [c.cc, c.cliente, c.projeto].map((x) => String(x == null ? "" : x).slice(0, 60)).join(" | "));
   if (hist.length) {
     linhas.push("");
     linhas.push("Exemplos de movimentos ja conciliados (descricao -> cc):");
-    for (const h of hist) linhas.push("- " + String(h.descricao == null ? "" : h.descricao).slice(0, 120) + " -> " + String(h.cc == null ? "" : h.cc));
+    for (const h of hist) linhas.push("- " + String(h.descricao == null ? "" : h.descricao).slice(0, 80) + " -> " + String(h.cc == null ? "" : h.cc));
   }
   return { system, user: linhas.join("\n") };
 }
@@ -64,4 +64,37 @@ export function parseSugestaoCC(textoIA, ccsValidos) {
     }
     return { cc, confianca, motivo };
   } catch (_) { return vazio; }
+}
+
+/** Tokens de comparação: minúsculas, sem acento, palavras com 3+ letras/dígitos. */
+function tokens(t) {
+  return new Set(String(t == null ? "" : t).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3));
+}
+
+/**
+ * Pré-filtra os projetos candidatos para caber no contexto do modelo (um 8B escolhendo entre centenas de
+ * opções acerta pouco e estoura o prompt). Ranqueia por sobreposição de tokens entre a descrição do movimento
+ * e cliente/projeto, mais o CC de movimentos já conciliados de descrição parecida (histórico). Empates mantêm a
+ * ordem original (estável). O cc sugerido é depois validado contra ESTA lista (a que o modelo viu).
+ * @param {string} descricao
+ * @param {Array<{cc:string,cliente:string,projeto:string}>} candidatos
+ * @param {Array<{descricao:string,cc:string}>} historico
+ * @param {number} [max=60]
+ * @returns {Array<{cc:string,cliente:string,projeto:string}>}
+ */
+export function selecionaCandidatos(descricao, candidatos, historico, max = 60) {
+  const cands = Array.isArray(candidatos) ? candidatos : [];
+  const hist = Array.isArray(historico) ? historico : [];
+  const td = tokens(descricao);
+  const bonus = new Map();
+  for (const h of hist) {
+    let n = 0; for (const w of tokens(h && h.descricao)) if (td.has(w)) n++;
+    if (n && h.cc) bonus.set(String(h.cc), (bonus.get(String(h.cc)) || 0) + n * 2);
+  }
+  const pontos = cands.map((c, i) => {
+    let n = 0; for (const w of tokens((c.cliente || "") + " " + (c.projeto || ""))) if (td.has(w)) n++;
+    return { c, i, s: n + (bonus.get(String(c.cc)) || 0) };
+  });
+  pontos.sort((a, b) => b.s - a.s || a.i - b.i);
+  return pontos.slice(0, Math.max(0, max)).map((x) => x.c);
 }

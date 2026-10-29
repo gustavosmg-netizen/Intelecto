@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { marked } from "marked";
 import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.mjs";
-import { montaPromptSugestaoCC, parseSugestaoCC } from "./onda3c.mjs";
+import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -112,6 +112,9 @@ const ACERVO_TOOLS = ["acervo_search","buscar_norma","buscar_referencia","buscar
  * Modelo de texto do Workers AI (binding env.AI). A chave/binding vive SO no servidor;
  * o front nunca fala com a IA. Troca de modelo = trocar esta constante. */
 const BRIEF_MODELO = "@cf/meta/llama-3.1-8b-instruct";
+/* Onda 3-C: o llama-3.1-8b-instruct (sem sufixo) foi DESCONTINUADO pela Cloudflare em 2026-05-30 (só as variantes
+   -fast/-lora seguem ativas) — a conciliação usa a -fast, mesma família. BRIEF_MODELO (triagemIA) fica a cargo do dono. */
+const CONC_MODELO = "@cf/meta/llama-3.1-8b-instruct-fast";
 /** As 4 areas-foco da triagem. Codigo curto -> rotulo (o rotulo e so apresentacao). */
 const BRIEF_AREAS: Record<string, string> = {
   san: "Saneamento / Meio Ambiente",
@@ -3859,21 +3862,24 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const m0 = mv.rows[0] as P;
     const fl = await flagsAtivas(u.tenant_id);
     if (!fl.conciliacao_ia || !ENV || !ENV.AI || typeof ENV.AI.run !== "function") return { ok: true, cc: "", confianca: "", motivo: "IA indisponível" };
-    const cand = await sqlite.execute({ sql: "SELECT cc, cliente, projeto FROM proj WHERE tenant_id = ? AND registro='ATIVO' ORDER BY cc LIMIT 300", args: [u.tenant_id] });
+    const cand = await sqlite.execute({ sql: "SELECT cc, cliente, projeto FROM proj WHERE tenant_id = ? AND registro='ATIVO' ORDER BY cc LIMIT 2000", args: [u.tenant_id] });
     const hist = await sqlite.execute({ sql: "SELECT descricao, cc FROM fluxo WHERE tenant_id = ? AND COALESCE(cc,'') <> '' ORDER BY criado DESC LIMIT 60", args: [u.tenant_id] });
-    const candidatos = cand.rows.map((x: any) => ({ cc: String(x.cc || ""), cliente: String(x.cliente || ""), projeto: String(x.projeto || "") }));
+    const hist1 = hist.rows.map((x: any) => ({ descricao: String(x.descricao || ""), cc: String(x.cc || "") }));
+    // I1: pré-filtra por sobreposição com a descrição + histórico (prompt cabe no contexto; cc validado contra o que o modelo viu)
+    const candidatos = selecionaCandidatos(String(m0.descricao || ""),
+      cand.rows.map((x: any) => ({ cc: String(x.cc || ""), cliente: String(x.cliente || ""), projeto: String(x.projeto || "") })), hist1, 60);
     if (!candidatos.length) return { ok: true, cc: "", confianca: "", motivo: "Nenhum projeto ativo para sugerir." };
     const { system, user } = montaPromptSugestaoCC(
       { descricao: String(m0.descricao || ""), valor: Number(m0.valor) || 0, data: String(m0.data_real || m0.data_prev || "") },
-      candidatos, hist.rows.map((x: any) => ({ descricao: String(x.descricao || ""), cc: String(x.cc || "") })));
+      candidatos, hist1);
     let sug: { cc: string; confianca: number | ""; motivo: string };
     try {
-      const r: any = await ENV.AI.run(BRIEF_MODELO, {
+      const r: any = await ENV.AI.run(CONC_MODELO, {
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         max_tokens: 300, temperature: 0.1,
       });
       sug = parseSugestaoCC(String((r && (r.response ?? (r.result && r.result.response))) || ""), candidatos.map((c) => c.cc));
-    } catch (_) { return { ok: true, cc: "", confianca: "", motivo: "IA indisponível" }; }
+    } catch (e: any) { console.error("conciliaSugerir: falha do modelo", String((e && e.message) || e)); return { ok: true, cc: "", confianca: "", motivo: "IA indisponível" }; }
     await audit("conciliacao_ia", u.slug, id + " -> " + (sug.cc || "incerto"), ip);
     return { ok: true, ...sug };
   }

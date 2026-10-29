@@ -9,3 +9,10 @@ export function parseSugestaoCC(
   textoIA: string,
   ccsValidos: string[]
 ): { cc: string; confianca: number | ""; motivo: string };
+
+export function selecionaCandidatos(
+  descricao: string,
+  candidatos: Array<{ cc: string; cliente: string; projeto: string }>,
+  historico: Array<{ descricao: string; cc: string }>,
+  max?: number
+): Array<{ cc: string; cliente: string; projeto: string }>;

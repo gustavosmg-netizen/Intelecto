@@ -72,3 +72,40 @@ test("montaPromptSugestaoCC: sem histórico/candidatos não lança e ainda manda
   assert.match(p.user, /TARIFA/);
   assert.match(p.system, /JSON/);
 });
+
+// ---------- Fix pass da revisão final: I1 (tamanho do prompt) ----------
+import { selecionaCandidatos } from "../src/onda3c.mjs";
+
+const carteira = (n) => Array.from({ length: n }, (_, i) => ({
+  cc: `1.${i + 1}.1.1`, cliente: `CLIENTE ${i} ${"X".repeat(30)}`, projeto: `PROJETO ${i} ${"Y".repeat(50)}`,
+}));
+
+test("selecionaCandidatos: prioriza sobreposição com a descrição e respeita o teto", () => {
+  const c = carteira(300);
+  c[250] = { cc: "9.9.9.9", cliente: "MINERACAO ACME", projeto: "ETE Lagoa Santa" };
+  const sel = selecionaCandidatos("PIX MINERACAO ACME PARCELA 2", c, [], 60);
+  assert.ok(sel.length <= 60);
+  assert.equal(sel[0].cc, "9.9.9.9");
+});
+
+test("selecionaCandidatos: cc recorrente no histórico de descrição parecida sobe no ranking", () => {
+  const c = carteira(100);
+  const sel = selecionaCandidatos("TED FORNECEDOR ZETA LTDA", c, [{ descricao: "TED FORNECEDOR ZETA LTDA 09/2026", cc: "1.77.1.1" }], 10);
+  assert.ok(sel.some((x) => x.cc === "1.77.1.1"));
+  assert.equal(sel[0].cc, "1.77.1.1");
+});
+
+test("selecionaCandidatos: sem sobreposição devolve até o teto, em ordem estável; entrada inválida não lança", () => {
+  const c = carteira(10);
+  assert.deepEqual(selecionaCandidatos("zzz", c, [], 3).map((x) => x.cc), ["1.1.1.1", "1.2.1.1", "1.3.1.1"]);
+  assert.deepEqual(selecionaCandidatos(null, null, null, 5), []);
+});
+
+test("prompt com carteira grande cabe no orçamento (candidatos pré-filtrados + histórico limitado)", () => {
+  const c = carteira(300);
+  const hist = Array.from({ length: 60 }, (_, i) => ({ descricao: "HISTORICO " + "Z".repeat(200) + i, cc: c[i].cc }));
+  const mov = { descricao: "PIX CLIENTE 7", valor: 10, data: "2026-10-20" };
+  const sel = selecionaCandidatos(mov.descricao, c, hist, 60);
+  const p = montaPromptSugestaoCC(mov, sel, hist);
+  assert.ok(p.system.length + p.user.length < 12000, "prompt grande demais: " + (p.system.length + p.user.length));
+});

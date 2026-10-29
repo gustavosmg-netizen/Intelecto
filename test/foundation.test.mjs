@@ -150,6 +150,12 @@ test("Onda 3-C: acao conciliaSugerir read-only, atras da flag, reusa env.AI", ()
   assert.match(corpo, /conciliacao_ia/);
   assert.match(corpo, /registro='ATIVO'/); // so candidatos ATIVOS
   assert.match(corpo, /financeiro\.ver/);
+  // C1 (revisao): llama-3.1-8b-instruct foi DESCONTINUADO em 2026-05-30 (so -fast/-lora seguem ativos):
+  // a acao usa modelo proprio ativo e nao engole o erro do modelo em silencio.
+  assert.match(ts, /const CONC_MODELO = "@cf\/meta\/llama-3\.1-8b-instruct-fast"/);
+  assert.match(corpo, /ENV\.AI\.run\(CONC_MODELO/);
+  assert.match(corpo, /console\.error\(/);
+  assert.match(corpo, /selecionaCandidatos\(/); // I1: prompt limitado
 });
 
 test("Onda 3-C: casca clássica tem sugerir+aceitar na conciliação (IA só sugere; Aceitar grava por clique)", () => {
