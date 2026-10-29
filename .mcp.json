@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "autocad-pid": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "autocad-mcp-pro[pdf]==1.7.0", "autocad-mcp"],
+      "env": {
+        "AUTOCAD_MCP_BACKEND": "${AUTOCAD_MCP_BACKEND:-ezdxf}",
+        "TOOL_PACKS": "core,pid",
+        "ALLOWED_PATHS": "${PID_ALLOWED_PATHS:-/home/user/Intelecto}",
+        "LOG_LEVEL": "WARNING"
+      }
+    }
+  }
+}

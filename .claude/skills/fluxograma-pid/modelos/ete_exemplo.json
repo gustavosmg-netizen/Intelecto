@@ -1,0 +1,367 @@
+{
+ "folha": {
+  "titulo": "FLUXOGRAMA DE ENGENHARIA - ETE - FASE LÍQUIDA",
+  "numero": "PID-EXEMPLO-001",
+  "revisao": "0",
+  "folha": "1/2",
+  "projeto": "EXEMPLO",
+  "unidade": "ETE - FASE LÍQUIDA",
+  "escala": "S/E",
+  "desenho": "",
+  "verificacao": "",
+  "data": "",
+  "empresa": "INTELECTO & CSTR"
+ },
+ "sheet": {
+  "layer_set": "pid",
+  "sheet_size": "A3",
+  "scale": 1.0,
+  "intent": "ETE fase liquida: elevatoria, equalizacao, aeracao"
+ },
+ "equipment": [
+  {
+   "id": "TQ-101",
+   "symbol": "tank",
+   "x": 60,
+   "y": 180,
+   "tag": "TQ-101",
+   "desc": "POÇO DE SUCÇÃO EEE",
+   "params": {
+    "width": 30,
+    "height": 40,
+    "roof": "flat",
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.8
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.15
+     },
+     {
+      "name": "N3",
+      "side": "top",
+      "fraction": 0.7
+     },
+     {
+      "name": "N4",
+      "side": "right",
+      "fraction": 0.4
+     }
+    ]
+   }
+  },
+  {
+   "id": "B-101A",
+   "symbol": "centrifugal_pump",
+   "x": 115,
+   "y": 120,
+   "tag": "B-101A",
+   "desc": "BOMBA ESGOTO BRUTO"
+  },
+  {
+   "id": "B-101B",
+   "symbol": "centrifugal_pump",
+   "x": 115,
+   "y": 85,
+   "tag": "B-101B",
+   "desc": "BOMBA ESGOTO BRUTO (RESERVA)"
+  },
+  {
+   "id": "TQ-201",
+   "symbol": "tank",
+   "x": 220,
+   "y": 190,
+   "tag": "TQ-201",
+   "desc": "TANQUE DE EQUALIZAÇÃO",
+   "params": {
+    "width": 40,
+    "height": 45,
+    "roof": "flat",
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.8
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.15
+     },
+     {
+      "name": "N4",
+      "side": "top",
+      "fraction": 0.85
+     }
+    ]
+   }
+  },
+  {
+   "id": "MX-201",
+   "symbol": "agitator",
+   "x": 220,
+   "y": 212.5,
+   "tag": "MX-201",
+   "desc": "MISTURADOR SUBMERSÍVEL"
+  },
+  {
+   "id": "B-201",
+   "symbol": "centrifugal_pump",
+   "x": 280,
+   "y": 130,
+   "tag": "B-201",
+   "desc": "BOMBA DE EQUALIZAÇÃO"
+  },
+  {
+   "id": "TQ-301",
+   "symbol": "tank",
+   "x": 350,
+   "y": 190,
+   "tag": "TQ-301",
+   "desc": "TANQUE DE AERAÇÃO",
+   "params": {
+    "width": 40,
+    "height": 45,
+    "roof": "flat",
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.8
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.8
+     },
+     {
+      "name": "N3",
+      "side": "bottom",
+      "fraction": 0.5
+     },
+     {
+      "name": "N4",
+      "side": "top",
+      "fraction": 0.8
+     }
+    ]
+   }
+  },
+  {
+   "id": "SP-301",
+   "symbol": "fan",
+   "x": 300,
+   "y": 105,
+   "tag": "SP-301",
+   "desc": "SOPRADOR"
+  }
+ ],
+ "valves": [
+  {
+   "id": "RG-101",
+   "symbol": "gate",
+   "actuator": "hand",
+   "x": 95,
+   "y": 120,
+   "tag": "RG-101"
+  },
+  {
+   "id": "VR-101",
+   "symbol": "check",
+   "x": 160,
+   "y": 160,
+   "tag": "VR-101"
+  },
+  {
+   "id": "RG-102",
+   "symbol": "gate",
+   "actuator": "hand",
+   "x": 178,
+   "y": 160,
+   "tag": "RG-102"
+  },
+  {
+   "id": "XV-201",
+   "symbol": "butterfly",
+   "actuator": "motor",
+   "x": 305,
+   "y": 160,
+   "tag": "XV-201"
+  },
+  {
+   "id": "RG-103",
+   "symbol": "gate",
+   "actuator": "hand",
+   "x": 95,
+   "y": 85,
+   "tag": "RG-103"
+  },
+  {
+   "id": "VR-102",
+   "symbol": "check",
+   "x": 135,
+   "y": 100,
+   "rotation": 0,
+   "tag": "VR-102"
+  }
+ ],
+ "instruments": [
+  {
+   "id": "LIT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 95,
+   "y": 215,
+   "tag": "LIT-101"
+  },
+  {
+   "id": "LIT-201",
+   "type": "plc",
+   "location": "field",
+   "x": 265,
+   "y": 225,
+   "tag": "LIT-201"
+  },
+  {
+   "id": "AIT-301",
+   "type": "plc",
+   "location": "field",
+   "x": 395,
+   "y": 245,
+   "tag": "AIT-301"
+  }
+ ],
+ "lines": [
+  {
+   "from": "TQ-101.N2",
+   "to": "RG-101.in",
+   "class": "process_major",
+   "number": "150-EB-001-PVC",
+   "route": [
+    [
+     82,
+     166
+    ],
+    [
+     82,
+     120
+    ]
+   ]
+  },
+  {
+   "from": "RG-101.out",
+   "to": "B-101A.suction",
+   "class": "process_major",
+   "number": "150-EB-001-PVC"
+  },
+  {
+   "from": "B-101A.discharge",
+   "to": "VR-101.in",
+   "class": "process_major",
+   "number": "100-EB-002-FOFO"
+  },
+  {
+   "from": "VR-101.out",
+   "to": "RG-102.in",
+   "class": "process_major",
+   "number": "100-EB-002-FOFO"
+  },
+  {
+   "from": "RG-102.out",
+   "to": "TQ-201.N1",
+   "class": "process_major",
+   "number": "100-EB-002-FOFO"
+  },
+  {
+   "from": "TQ-201.N2",
+   "to": "B-201.suction",
+   "class": "process_major",
+   "number": "100-EQ-003-PVC"
+  },
+  {
+   "from": "B-201.discharge",
+   "to": "XV-201.in",
+   "class": "process_major",
+   "number": "100-EQ-004-PVC"
+  },
+  {
+   "from": "XV-201.out",
+   "to": "TQ-301.N1",
+   "class": "process_major",
+   "number": "100-EQ-004-PVC"
+  },
+  {
+   "from": "SP-301.out",
+   "to": "TQ-301.N3",
+   "class": "utility",
+   "number": "80-AR-005-AC"
+  },
+  {
+   "from": "TQ-101.N4",
+   "to": "RG-103.in",
+   "class": "process_major",
+   "number": "150-EB-001B-PVC",
+   "route": [
+    [
+     87,
+     176
+    ],
+    [
+     87,
+     85
+    ]
+   ]
+  },
+  {
+   "from": "RG-103.out",
+   "to": "B-101B.suction",
+   "class": "process_major",
+   "number": "150-EB-001B-PVC"
+  },
+  {
+   "from": "B-101B.discharge",
+   "to": "VR-102.in",
+   "class": "process_major",
+   "number": "100-EB-002B-FOFO"
+  },
+  {
+   "from": "LIT-201",
+   "to": "XV-201.signal",
+   "class": "electric"
+  }
+ ],
+ "connectors": [
+  {
+   "id": "OP-1",
+   "direction": "out",
+   "x": 398,
+   "y": 215,
+   "tag": "PID-002",
+   "link": "L-06",
+   "from": "TQ-301.N2",
+   "class": "process_major",
+   "number": "100-LM-006-PVC"
+  }
+ ],
+ "derivacoes": [
+  {
+   "from": "VR-102.out",
+   "to": [
+    140,
+    160
+   ],
+   "route": [
+    [
+     140,
+     100
+    ]
+   ],
+   "class": "process_major",
+   "number": "100-EB-002B-FOFO"
+  }
+ ]
+}

@@ -1,0 +1,427 @@
+"""Gera um fluxograma de engenharia (P&ID) a partir de uma especificação JSON/YAML.
+
+Pipeline: especificação -> servidor MCP `autocad-mcp-pro` (motor ezdxf, sem AutoCAD)
+-> pid_from_spec (uma transação) -> moldura + carimbo -> listas CSV -> DXF
+-> pós-processamento (carimbo em PT-BR) -> PDF A3/A1 monocromático + PNG de conferência.
+
+Uso (sem instalar nada no Python do sistema):
+    uv run --with "autocad-mcp-pro[pdf]==1.7.0" --with pyyaml \
+        python scripts/gerar_pid.py modelos/ete_exemplo.json --saida saida_pid
+
+Sai com código 1 se a especificação for rejeitada ou se a crítica do P&ID
+apontar problema que não seja apenas informativo.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+#: Rótulos do carimbo ISO 7200 do servidor -> rótulos da casa.
+ROTULOS_PT = {
+    "DWG NO": "Nº DO DESENHO",
+    "REV": "REV.",
+    "SHEET": "FOLHA",
+    "PART NO": "PROJETO",
+    "MATERIAL": "UNIDADE / ÁREA",
+    "SCALE": "ESCALA",
+    "DRAWN": "DESENHO",
+    "CHECKED": "VERIFICAÇÃO",
+    "DATE": "DATA",
+    "COMPANY": "EMPRESA",
+}
+
+FOLHAS_MM = {"A4": (297, 210), "A3": (420, 297), "A2": (594, 420), "A1": (841, 594), "A0": (1189, 841)}
+
+
+def carregar_spec(caminho: Path) -> dict:
+    texto = caminho.read_text(encoding="utf-8")
+    if caminho.suffix.lower() in (".yaml", ".yml"):
+        import yaml
+
+        return yaml.safe_load(texto)
+    return json.loads(texto)
+
+
+def comando_servidor() -> str:
+    """O executável `autocad-mcp` do mesmo ambiente deste Python."""
+    local = Path(sys.executable).parent / ("autocad-mcp.exe" if os.name == "nt" else "autocad-mcp")
+    if local.exists():
+        return str(local)
+    achado = shutil.which("autocad-mcp")
+    if not achado:
+        sys.exit("autocad-mcp não encontrado: rode com  uv run --with 'autocad-mcp-pro[pdf]==1.7.0' ...")
+    return achado
+
+
+async def desenhar(spec: dict, saida: Path, nome: str) -> dict:
+    from fastmcp import Client
+    from fastmcp.client.transports import StdioTransport
+
+    folha = spec.get("folha", {})
+    derivacoes = spec.get("derivacoes", [])
+    pid = {k: v for k, v in spec.items() if k not in ("folha", "derivacoes")}
+    tamanho = pid.get("sheet", {}).get("sheet_size", "A3")
+    env = {
+        **os.environ,
+        "AUTOCAD_MCP_BACKEND": "ezdxf",
+        "ALLOWED_PATHS": str(saida),
+        "TOOL_PACKS": "core,pid",
+        "LOG_LEVEL": "WARNING",
+    }
+    dxf = saida / f"{nome}.dxf"
+    resultado: dict = {}
+    transporte = StdioTransport(command=comando_servidor(), args=[], env=env, log_file=saida / f"{nome}_servidor.log")
+    async def silencio(_msg) -> None:  # o log do servidor vai para o arquivo _servidor.log
+        return None
+
+    async with Client(transporte, log_handler=silencio) as c:
+
+        async def chamar(ferramenta: str, args: dict) -> dict:
+            r = await c.call_tool(ferramenta, args, raise_on_error=False)
+            texto = "".join(getattr(b, "text", "") for b in r.content)
+            if r.is_error:
+                raise SystemExit(f"[{ferramenta}] recusado: {texto}")
+            try:
+                return json.loads(texto) if texto else {}
+            except json.JSONDecodeError:
+                return {"texto": texto}
+
+        await chamar("drawing_new", {})
+        r = await chamar("pid_from_spec", {"spec": pid})
+        resultado["critica"] = r.get("critique", [])
+        resultado["cruzamentos"] = r.get("crossings_total")
+        handles = r.get("handles", {})
+
+        def ponta(ref):
+            # "B-101B.discharge" -> porta de um item da spec; [x, y] -> ponto (tê numa linha existente).
+            if isinstance(ref, (list, tuple)):
+                return {"x": ref[0], "y": ref[1]}
+            item, _, porta = ref.partition(".")
+            if item not in handles:
+                raise SystemExit(f"derivação: item {item!r} não existe na spec")
+            return {"handle": handles[item], "port": porta} if porta else {"handle": handles[item]}
+
+        for i, d in enumerate(derivacoes):
+            args = {"from_": ponta(d["from"]), "to": ponta(d["to"]), "line_class": d.get("class", "process_major")}
+            for chave_spec, chave_mcp in (("number", "line_number"), ("route", "route"), ("stub", "stub")):
+                if chave_spec in d:
+                    args[chave_mcp] = d[chave_spec]
+            try:
+                await chamar("pid_line_draw", args)
+            except SystemExit as e:
+                raise SystemExit(f"derivacoes[{i}]: {e}") from None
+        if derivacoes:
+            focos = ["pid_dangling_line", "pid_duplicate_tag", "pid_incompatible_connection",
+                     "pid_untagged_instrument", "pid_illegal_tag", "pid_unconnected_equipment"]
+            rc = await chamar("drawing_critique", {"focus": focos})
+            resultado["critica"] = rc if isinstance(rc, list) else rc.get("issues", resultado["critica"])
+        titulo = folha.get("titulo", pid.get("sheet", {}).get("intent", "FLUXOGRAMA DE ENGENHARIA"))
+        await chamar(
+            "titleblock_apply",
+            {
+                "size": tamanho,
+                "title": titulo,
+                "drawing_no": folha.get("numero", "PID-000"),
+                "revision": str(folha.get("revisao", "0")),
+                "sheet": folha.get("folha", "1/1"),
+                "part_no": folha.get("projeto", ""),
+                "material": folha.get("unidade", ""),
+                "scale": folha.get("escala", "S/E"),
+                "drawn_by": folha.get("desenho", ""),
+                "checked_by": folha.get("verificacao", ""),
+                "date": folha.get("data", ""),
+                "company": folha.get("empresa", "INTELECTO & CSTR"),
+                "projection": "",
+                "zones": True,
+            },
+        )
+        for lista in ("line_list", "equipment_list", "instrument_index"):
+            await chamar(f"pid_{lista}", {"csv_path": str(saida / f"{nome}_{lista}.csv")})
+        await chamar("drawing_save_as", {"path": str(dxf)})
+    resultado["dxf"] = str(dxf)
+    resultado["folha"] = tamanho
+    resultado["titulo"] = titulo
+    return resultado
+
+
+CAMADAS_LINHA = ("PROCESS-PIPING", "UTILITY-LINE", "INSTRUMENT-LINE")
+
+
+def _segmentos(msp) -> list[tuple[str, tuple, tuple]]:
+    segs = []
+    for pl in msp.query("LWPOLYLINE"):
+        if not pl.dxf.layer.startswith(CAMADAS_LINHA):
+            continue
+        pts = [(float(p[0]), float(p[1])) for p in pl.get_points()]
+        segs += [(pl.dxf.handle, a, b) for a, b in zip(pts, pts[1:])]
+    return segs
+
+
+def _textos(msp) -> list:
+    """Textos soltos e atributos de bloco (TAG/DESC); números de linha ficam de fora (vão sobre a linha)."""
+    textos = [t for t in msp.query("TEXT") if t.dxf.layer != "PROCESS-LINE-TEXT" and t.dxf.text.strip()]
+    for ins in msp.query("INSERT"):
+        textos += [a for a in ins.attribs if a.dxf.text.strip()]
+    return textos
+
+
+def _colide(texto, segs) -> str | None:
+    """Handle da primeira linha que cruza a caixa do texto (com folga de 0,5 mm)."""
+    from ezdxf import bbox
+
+    caixa = bbox.extents([texto], fast=True)
+    if not caixa.has_data:
+        return None
+    x0, y0, x1, y1 = caixa.extmin.x - 0.5, caixa.extmin.y - 0.5, caixa.extmax.x + 0.5, caixa.extmax.y + 0.5
+    for h, a, b in segs:
+        sx0, sx1 = sorted((a[0], b[0]))
+        sy0, sy1 = sorted((a[1], b[1]))
+        if sx0 <= x1 and sx1 >= x0 and sy0 <= y1 and sy1 >= y0:
+            return h
+    return None
+
+
+def _caixa(ent, folga: float = 0.5):
+    from ezdxf import bbox
+
+    c = bbox.extents([ent], fast=True)
+    if not c.has_data:
+        return None
+    return (c.extmin.x - folga, c.extmin.y - folga, c.extmax.x + folga, c.extmax.y + folga)
+
+
+def _cruza(a, b) -> bool:
+    return a is not None and b is not None and a[0] <= b[2] and a[2] >= b[0] and a[1] <= b[3] and a[3] >= b[1]
+
+
+def _obstaculos(msp) -> list[tuple[str, str, tuple]]:
+    """(dono, descrição, caixa) de todo texto, atributo e símbolo da folha. O dono é o handle
+    do bloco (para não comparar um rótulo com o próprio símbolo) ou do texto solto."""
+    from ezdxf import bbox
+
+    obs = []
+    for t in msp.query("TEXT"):
+        if t.dxf.text.strip() and t.dxf.layer not in ("TITLEBLOCK",):
+            obs.append((t.dxf.handle, f"texto {t.dxf.text!r}", _caixa(t, 0.2)))
+    for ins in msp.query("INSERT"):
+        for a in ins.attribs:
+            if a.dxf.text.strip():
+                obs.append((ins.dxf.handle, f"rótulo {a.dxf.text!r}", _caixa(a, 0.2)))
+        geo = bbox.extents(ins.virtual_entities(), fast=True)
+        if geo.has_data:
+            obs.append((ins.dxf.handle, f"símbolo {ins.dxf.name}",
+                        (geo.extmin.x, geo.extmin.y, geo.extmax.x, geo.extmax.y)))
+    return obs
+
+
+def _livre(rotulos, dono: str, segs, obs) -> bool:
+    for a in rotulos:
+        if _colide(a, segs):
+            return False
+        cx = _caixa(a, 0.2)
+        if any(_cruza(cx, c) for d, _, c in obs if d != dono):
+            return False
+    return True
+
+
+def _dist_ponto_seg(p, a, b) -> float:
+    ax, ay, bx, by = a[0], a[1], b[0], b[1]
+    dx, dy = bx - ax, by - ay
+    t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - ay) * dy) / (dx * dx + dy * dy)))
+    return ((p[0] - ax - t * dx) ** 2 + (p[1] - ay - t * dy) ** 2) ** 0.5
+
+
+def corrigir_numeros_linha(msp) -> None:
+    """Um número por linha, no trecho mais longo em que ele não encosta em símbolo,
+    rótulo ou outra linha; os repetidos (a mesma linha partida por válvulas) saem."""
+    segs = _segmentos(msp)
+    textos = [t for t in msp.query("TEXT") if t.dxf.layer == "PROCESS-LINE-TEXT" and t.dxf.text.strip()]
+    grupos: dict[str, list] = {}
+    for t in textos:
+        grupos.setdefault(t.dxf.text, []).append(t)
+    for numero, ts in grupos.items():
+        # trechos das polylines a que cada texto do grupo pertence (a mais próxima do texto)
+        donos = set()
+        for t in ts:
+            p = (t.dxf.insert.x, t.dxf.insert.y)
+            donos.add(min(segs, key=lambda s: _dist_ponto_seg(p, s[1], s[2]))[0])
+        candidatos = sorted((s for s in segs if s[0] in donos),
+                            key=lambda s: -((s[1][0] - s[2][0]) ** 2 + (s[1][1] - s[2][1]) ** 2))
+        alvo, sobra = ts[0], ts[1:]
+        h = alvo.dxf.height
+        original = (alvo.dxf.insert, alvo.dxf.rotation, alvo.dxf.halign, alvo.dxf.get("align_point"))
+        for e in sobra:
+            msp.delete_entity(e)
+        obs = [o for o in _obstaculos(msp) if o[0] != alvo.dxf.handle]
+        outros = [s for s in segs if s[0] not in donos]
+        achou = False
+        for _, a, b in candidatos:
+            mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+            vertical = abs(a[0] - b[0]) < 0.01
+            lados = [(mx - 1.2, my), (mx + 1.2 + h, my)] if vertical else [(mx, my + 1.2), (mx, my - 1.2 - h)]
+            for x, y in lados:
+                alvo.dxf.rotation = 90.0 if vertical else 0.0
+                alvo.dxf.halign = 1
+                alvo.dxf.insert = (x, y)
+                alvo.dxf.align_point = (x, y)
+                cx = _caixa(alvo, 0.3)
+                if not any(_cruza(cx, c) for _, _, c in obs) and not _colide(alvo, outros):
+                    achou = True
+                    break
+            if achou:
+                break
+        if not achou:
+            alvo.dxf.insert, alvo.dxf.rotation, alvo.dxf.halign = original[:3]
+            if original[3] is not None:
+                alvo.dxf.align_point = original[3]
+
+
+def corrigir_rotulos(msp) -> None:
+    """Rótulos TAG/DESC de bloco que caem sobre uma linha: tenta abaixo do símbolo,
+    depois à direita. O que não tiver posição livre fica e vira aviso na verificação."""
+    from ezdxf import bbox
+
+    segs = _segmentos(msp)
+    for ins in msp.query("INSERT"):
+        rotulos = [a for a in ins.attribs if a.dxf.text.strip()]
+        obs = _obstaculos(msp)
+        if not rotulos or _livre(rotulos, ins.dxf.handle, segs, obs):
+            continue
+        geo = bbox.extents(ins.virtual_entities(), fast=True)
+        if not geo.has_data:
+            continue
+        cx, ymin, xmax, ymid = geo.center.x, geo.extmin.y, geo.extmax.x, geo.center.y
+        originais = [(a, a.dxf.insert, a.dxf.halign, a.dxf.get("align_point")) for a in rotulos]
+        # TAG primeiro e DESC embaixo dele, centralizados; ou empilhados à direita, alinhados à esquerda.
+        xmin, ymax = geo.extmin.x, geo.extmax.y
+        n = len(rotulos)
+        tentativas = [
+            [(cx, ymin - 1.5 - 3.2 * (k + 1), 1) for k in range(n)],  # abaixo
+            [(xmax + 2.0, ymid + 1.6 - 3.2 * k, 0) for k in range(n)],  # à direita
+            [(xmax + 2.0, ymax + 1.5 + 3.2 * (n - 1 - k), 0) for k in range(n)],  # acima, à direita
+            [(xmin - 2.0, ymid + 1.6 - 3.2 * k, 2) for k in range(n)],  # à esquerda
+        ]
+        ordem = sorted(rotulos, key=lambda a: a.dxf.tag != "TAG")
+        for posicoes in tentativas:
+            for a, (x, y, hal) in zip(ordem, posicoes):
+                a.dxf.halign = hal
+                a.dxf.insert = (x, y)
+                if hal:
+                    a.dxf.align_point = (x, y)
+            if _livre(rotulos, ins.dxf.handle, segs, obs):
+                break
+        else:
+            for a, ins_pt, hal, ap in originais:
+                a.dxf.insert, a.dxf.halign = ins_pt, hal
+                if ap is not None:
+                    a.dxf.align_point = ap
+
+
+def verificar_desenho(dxf: Path) -> list[dict]:
+    """Checagens que a crítica do servidor não faz: trechos de linhas diferentes
+    colados no mesmo eixo (erro) e textos/atributos sobre linhas (aviso)."""
+    import ezdxf
+
+    msp = ezdxf.readfile(dxf).modelspace()
+    segs = _segmentos(msp)
+    achados: list[dict] = []
+    tol = 0.01
+    for i, (h1, a1, b1) in enumerate(segs):
+        for h2, a2, b2 in segs[i + 1 :]:
+            if h1 == h2:
+                continue
+            for eixo in (0, 1):  # 0: trecho vertical (x constante); 1: horizontal (y constante)
+                outro = 1 - eixo
+                if all(abs(p[eixo] - a1[eixo]) < tol for p in (b1, a2, b2)):
+                    lo = max(min(a1[outro], b1[outro]), min(a2[outro], b2[outro]))
+                    hi = min(max(a1[outro], b1[outro]), max(a2[outro], b2[outro]))
+                    if hi - lo > 0.5:
+                        achados.append({"severity": "error", "focus": "linhas_sobrepostas",
+                                        "message": f"linhas {h1} e {h2} coladas por {hi - lo:.1f} mm "
+                                                   f"no eixo {'x' if eixo == 0 else 'y'}={a1[eixo]:.1f}; "
+                                                   "passe 'route' com waypoints"})
+    for t in _textos(msp):
+        h = _colide(t, segs)
+        if h:
+            achados.append({"severity": "warning", "focus": "texto_sobre_linha",
+                            "message": f"texto {t.dxf.text!r} cruza a linha {h}; afaste o item ou a linha"})
+    obs = _obstaculos(msp)
+    vistos = set()
+    for i, (d1, n1, c1) in enumerate(obs):
+        for d2, n2, c2 in obs[i + 1 :]:
+            if d1 == d2 or n1.startswith("símbolo") and n2.startswith("símbolo"):
+                continue
+            if _cruza(c1, c2) and (n1, n2) not in vistos:
+                vistos.add((n1, n2))
+                achados.append({"severity": "warning", "focus": "texto_sobreposto",
+                                "message": f"{n1} sobrepõe {n2}; afaste um dos dois"})
+    return achados
+
+
+def pos_processar(dxf: Path, tamanho: str, titulo: str) -> None:
+    """Carimbo em PT-BR, título ajustado ao campo, PDF monocromático e PNG."""
+    import ezdxf
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from ezdxf.addons.drawing import matplotlib as mpl
+    from ezdxf.addons.drawing.config import ColorPolicy, Configuration
+
+    from ezdxf import bbox
+
+    doc = ezdxf.readfile(dxf)
+    msp = doc.modelspace()
+    for t in msp.query("TEXT"):
+        if t.dxf.text in ROTULOS_PT:
+            t.dxf.text = ROTULOS_PT[t.dxf.text]
+        elif t.dxf.text == titulo:
+            # Encolhe o título até caber entre o início do texto e a borda direita do carimbo.
+            largura = bbox.extents([t]).size.x
+            livre = FOLHAS_MM.get(tamanho, FOLHAS_MM["A3"])[0] - 10.0 - t.dxf.insert.x - 3.0
+            if largura > livre > 0:
+                t.dxf.height = round(t.dxf.height * livre / largura, 2)
+    corrigir_numeros_linha(msp)
+    for _ in range(3):  # um rótulo movido pode liberar o lugar de outro
+        corrigir_rotulos(msp)
+    doc.saveas(dxf)
+
+    w, h = FOLHAS_MM.get(tamanho, FOLHAS_MM["A3"])
+    pol = Configuration(color_policy=ColorPolicy.BLACK)
+    mpl.qsave(msp, str(dxf.with_suffix(".pdf")), bg="#FFFFFF", config=pol, size_inches=(w / 25.4, h / 25.4))
+    mpl.qsave(msp, str(dxf.with_suffix(".png")), bg="#FFFFFF", dpi=200)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("spec", type=Path, help="especificação .json/.yaml (formato pid_from_spec + bloco 'folha')")
+    ap.add_argument("--saida", type=Path, default=Path("saida_pid"))
+    ap.add_argument("--nome", default=None, help="nome base dos arquivos (padrão: número do desenho)")
+    a = ap.parse_args()
+
+    spec = carregar_spec(a.spec)
+    saida = a.saida.resolve()
+    saida.mkdir(parents=True, exist_ok=True)
+    nome = a.nome or spec.get("folha", {}).get("numero", a.spec.stem)
+
+    res = asyncio.run(desenhar(spec, saida, nome))
+    pos_processar(Path(res["dxf"]), res["folha"], res["titulo"])
+
+    res["critica"] += verificar_desenho(Path(res["dxf"]))
+    problemas = [i for i in res["critica"] if i.get("severity") == "error"]
+    for i in res["critica"]:
+        print(f"  [{i.get('severity')}] {i.get('focus')}: {i.get('message')}")
+    print(f"Cruzamentos de linha: {res['cruzamentos']}")
+    print(f"Arquivos em {saida}:")
+    for f in sorted(saida.glob(f"{nome}*")):
+        print("  ", f.name)
+    sys.exit(1 if problemas else 0)
+
+
+if __name__ == "__main__":
+    main()

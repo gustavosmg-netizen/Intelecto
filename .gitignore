@@ -17,3 +17,6 @@ dist-check/
 # Casca nova (Onda 2): artefato de build do app React (gerado no CI/local)
 public/app/
 *.tsbuildinfo
+
+# saídas do gerador de P&ID (skill fluxograma-pid)
+saida_pid/
