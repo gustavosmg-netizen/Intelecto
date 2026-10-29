@@ -127,7 +127,7 @@ section { display: flex; flex-direction: column; }
       <label for="corte">Corte vertical</label><output id="corte-v" for="corte"></output>
       <input type="range" id="corte" min="0" max="100" value="100">
     </div>
-    <label class="camadas"><span><input type="checkbox" id="girar" checked> Misturadores em operação</span></label>
+    <label class="camadas" id="ctl-girar"><span><input type="checkbox" id="girar" checked> Misturadores em operação</span></label>
   </section>
 
   <section aria-labelledby="h-arq">
@@ -135,7 +135,7 @@ section { display: flex; flex-direction: column; }
     <div id="soltar">Arraste um arquivo .glb aqui ou <label class="btn" for="arquivo">escolha</label>
       <input type="file" id="arquivo" accept=".glb,.gltf" hidden>
     </div>
-    <p class="nota">Peças nomeadas pela tag (TQ, N, L, V, MX, B) recebem material e entram na lista. Gere o .glb com a skill modelagem-3d-engenharia.</p>
+    <p class="nota">Peças nomeadas pela tag (TQ, N, L, V, VT, MX, B, S) recebem material e entram na lista. Gere o .glb com a skill modelagem-3d-engenharia.</p>
   </section>
 </aside>
 
@@ -159,6 +159,8 @@ const TIPOS = {
   V:  { nome: "Válvula", mat: { color: 0x8c140f, metalness: 0.3, roughness: 0.45 } },
   MX: { nome: "Misturador", mat: { color: 0x284673, metalness: 0.45, roughness: 0.4 } },
   B:  { nome: "Bomba", mat: { color: 0x1d4f8c, metalness: 0.45, roughness: 0.4 } },
+  VT: { nome: "Ventosa", mat: { color: 0x8c140f, metalness: 0.3, roughness: 0.45 } },
+  S:  { nome: "Suporte", mat: { color: 0x8a8984, metalness: 0.0, roughness: 0.9 } },
 };
 const $ = (id) => document.getElementById(id);
 const cena = $("cena");
@@ -237,18 +239,30 @@ function carregar(fonte, rotulo) {
     });
     for (const peca of raizes) {
       const tipo = tipoDaTag(peca.name);
-      let corOriginal = null;
-      peca.traverse((m) => { if (m.isMesh && !corOriginal) corOriginal = m.material?.color?.clone?.(); });
       const base = TIPOS[tipo].mat;
-      const mat = new THREE.MeshPhysicalMaterial({
-        color: base.color ?? corOriginal ?? 0x888888, metalness: base.metalness, roughness: base.roughness,
-        clearcoat: tipo === "L" || tipo === "V" ? 0.4 : 0, clippingPlanes: [planoCorte], side: THREE.DoubleSide,
-      });
+      // tipos sem cor fixa (tubulação) mantêm a cor de cada peça: tubo na cor do serviço,
+      // flanges e parafusos metálicos, setas de fluxo amarelas
+      const mats = new Map();
+      const material = (cor) => {
+        const hex = cor.getHex();
+        if (!mats.has(hex)) mats.set(hex, new THREE.MeshPhysicalMaterial({
+          color: cor, metalness: base.metalness, roughness: base.roughness,
+          clearcoat: tipo === "L" || tipo === "V" ? 0.4 : 0, clippingPlanes: [planoCorte], side: THREE.DoubleSide,
+        }));
+        return mats.get(hex);
+      };
+      const contagem = new Map();
       peca.traverse((m) => {
         if (!m.isMesh) return;
-        m.material = mat; m.castShadow = m.receiveShadow = true; m.userData.peca = peca;
+        const cor = base.color !== undefined ? new THREE.Color(base.color)
+          : (m.material?.color?.clone?.() ?? new THREE.Color(0x888888));
+        m.material = material(cor); m.castShadow = m.receiveShadow = true; m.userData.peca = peca;
+        const n = m.geometry?.attributes?.position?.count ?? 0;
+        contagem.set(cor.getHex(), (contagem.get(cor.getHex()) ?? 0) + n);
       });
-      peca.userData = { tipo, mat, corLista: "#" + mat.color.getHexString() };
+      // cor da lista = cor dominante (a do tubo, não a do flange)
+      const dominante = [...contagem].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0x888888;
+      peca.userData = { tipo, mats: [...mats.values()], corLista: "#" + new THREE.Color(dominante).getHexString() };
       const camada = TIPOS[tipo].nome;
       if (!camadas.has(camada)) camadas.set(camada, []);
       camadas.get(camada).push(peca);
@@ -265,6 +279,7 @@ function carregar(fonte, rotulo) {
     montarLista(); montarCamadas(camadas);
     enquadrar("iso");
     atualizarCorte(); atualizarNA();
+    $("ctl-girar").hidden = misturadores.length === 0;
     $("estado").textContent = `${rotulo} · ${pecas.length} peças`;
   };
   // fonte: URL do .glb ou ArrayBuffer (modelo embutido em modelo.js)
@@ -319,12 +334,12 @@ function montarCamadas(camadas) {
 }
 
 function selecionar(p) {
-  if (selecionada) { selecionada.userData.mat.emissive.setHex(0); selecionada.userData.botao.setAttribute("aria-pressed", "false"); }
+  if (selecionada) { selecionada.userData.mats.forEach((x) => x.emissive.setHex(0)); selecionada.userData.botao.setAttribute("aria-pressed", "false"); }
   selecionada = p;
   const f = $("ficha"); f.innerHTML = "";
   if (!p) { f.innerHTML = "<dt>Tag</dt><dd>Clique numa peça</dd>"; return; }
-  p.userData.mat.emissive.set(getComputedStyle(document.documentElement).getPropertyValue("--sel").trim() || "#0b6fb8");
-  p.userData.mat.emissiveIntensity = 0.35;
+  const corSel = getComputedStyle(document.documentElement).getPropertyValue("--sel").trim() || "#0b6fb8";
+  p.userData.mats.forEach((x) => { x.emissive.set(corSel); x.emissiveIntensity = 0.35; });
   p.userData.botao.setAttribute("aria-pressed", "true");
   const b = new THREE.Box3().setFromObject(p), s = b.getSize(new THREE.Vector3());
   const { dn, desc } = descrever(p.name);
@@ -424,8 +439,12 @@ renderer.setAnimationLoop(() => {
 
 // modelo.js (gerado por embutir_modelo.py) define window.MODELO_GLB_B64; sem ele, busca modelo.glb
 const params = new URLSearchParams(location.search);
+// modelo.js também pode definir MODELO_TITULO e MODELO_SUBTITULO
+const rotulo = window.MODELO_TITULO || "Tanque de mistura TQ-01";
+$("titulo").firstChild.textContent = rotulo;
+if (window.MODELO_SUBTITULO) $("subtitulo").textContent = window.MODELO_SUBTITULO;
 if (window.MODELO_GLB_B64 && !params.get("modelo")) {
   const bin = Uint8Array.from(atob(window.MODELO_GLB_B64), (c) => c.charCodeAt(0));
-  carregar(bin.buffer, "TQ-01 · exemplo");
-} else carregar(params.get("modelo") || "modelo.glb", "TQ-01 · exemplo");
+  carregar(bin.buffer, rotulo);
+} else carregar(params.get("modelo") || "modelo.glb", rotulo);
 </script>

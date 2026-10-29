@@ -21,9 +21,11 @@ Pré-requisito: o modelo vem da skill `modelagem-3d-engenharia` (peças nomeadas
 2. Embuta o modelo e publique:
    ```bash
    cp -r .claude/skills/cena-industrial-3d/viewer <pasta_do_projeto>/visualizador
-   python .claude/skills/cena-industrial-3d/scripts/embutir_modelo.py saida/modelo.glb <pasta_do_projeto>/visualizador/modelo.js
+   python .claude/skills/modelagem-3d-engenharia/scripts/gerar_modelo.py projeto.yaml saida_web/ --deflexao 6 --sem-colisao
+   python .claude/skills/cena-industrial-3d/scripts/embutir_modelo.py saida_web/<arquivo>.glb <pasta_do_projeto>/visualizador/modelo.js \
+          --titulo "TQ-01 equalização" --subtitulo "verificação hidráulica aprovada · m"
    ```
-   Edite o `<title>` e o `<h1>` com o nome do projeto e publique `visualizador.html` com a ferramenta Artifact, passando `files: {"modelo.js": …}`. O Artifact não serve `.glb`; por isso o `modelo.js` em base64.
+   O título da página vem de `--titulo` (edite também o `<title>` da página). Publique `visualizador.html` com a ferramenta Artifact, passando `files: {"modelo.js": …}`. O Artifact não serve `.glb`; por isso o `modelo.js` em base64.
 3. Localmente: `python -m http.server` na pasta e abrir `visualizador.html` (lê `modelo.glb`), ou arrastar qualquer .glb para a página.
 
 Recursos: vistas isométrica/planta/frente/lateral, clique para ficha da peça (tag, DN, envelope, elevação do topo), camadas por tipo, corte vertical, N.A. ajustável nos tanques, misturadores girando, layout de celular, tema claro/escuro.

@@ -1,0 +1,64 @@
+# Elevatória com bomba submersível em poço enterrado recalcando para tanque cilíndrico.
+# Chegada por gravidade no poço; recalque PEAD com ampliação, retenção, registro e junta
+# de desmontagem na coluna; descarga livre no topo do tanque. mm; piso acabado z = 0.
+projeto: EE-01 poço de sucção (exemplo)
+arquivo: elevatoria_submersivel
+piso: 0
+
+equipamentos:
+  - tipo: caixa
+    tag: CX-01
+    origem: [0, 0, -3000]           # fundo do poço 3 m abaixo do piso
+    comprimento: 2000
+    largura: 2000
+    altura: 3300
+    parede: 200
+    laje: 250
+    na: -1500
+    na_max: -800
+    bocais:
+      - {tag: N1, papel: entrada, parede: oeste, dn: 150, geratriz_inferior: -700}
+
+  - tipo: bomba
+    modelo: submersivel
+    tag: B-02
+    descricao: "submersível DN80, 8 L/s"
+    origem: [0, 0, -3000]
+    dn_recalque: 80
+    altura_motor: 600
+
+  - tipo: tanque
+    tag: TQ-02
+    origem: [6000, 0, 0]
+    diametro: 3000
+    altura: 3000
+    parede: 200
+    laje: 250
+    na: 2500
+    na_max: 2700
+    bocais:
+      - {tag: N1, papel: entrada, azimute: 180, dn: 100, geratriz_inferior: 2750}
+
+linhas:
+  - tag: L-010
+    servico: esgoto
+    regime: gravidade
+    material: pvc_esgoto
+    dn: 150
+    origem: {ponto: [-6000, 0, -577.5], direcao: [1, 0, 0], descricao: "rede coletora"}
+    destino: CX-01.N1
+
+  - tag: L-011
+    servico: esgoto
+    regime: pressao
+    material: pead
+    de: 90
+    vazao_ls: 8
+    origem: B-02.recalque
+    componentes:
+      - {tipo: reducao, tag: R-011, de2: 110}   # ampliação DE90 -> DE110
+      - {tipo: retencao, tag: V-011}
+      - {tipo: gaveta, tag: V-012}
+      - {tipo: junta_desmontagem, tag: JD-011}
+    pontos: [[257, 0, 1500], [3500, 0, 1500], [3500, 0, 2804.5]]
+    destino: TQ-02.N1

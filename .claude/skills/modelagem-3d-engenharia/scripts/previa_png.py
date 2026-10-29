@@ -5,6 +5,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 sc = trimesh.load(sys.argv[1]); fig = plt.figure(figsize=(10, 9)); ax = fig.add_subplot(projection="3d")
 luz = np.array([0.4, -0.6, 0.7]); luz /= np.linalg.norm(luz); allv = []
 for g in sc.dump():
+    if not hasattr(g, "faces") or len(getattr(g, "faces", [])) == 0:
+        continue
     g.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))  # Y-up -> Z-up
     m = getattr(g.visual, "material", None); bc = getattr(m, "baseColorFactor", None)
     c = np.array(bc[:3]) / (255 if np.max(bc[:3]) > 1 else 1) if bc is not None else np.array([.6, .6, .6])

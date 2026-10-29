@@ -25,6 +25,8 @@ MATERIAIS = {
     "V": ((0.55, 0.05, 0.04), 0.3, 0.45),    # válvula em ferro fundido pintado
     "MX": ((0.15, 0.25, 0.45), 0.4, 0.40),   # motorredutor azul industrial
     "B": ((0.10, 0.30, 0.55), 0.4, 0.40),    # bomba
+    "VT": ((0.55, 0.05, 0.04), 0.3, 0.45),   # ventosa
+    "S": ((0.40, 0.39, 0.37), 0.0, 0.90),    # apoios de concreto
 }
 
 

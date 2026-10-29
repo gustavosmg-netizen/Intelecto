@@ -1,55 +1,68 @@
 ---
 name: modelagem-3d-engenharia
-description: Transformar ideia, memorial descritivo, croqui ou fluxograma em modelo 3D de engenharia para construção (tanques, tubulações com curvas e flanges ASME/DN, bocais, válvulas/registros, misturadores, bombas, estruturas de concreto), exportando STEP para CAD, glTF para render e prévia PNG. Usa build123d + bd_warehouse (código, roda em qualquer lugar) e, no desktop, os MCPs FreeCAD (edição/TechDraw/IFC) e Blender (render realista). Palavras-gatilho: 3D, modelo 3D, maquete, isométrico, render, tubulação 3D, tanque, bocal, válvula, registro, misturador, agitador, STEP, IFC, glTF, FreeCAD, Blender.
+description: Transformar ideia, memorial descritivo, croqui ou fluxograma em modelo 3D de engenharia com sentido físico e hidráulico — tanques e caixas de concreto, tubulações de PVC (NBR 7362, 5647, DEFOFO) e PEAD (NBR 15561) com DE/espessura normativos, curvas, tês, reduções excêntricas, flanges PN10/16 com furação e parafusos reais, válvulas gaveta/borboleta/retenção/esfera, juntas de desmontagem, ventosas, sifão com selo hídrico, extravasor, descarga de fundo, bombas centrífugas e submersíveis, apoios — a partir de especificação YAML, com verificação automática (declividade, selo, ordem de válvulas no recalque, sucção, DN/PN, colisões, vãos) e lista de materiais. Exporta STEP, glTF e prévia PNG. Palavras-gatilho: 3D, modelo 3D, maquete, isométrico, tubulação 3D, tanque, bocal, flange, válvula, registro, sifão, extravasor, recalque, sucção, bomba, PVC, PEAD, STEP, glTF, FreeCAD, Blender.
 ---
 
 # Modelagem 3D de engenharia (Intelecto)
 
-## Cadeia de ferramentas (todas gratuitas)
+## Regra principal
 
-| Etapa | Ferramenta | Onde roda | Para quê |
-|---|---|---|---|
-| Geometria paramétrica | `build123d` + `bd_warehouse` (scripts desta skill) | nuvem ou desktop | Tubos ASME B36.10, flanges ASME B16.5, tanques, válvulas, misturadores; exporta STEP/glTF |
-| Iteração com visão | MCP `build123d` (`build123d-mcp`) | desktop (Claude Code) | Executa código, renderiza vistas, mede volumes/distâncias a cada passo |
-| CAD/BIM editável | MCP `freecad` (`freecad-mcp`) + bancada **Quetzal** | desktop com FreeCAD aberto | Abrir o STEP, rotear tubulação, TechDraw (pranchas), exportar IFC/DXF |
-| Render realista | MCP `blender` (`mcp-for-blender`) | desktop com Blender aberto | Importar o .glb, materiais PBR (aço, concreto, água), iluminação, imagens para apresentação |
+Todo desenho tem que funcionar fisicamente. Por isso o caminho padrão é **especificação YAML → `gerar_modelo.py` → relatório de verificação**. Modelo **REPROVADO** não se entrega: corrige-se a especificação até aprovar, e cada AVISO restante é justificado no memorial.
 
-Os três MCPs estão em `.mcp.json` na raiz do repositório (versões fixadas). Setup do desktop: `docs/ferramentas-3d/RELATORIO.md`.
+## Fluxo
 
-## Fluxo obrigatório
-
-1. **Especificar antes de modelar.** Extraia do memorial/croqui uma lista de equipamentos e linhas, e confirme com o usuário o que faltar:
-   - Equipamento: tag, tipo, dimensões internas (D, H ou L×B×H), cota de fundo, material, espessura.
-   - Bocal: tag, DN, classe de pressão, elevação, orientação (graus em planta ou `±x/±y/±z`), projeção.
-   - Linha: tag, DN, serviço (água, esgoto, lodo, ar, químico), material, pontos (x, y, z) ou "do bocal X ao bocal Y".
-   - Válvula/registro: tipo (gaveta, borboleta, retenção, esfera), DN, posição na linha.
-   - Misturador: tipo (eixo vertical, submersível), diâmetro do rotor, profundidade, potência.
-   Nunca invente cota ou DN: dado ausente é premissa declarada ou pergunta (ver `grau-de-liberdade`).
-2. **Gerar em código.** Copie `scripts/piloto_tanque.py` para a pasta do projeto, troque os dados e rode:
+1. **Especificar.** Extraia do memorial/croqui e escreva `<projeto>.yaml` no formato de `exemplos/tanque_equalizacao.yaml` (comentado). Pergunte o que faltar; nunca invente cota, DN ou N.A. (ver `grau-de-liberdade`).
+   - `equipamentos`: `tanque`/`caixa` (retangular `comprimento × largura` ou `diametro`; `altura`, `parede`, `laje`, `na`, `na_max`, `bocais` com `papel` = entrada | saida | extravasor | descarga | succao) e `bomba` (`modelo: centrifuga | submersivel`, `dn_succao`, `dn_recalque`, `altura_eixo`, `origem`, `rotacao`).
+   - Bocal: `parede` (leste/oeste/norte/sul) ou `azimute`, `posicao`, `dn`, `pn`, e `eixo` **ou** `geratriz_inferior` (soleira).
+   - `linhas`: `material` (`pvc_esgoto`, `pvc_predial`, `pvc_pba`, `pvc_defofo`, `pead`), `dn` (PVC) ou `de` + `sdr` (PEAD), `regime` (gravidade | pressao), `servico`, `origem`/`destino` (porta `TQ-01.N4`, ponto livre, ou `{te: L-005, ponto: [...]}`), `pontos` (vértices), `componentes` (`gaveta`, `borboleta`, `retencao`, `esfera`, `junta_desmontagem`, `reducao` com `de2`/`dn2` e `excentrica`, `ventosa`), `vazao_ls`, `sifao`, `raio_curva` (× DE), `suportes`.
+   - Sentido do escoamento = `origem` → `destino`. Componentes sem `distancia` ficam colados um ao outro na ordem escrita; `distancia: fim` encosta no destino.
+   - Sifão: em `pontos`, entre a chegada e a saída, `{sifao: {selo: 100}}` gera o U; declare `sifao: {selo_min: …}` na linha.
+2. **Gerar e verificar.**
    ```bash
    pip install -r .claude/skills/modelagem-3d-engenharia/scripts/requirements.txt
-   python projeto_3d.py saida/
-   python .claude/skills/modelagem-3d-engenharia/scripts/previa_png.py saida/modelo.glb saida/previa.png
+   python .claude/skills/modelagem-3d-engenharia/scripts/gerar_modelo.py projeto.yaml saida/
    ```
-   Importe as funções de `scripts/componentes.py` (`tanque_vertical`, `bocal`, `linha`, `flange`, `valvula_gaveta`, `misturador_vertical`, `exportar`). Componente novo entra em `componentes.py`, com o mesmo estilo.
-3. **Conferir visualmente.** Abra a prévia PNG (ou use a ferramenta de render do MCP `build123d`) e verifique: linhas terminam na face dos flanges, nada atravessa paredes, curvas não colidem, válvulas acessíveis, cotas batem com o memorial.
-4. **Refinar no desktop (opcional).**
-   - FreeCAD: "abra `saida/modelo.step` no FreeCAD" via MCP `freecad`; detalhar com Quetzal, gerar TechDraw, exportar IFC.
-   - Blender: "importe `saida/modelo.glb`, aplique aço inox escovado nos tubos, concreto no tanque, água com N.A. em 2,6 m e renderize em isométrico 1920×1080" via MCP `blender`.
-5. **Entregar.** STEP (engenharia), GLB (visualização), PNG/render (apresentação). Antes de emitir para cliente, passar pelo `gate-de-lancamento`.
+   Saídas: `.step`, `.glb`, `_previa.png`, `_verificacao.md` (resultado e achados H01–H13) e `_materiais.csv` (tubos em m e barras, curvas, flanges, parafusos, válvulas, apoios). Código de saída 1 = reprovado.
+3. **Conferir visualmente** os pontos críticos (bomba, sifão, ligações nos bocais) com closes no Blender (`cena-industrial-3d`) ou no visualizador web.
+4. **Refinar no desktop (opcional):** STEP no FreeCAD (MCP `freecad`, bancada Quetzal, TechDraw, IFC); render no Blender (MCP `blender`).
+5. **Entregar** STEP + GLB + relatório de verificação + lista de materiais, pelo `gate-de-lancamento`.
 
-## Convenções
+## O que a verificação cobre
 
-- Unidade **mm**, Z vertical, origem no centro do fundo do equipamento principal (ou no marco topográfico do projeto).
-- DN→NPS pela tabela `DN_PARA_NPS`; diâmetro externo real vem da tabela ASME (DN80 → OD 88,9 mm). Para PVC/PEAD com outra série de OD, criar função própria em `componentes.py` com a norma citada.
-- Curvas de raio longo (1,5·OD) por padrão; flanges WN classe 150 face com ressalto, salvo especificação.
-- Cores por serviço em `CORES` (referência NBR 6493; seguir o padrão do cliente quando houver).
-- Nome de cada peça = tag do projeto (`TQ-01`, `L-002-DN80`, `V-001-DN80`): vira o nome do objeto no STEP/glTF.
-- Válvulas e misturadores de `componentes.py` são representativos (envelope e proporção). Para fabricante específico, importar o STEP do fabricante (`import_step`) no lugar.
+| Código | Regra |
+|---|---|
+| H01 | Montagem possível (componente cabe em trecho reto, curvas cabem nos trechos) |
+| H02 | Linha sai/chega no eixo do bocal (sem curva colada ao flange) |
+| H03 | DN e PN compatíveis nas juntas flangeadas (falta de redução, furação diferente) |
+| H04 | Curvas com ângulo comercial (90/45/22,5/11,25° ± 2° de deflexão) |
+| H05 | Conduto livre: declividade mínima (NBR 8160 / piso 0,5 %), sem aclive, saída abaixo da entrada |
+| H06 | Sifão: selo hídrico ≥ mínimo; entrada acima da crista de saída |
+| H07 | Tanque: entrada afogada, extravasor entre N.A. máx e borda, descarga no fundo com registro, saídas abaixo do N.A. com bloqueio |
+| H08 | Bombas: sucção com registro, redução excêntrica de topo reto, sem ponto alto; recalque bomba → retenção → registro, junta de desmontagem |
+| H09 | Velocidade (sucção ≤ 1,5 m/s; recalque 0,6–3,0 m/s) quando há `vazao_ls` |
+| H10 | Ventosa em ponto alto de linha pressurizada |
+| H11 | Bocal sem linha |
+| H12 | Vão entre apoios ≤ tabela do material |
+| H13 | Interferência física entre peças sem ligação |
 
-## Limitações conhecidas
+`python scripts/testes_hidraulica.py` roda 10 casos (cada um injeta um erro típico e confere a regra). Rode depois de mexer em `hidraulica/`.
 
-- `bd_warehouse` 0.4.0 tem incompatibilidade de nome de material com `bd_materials`; `componentes.py` aplica um alias (`steel`→`mild_steel`). Remover quando corrigido upstream.
-- `linha()` só arredonda vértices quando o traçado é plano; em traçado 3D os cantos ficam vivos (inserir cotovelos manualmente ou quebrar em trechos planos).
-- O glTF sai em Y-up (padrão do formato); Blender e visualizadores web já convertem.
-- Os MCPs FreeCAD e Blender executam Python arbitrário na aplicação: salvar o trabalho antes e manter o servidor só em `localhost`.
+## Representação física
+
+- Tubos com DE e espessura reais; PVC com bolsa a cada barra (6 m) e nas curvas; PEAD com cordão de solda a cada 12 m e nas conexões.
+- Juntas flangeadas: adaptador flange-bolsa (PVC) ou colarinho + flange solto (PEAD), furação ISO 7005/EN 1092 PN10/16 e jogo de parafusos com porcas atravessando os dois flanges.
+- Válvulas com face a face EN 558, volante/haste para cima (`cima: [x, y, z]` muda), retenção com seta de fluxo; junta de desmontagem com tirantes.
+- Tubo de parede com anel de vedação (puddle flange) nos bocais de concreto; apoios de concreto com sela e abraçadeira; setas amarelas de sentido de escoamento.
+
+## Arquivos
+
+- `scripts/hidraulica/normas.py`: tabelas (DE e furação normativos; espessuras, face a face e vãos típicos de catálogo: conferir fabricante para compra).
+- `scripts/hidraulica/geometria.py`: sólidos; `montagem.py`: especificação → modelo; `validacao.py`: regras e relatório.
+- `scripts/componentes.py` + `piloto_tanque.py`: biblioteca antiga em aço ASME (B36.10/B16.5) para linhas metálicas; não tem verificação.
+
+## Limitações
+
+- Traçado por vértices informados (não há roteamento automático); componentes só em trechos retos.
+- Bombas e válvulas são representativas (envelope, flanges e bocais corretos); para fabricante específico, importar o STEP dele no lugar.
+- Não verifica NPSH, golpe de aríete nem tensão trativa: são cálculos do memorial.
+- Os MCPs FreeCAD e Blender executam Python arbitrário na aplicação: salvar antes e manter só em `localhost`.

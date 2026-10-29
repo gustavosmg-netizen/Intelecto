@@ -53,3 +53,12 @@ Cadeia em três camadas, todas gratuitas e já configuradas neste repositório:
 ## Segurança
 
 Os MCPs de FreeCAD e Blender executam Python arbitrário dentro da aplicação. Salve o trabalho antes, mantenha os servidores só em `localhost` e rode um cliente MCP por vez (não Claude Desktop e Claude Code ao mesmo tempo no mesmo Blender).
+
+## Atualização: gerador hidráulico com verificação (out/2026)
+
+A skill `modelagem-3d-engenharia` passou a gerar o modelo a partir de uma especificação YAML (`exemplos/tanque_equalizacao.yaml`, `exemplos/elevatoria_submersivel.yaml`) com:
+
+- PVC (NBR 7362, NBR 5688, NBR 5647, DEFOFO) e PEAD (NBR 15561) com DE normativo; flanges ISO 7005/EN 1092 PN10/16 com furação e parafusos; válvulas com face a face EN 558;
+- conexões (curvas, tês, reduções concêntricas/excêntricas, juntas de desmontagem, ventosas), sifão com selo hídrico, extravasor, descarga de fundo, tubo de parede com anel de vedação, bombas centrífuga e submersível, apoios de concreto, setas de fluxo;
+- verificação automática H01–H13 (declividade, selo, ordem de válvulas no recalque, sucção, DN/PN, colisões, vãos, etc.), relatório e lista de materiais;
+- `scripts/testes_hidraulica.py`: 10 casos de regressão (erros injetados).
