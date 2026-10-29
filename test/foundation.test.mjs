@@ -213,10 +213,13 @@ test("Onda 2: kanbans arrastáveis (pipeline + projetos) com mutação segura", 
   assert.match(read("app/src/kanban.tsx"), /useDroppable/);
   assert.match(read("app/src/kanban.tsx"), /useDraggable/);
   const b = read("app/src/boards.tsx");
-  assert.match(b, /export function PipelineBoard/);
   assert.match(b, /export function ProjetosBoard/);
-  assert.match(b, /crmDealStage/);
   assert.match(b, /"setproj"/); // quadro de projetos usa setproj (update parcial seguro)
+  // o pipeline do CRM migrou para app/src/crm.tsx (filtros, tags, atividades) e segue no mesmo Board.
+  const crm = read("app/src/crm.tsx");
+  assert.match(crm, /export function CrmPipeline/);
+  assert.match(crm, /<Board<DealItem>/);
+  assert.match(crm, /"crmDealStage"/);
 });
 
 test("Onda 2: cronograma com arraste de prazo auditado (via setproj)", () => {
