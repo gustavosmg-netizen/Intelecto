@@ -68,7 +68,7 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 - `ensureSchema()` cria/ajusta tabelas em runtime no 1º request após mudança de `SCHEMA_VER`
   (`src/index.ts`, `const SCHEMA_VER`). **Toda mudança de schema exige bump de `SCHEMA_VER`** — sem o
   bump o D1 existente pula o setup e a tabela nunca nasce em produção.
-- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0012 `sess_persist`). Toda
+- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0013 `crm_tags_atividades_filtros`). Toda
   tabela nova ganha migração própria, idempotente (`IF NOT EXISTS`, sem `DROP`/`DELETE`). Numerar em
   sequência e checar se outro PR aberto já usou o número.
 - D1 `--remote` rejeita `BEGIN/COMMIT/PRAGMA`; `DELETE` em massa é feito pelo dono no terminal dele.
@@ -148,6 +148,15 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
 - Proposta × execução por função; acima de 120 % marca atenção.
 - Roster legado no servidor (`COLABS`, `NOMES`, `COORDS`, `AREA_DE`) convive com `membro`/
   `membro_cargo`; pessoa nova entra pelo cadastro do portal, não editando listas no código.
+
+- **CRM (casca nova, `#/comercial`)**: pipeline arrastável por fase (6) ou subetapa (21) —
+  `crmDealStage` aceita `alvo` (`fase:<id>`/`st:<n>`) e grava rastro `etapa` em `crm_atividade`;
+  **tags e filtros salvos são por pessoa** (`crm_tag`/`crm_deal_tag`/`filtro_salvo` sempre com
+  `slug`); atividades (nota, ligação, reunião, e-mail, tarefa = próximo passo com prazo) são do
+  negócio. Regra única em `src/crm.mjs` (servidor, testes e `app/` importam o mesmo arquivo).
+  Cartão não mostra R$. Gate: ver = allowlist `perm:comercial` ou `comercial.ver`; gravar
+  atividade = `comercial.gerir`.
+- O wrapper `sqlite.execute` devolve `rowsAffected` — **nunca** checar `r.meta` (é sempre undefined).
 
 ### Confidencialidade e privacidade (crítico)
 

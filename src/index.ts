@@ -9,6 +9,7 @@ import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.m
 import { deveRodar, nivelEstouro, periodoSemanaISO, notifStatements } from "./onda3b.mjs";
 import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
 import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
+import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -308,7 +309,7 @@ const RESTRITAS = ["financeiro", "comercial", "juridico"];
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-29a";
+const SCHEMA_VER = "2026-10-29b";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -657,6 +658,29 @@ function ensureSchema(): Promise<void> {
         tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, d TEXT DEFAULT '',
         area TEXT DEFAULT '', hours REAL DEFAULT 0, note TEXT DEFAULT '', updatedat TEXT DEFAULT '',
         deleted INTEGER DEFAULT 0, PRIMARY KEY (tenant_id, id))`,
+      /* CRM — tags, atividades e filtros salvos (casca nova). Tags e filtros são POR PESSOA
+         (slug): cada um organiza o próprio funil, invisível aos demais (decisão do dono). As
+         atividades são do negócio (histórico compartilhado com quem acessa o CRM). Lógica pura e
+         validação em src/crm.mjs. Migração 0013. */
+      `CREATE TABLE IF NOT EXISTS crm_tag (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL,
+        nome TEXT NOT NULL DEFAULT '', cor TEXT NOT NULL DEFAULT 'cinza', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`,
+      `CREATE INDEX IF NOT EXISTS idx_crm_tag_slug ON crm_tag (tenant_id, slug)`,
+      `CREATE TABLE IF NOT EXISTS crm_deal_tag (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, deal_id TEXT NOT NULL,
+        tag_id TEXT NOT NULL, PRIMARY KEY (tenant_id, slug, deal_id, tag_id))`,
+      `CREATE TABLE IF NOT EXISTS crm_atividade (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, deal_id TEXT NOT NULL,
+        tipo TEXT NOT NULL DEFAULT 'nota', texto TEXT DEFAULT '', data TEXT DEFAULT '', prazo TEXT DEFAULT '',
+        resp TEXT DEFAULT '', feito INTEGER DEFAULT 0, autor TEXT DEFAULT '', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`,
+      `CREATE INDEX IF NOT EXISTS idx_crm_ativ_deal ON crm_atividade (tenant_id, deal_id)`,
+      `CREATE TABLE IF NOT EXISTS filtro_salvo (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL,
+        modulo TEXT NOT NULL, nome TEXT NOT NULL DEFAULT '', filtro TEXT DEFAULT '{}', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`,
+      `CREATE INDEX IF NOT EXISTS idx_filtro_slug ON filtro_salvo (tenant_id, slug, modulo)`,
       /* FINANCEIRO — RESUMO EXECUTIVO MATERIALIZADO. Cada linha é um snapshot DATADO do
          consolidado (financeiro + pipeline CRM + horas + fluxo), gravado como JSON em `dados`.
          "Materializar" = fechar o retrato de um dia e guardá-lo como registro histórico, com
@@ -1295,6 +1319,19 @@ function b64FromStr(s: string): string {
 async function podeComercial(slug: string): Promise<boolean> {
   const al = String((await cfgGet("perm:comercial")) || "").split(",").map(s => s.trim()).filter(Boolean);
   return isOwner(slug) || al.includes(slug);
+}
+/** CRM: ver (allowlist do comercial ou cap comercial.ver) e gerir (allowlist ou comercial.gerir). */
+async function crmPodeVer(u: { slug: string; papel: Papel }): Promise<boolean> {
+  return (await podeComercial(u.slug)) || temCapSet(await capsAtribuidas(u), "comercial.ver");
+}
+async function crmPodeGerir(u: { slug: string; papel: Papel }): Promise<boolean> {
+  return (await podeComercial(u.slug)) || temCapSet(await capsAtribuidas(u), "comercial.gerir");
+}
+/** Filtro salvo só para módulo que a pessoa enxerga. Módulo desconhecido = negado. */
+async function podeFiltroModulo(u: { slug: string; papel: Papel }, modulo: string): Promise<boolean> {
+  if (modulo === "crm") return crmPodeVer(u);
+  if (modulo === "financeiro") return isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver");
+  return false;
 }
 async function salt(): Promise<string> {
   let s = await cfgGet("salt");
@@ -1943,6 +1980,9 @@ const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
   comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
+  // CRM na casca nova: tags/filtros por pessoa e atividades do negócio. Gate fino na ação (comercial.*).
+  crmTagSet: "equipe", crmTagDel: "equipe", crmDealTag: "equipe", crmAtividades: "equipe", crmAtividadeSet: "equipe",
+  crmAtividadeFeita: "equipe", crmAtividadeDel: "equipe", filtroList: "equipe", filtroSet: "equipe", filtroDel: "equipe",
   // Leads ambientais (explorador) + enriquecimento — piso login; o recorte comercial é fino DENTRO
   // de cada ação (podeComercial / comercial.ver|gerir). Catalogados para o guard fail-closed (S-02).
   ambList: "equipe", ambFicha: "equipe", ambMeta: "equipe", ambFacets: "equipe", ambAgg: "equipe",
@@ -2868,7 +2908,15 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const macro = (st: number) => st <= 0 ? "" : st <= 4 ? "Prospecção & Qualificação" : st <= 8 ? "Diagnóstico Técnico" : st <= 12 ? "Proposta" : st <= 16 ? "Negociação & Contrato" : st <= 20 ? "Execução" : "Pós-venda & Expansão";
     const funil: Record<string, { n: number; val: number }> = {};
     for (const d of dr.rows as P[]) { const m = macro(Number(d.st) || 0); if (!m) continue; (funil[m] = funil[m] || { n: 0, val: 0 }); funil[m].n++; funil[m].val += Number(d.val) || 0; }
-    return { ok: true, deals: dr.rows, leads: lr.rows, time: tr.rows, funil, podeGerir: (await podeComercial(u.slug)) || temCapSet(await capsAtribuidas(u), "comercial.gerir") };
+    // Casca nova: as tags e marcações SÃO DE QUEM CONSULTA (por pessoa); o próximo passo vem das
+    // tarefas abertas do negócio (compartilhadas). Aditivo: a casca clássica ignora estes campos.
+    const tg = await sqlite.execute({ sql: "SELECT id, nome, cor FROM crm_tag WHERE tenant_id = ? AND slug = ? ORDER BY nome", args: [u.tenant_id, u.slug] });
+    const dt = await sqlite.execute({ sql: "SELECT deal_id, tag_id FROM crm_deal_tag WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+    const dealTags: Record<string, string[]> = {};
+    for (const r of dt.rows as P[]) (dealTags[String(r.deal_id)] = dealTags[String(r.deal_id)] || []).push(String(r.tag_id));
+    const ta = await sqlite.execute({ sql: "SELECT id, deal_id, tipo, feito, prazo, texto, resp FROM crm_atividade WHERE tenant_id = ? AND tipo = 'tarefa' AND feito = 0", args: [u.tenant_id] });
+    const prox = proximosPassos(ta.rows as any);
+    return { ok: true, deals: dr.rows, leads: lr.rows, time: tr.rows, funil, podeGerir: await crmPodeGerir(u), eu: u.slug, tags: tg.rows, dealTags, prox };
   }
   /* CRM — criar/editar negócio (E5). Upsert: em edição só toca os campos do formulário
      (preserva cc/history/d4date/autuacao). Gate comercial.gerir. */
@@ -2900,9 +2948,19 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.gerir")) throw new Error("Sem permissão para mover o negócio.");
     const id = String(p.id || "").trim(); if (!id) throw new Error("Negócio ausente.");
-    const st = Math.max(0, Math.min(21, Math.floor(Number(p.st) || 0)));
-    const r = await sqlite.execute({ sql: "UPDATE crm_deal SET st = ?, atualizado = ? WHERE id = ? AND tenant_id = ?", args: [st, new Date().toISOString(), id, u.tenant_id] });
-    if (!r.meta || (r.meta as P).changes === 0) { /* id inexistente: sem erro ruidoso, o front re-sincroniza */ }
+    const atual = await sqlite.execute({ sql: "SELECT st FROM crm_deal WHERE id = ? AND tenant_id = ?", args: [id, u.tenant_id] });
+    const stAntes = atual.rows.length ? Number((atual.rows[0] as P).st) || 0 : 0;
+    // `alvo` (casca nova: "fase:<id>" | "st:<n>") resolve no servidor pela mesma regra pura da UI;
+    // `st` numérico segue aceito (casca clássica).
+    const st = p.alvo != null ? destinoMovimento(stAntes, String(p.alvo)) : Math.max(0, Math.min(21, Math.floor(Number(p.st) || 0)));
+    const now = new Date().toISOString();
+    const r = await sqlite.execute({ sql: "UPDATE crm_deal SET st = ?, atualizado = ? WHERE id = ? AND tenant_id = ?", args: [st, now, id, u.tenant_id] });
+    if (!r.rowsAffected) { /* id inexistente: sem erro ruidoso, o front re-sincroniza */ }
+    else if (st !== stAntes) {
+      // Rastro no histórico do negócio: quem moveu, quando, de onde para onde.
+      await sqlite.execute({ sql: "INSERT INTO crm_atividade (tenant_id, id, deal_id, tipo, texto, data, autor, criado) VALUES (?,?,?,'etapa',?,?,?,?)",
+        args: [u.tenant_id, "AT-" + crypto.randomUUID().slice(0, 12), id, rotuloSt(stAntes) + " → " + rotuloSt(st), now.slice(0, 10), u.slug, now] });
+    }
     await audit("crm_deal", u.slug, "mover " + id + " -> st " + st, ip);
     return { ok: true, id, st };
   }
@@ -2924,6 +2982,116 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "UPDATE crm_lead SET status = 'aprovado', dealid = ?, aprovado = ? WHERE tenant_id = ? AND id = ?", args: [did, now.slice(0, 10), u.tenant_id, lid] });
     await audit("crm_lead_aprovar", u.slug, lid + " -> " + did, ip);
     return { ok: true, dealid: did };
+  }
+
+  /* ===== CRM na casca nova — tags (por pessoa), atividades do negócio, filtros salvos ===== */
+  if (action === "crmTagSet") {
+    const u = await auth(p);
+    if (!(await crmPodeVer(u))) throw new Error("Sem acesso ao CRM.");
+    const { nome, cor } = validaTag(p.nome, p.cor);
+    let id = String(p.id || "").trim();
+    if (id) {
+      const r = await sqlite.execute({ sql: "UPDATE crm_tag SET nome = ?, cor = ? WHERE tenant_id = ? AND id = ? AND slug = ?", args: [nome, cor, u.tenant_id, id, u.slug] });
+      if (!r.rowsAffected) throw new Error("Tag não encontrada.");
+    } else {
+      const n = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM crm_tag WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+      if (Number((n.rows[0] as P).n) >= 60) throw new Error("Limite de 60 tags por pessoa.");
+      id = "TG-" + crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO crm_tag (tenant_id, id, slug, nome, cor, criado) VALUES (?,?,?,?,?,?)", args: [u.tenant_id, id, u.slug, nome, cor, new Date().toISOString()] });
+    }
+    return { ok: true, tag: { id, nome, cor } };
+  }
+  if (action === "crmTagDel") {
+    const u = await auth(p);
+    if (!(await crmPodeVer(u))) throw new Error("Sem acesso ao CRM.");
+    const id = String(p.id || "").trim();
+    await sqlite.execute({ sql: "DELETE FROM crm_deal_tag WHERE tenant_id = ? AND slug = ? AND tag_id = ?", args: [u.tenant_id, u.slug, id] });
+    await sqlite.execute({ sql: "DELETE FROM crm_tag WHERE tenant_id = ? AND slug = ? AND id = ?", args: [u.tenant_id, u.slug, id] });
+    return { ok: true, id };
+  }
+  if (action === "crmDealTag") {
+    const u = await auth(p);
+    if (!(await crmPodeVer(u))) throw new Error("Sem acesso ao CRM.");
+    const deal = String(p.deal || "").trim(), tag = String(p.tag || "").trim();
+    // A tag precisa ser DA PESSOA (não marca negócio com tag alheia nem com id inventado).
+    const t = await sqlite.execute({ sql: "SELECT 1 FROM crm_tag WHERE tenant_id = ? AND slug = ? AND id = ?", args: [u.tenant_id, u.slug, tag] });
+    if (!t.rows.length) throw new Error("Tag não encontrada.");
+    if (p.on === false) await sqlite.execute({ sql: "DELETE FROM crm_deal_tag WHERE tenant_id = ? AND slug = ? AND deal_id = ? AND tag_id = ?", args: [u.tenant_id, u.slug, deal, tag] });
+    else {
+      const d = await sqlite.execute({ sql: "SELECT 1 FROM crm_deal WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, deal] });
+      if (!d.rows.length) throw new Error("Negócio não encontrado.");
+      await sqlite.execute({ sql: "INSERT OR IGNORE INTO crm_deal_tag (tenant_id, slug, deal_id, tag_id) VALUES (?,?,?,?)", args: [u.tenant_id, u.slug, deal, tag] });
+    }
+    return { ok: true, deal, tag, on: p.on !== false };
+  }
+  if (action === "crmAtividades") {
+    const u = await auth(p);
+    if (!(await crmPodeVer(u))) throw new Error("Sem acesso ao CRM.");
+    const r = await sqlite.execute({ sql: "SELECT id, tipo, texto, data, prazo, resp, feito, autor, criado FROM crm_atividade WHERE tenant_id = ? AND deal_id = ? ORDER BY criado DESC LIMIT 200", args: [u.tenant_id, String(p.deal || "")] });
+    return { ok: true, atividades: r.rows, eu: u.slug };
+  }
+  if (action === "crmAtividadeSet") {
+    const u = await auth(p);
+    if (!(await crmPodeGerir(u))) throw new Error("Sem permissão para registrar atividade no CRM.");
+    const a = validaAtividade(p);
+    const deal = String(p.deal || "").trim();
+    const d = await sqlite.execute({ sql: "SELECT 1 FROM crm_deal WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, deal] });
+    if (!d.rows.length) throw new Error("Negócio não encontrado.");
+    const now = new Date().toISOString();
+    const id = "AT-" + crypto.randomUUID().slice(0, 12);
+    await sqlite.execute({ sql: "INSERT INTO crm_atividade (tenant_id, id, deal_id, tipo, texto, data, prazo, resp, feito, autor, criado) VALUES (?,?,?,?,?,?,?,?,0,?,?)",
+      args: [u.tenant_id, id, deal, a.tipo, a.texto, a.data || now.slice(0, 10), a.prazo, a.resp, u.slug, now] });
+    // Contato registrado vira o "último contato" do negócio (o que a casca clássica já mostra).
+    if (a.tipo !== "tarefa") await sqlite.execute({ sql: "UPDATE crm_deal SET lastdate = ?, last = ?, atualizado = ? WHERE tenant_id = ? AND id = ?", args: [a.data || now.slice(0, 10), a.texto.slice(0, 200), now, u.tenant_id, deal] });
+    await audit("crm_atividade", u.slug, a.tipo + " " + deal, ip);
+    return { ok: true, id };
+  }
+  if (action === "crmAtividadeFeita") {
+    const u = await auth(p);
+    if (!(await crmPodeGerir(u))) throw new Error("Sem permissão para alterar atividade no CRM.");
+    const r = await sqlite.execute({ sql: "UPDATE crm_atividade SET feito = ? WHERE tenant_id = ? AND id = ? AND tipo = 'tarefa'", args: [p.feito === false ? 0 : 1, u.tenant_id, String(p.id || "")] });
+    if (!r.rowsAffected) throw new Error("Tarefa não encontrada.");
+    return { ok: true };
+  }
+  if (action === "crmAtividadeDel") {
+    const u = await auth(p);
+    if (!(await crmPodeGerir(u))) throw new Error("Sem permissão para excluir atividade no CRM.");
+    // Só quem registrou (ou o dono) apaga; o rastro automático de etapa não sai.
+    const r = await sqlite.execute({ sql: "DELETE FROM crm_atividade WHERE tenant_id = ? AND id = ? AND tipo <> 'etapa' AND (autor = ? OR ?)", args: [u.tenant_id, String(p.id || ""), u.slug, isOwner(u.slug) ? 1 : 0] });
+    if (!r.rowsAffected) throw new Error("Só quem registrou pode excluir esta atividade.");
+    await audit("crm_atividade_del", u.slug, String(p.id || ""), ip);
+    return { ok: true };
+  }
+  /* Filtros salvos — POR PESSOA e por módulo. O gate é o do módulo (quem não vê o módulo não salva
+     filtro dele). O filtro do CRM é normalizado; o de outros módulos guarda um JSON limitado. */
+  if (action === "filtroList" || action === "filtroSet" || action === "filtroDel") {
+    const u = await auth(p);
+    const modulo = String(p.modulo || "");
+    if (!(await podeFiltroModulo(u, modulo))) throw new Error("Sem acesso a este módulo.");
+    if (action === "filtroList") {
+      const r = await sqlite.execute({ sql: "SELECT id, nome, filtro FROM filtro_salvo WHERE tenant_id = ? AND slug = ? AND modulo = ? ORDER BY nome", args: [u.tenant_id, u.slug, modulo] });
+      return { ok: true, filtros: (r.rows as P[]).map((x) => { let f: any = {}; try { f = JSON.parse(String(x.filtro || "{}")); } catch { f = {}; } return { id: x.id, nome: x.nome, filtro: f }; }) };
+    }
+    if (action === "filtroDel") {
+      await sqlite.execute({ sql: "DELETE FROM filtro_salvo WHERE tenant_id = ? AND slug = ? AND id = ?", args: [u.tenant_id, u.slug, String(p.id || "")] });
+      return { ok: true };
+    }
+    const nome = String(p.nome || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!nome) throw new Error("Dê um nome ao filtro.");
+    const filtro = modulo === "crm" ? normalizaFiltro(p.filtro) : (p.filtro && typeof p.filtro === "object" ? p.filtro : {});
+    const json = JSON.stringify(filtro);
+    if (json.length > 4000) throw new Error("Filtro grande demais.");
+    let id = String(p.id || "").trim();
+    if (id) {
+      const r = await sqlite.execute({ sql: "UPDATE filtro_salvo SET nome = ?, filtro = ? WHERE tenant_id = ? AND slug = ? AND id = ?", args: [nome, json, u.tenant_id, u.slug, id] });
+      if (!r.rowsAffected) throw new Error("Filtro não encontrado.");
+    } else {
+      const n = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM filtro_salvo WHERE tenant_id = ? AND slug = ? AND modulo = ?", args: [u.tenant_id, u.slug, modulo] });
+      if (Number((n.rows[0] as P).n) >= 40) throw new Error("Limite de 40 filtros salvos por módulo.");
+      id = "FS-" + crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO filtro_salvo (tenant_id, id, slug, modulo, nome, filtro, criado) VALUES (?,?,?,?,?,?,?)", args: [u.tenant_id, id, u.slug, modulo, nome, json, new Date().toISOString()] });
+    }
+    return { ok: true, filtro: { id, nome, filtro } };
   }
 
   const now = new Date().toISOString();

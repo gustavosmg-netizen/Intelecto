@@ -3,7 +3,8 @@ import { AREAS, parseHash } from "./routes";
 import { CommandPalette } from "./palette";
 import { Cockpit } from "./cockpit";
 import { Carteira, Projeto360 } from "./projetos";
-import { PipelineBoard, ProjetosBoardLoader } from "./boards";
+import { ProjetosBoardLoader } from "./boards";
+import { CrmPipeline } from "./crm";
 import { CronogramaLoader } from "./cronograma";
 import { MeuTrabalho } from "./meutrabalho";
 import { Financeiro } from "./financeiro";
@@ -76,7 +77,7 @@ export function App() {
                 {projView === "lista" ? <Carteira /> : projView === "quadro" ? <ProjetosBoardLoader /> : <CronogramaLoader />}
               </>)
         ) : area.id === "comercial" ? (
-          <><h1>{area.label}</h1><p className="sub">Pipeline comercial — mova os negócios entre as fases.</p><PipelineBoard /></>
+          <><h1>{area.label}</h1><p className="sub">Pipeline comercial: filtre, organize com as suas tags e registre cada contato.</p><CrmPipeline /></>
         ) : area.id === "meu" ? (
           <><h1>{area.label}</h1><p className="sub">Lance e acompanhe as suas horas.</p><MeuTrabalho /></>
         ) : area.id === "financeiro" ? (

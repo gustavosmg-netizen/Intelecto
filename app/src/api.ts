@@ -89,23 +89,17 @@ export interface ProjDetalhe {
 
 // ---- CRM / pipeline (ação `crm`). O card do pipeline NÃO exibe valor em R$ (confidencialidade:
 // valor monetário não circula fora do Financeiro) — mostra empresa, responsável, prioridade.
-export interface Deal { id: string; st: number; co: string; owner?: string; pri?: string; temp?: string; city?: string; seg?: string; cc?: string; signeddate?: string }
-export interface CrmResp { ok: true; deals: Deal[]; podeGerir: boolean }
+export interface Deal { id: string; st: number; co: string; owner?: string; pri?: string; temp?: string; city?: string; seg?: string; cc?: string; signeddate?: string;
+  contact?: string; role?: string; email?: string; phone?: string; prod?: string }
+// Tags e filtros são POR PESSOA (o servidor só devolve os de quem consulta); `prox` = próximo passo
+// (tarefa aberta de prazo mais cedo) de cada negócio.
+export interface CrmTag { id: string; nome: string; cor: string }
+export interface CrmAtividade { id: string; tipo: string; texto: string; data: string; prazo: string; resp: string; feito: number; autor: string; criado: string }
+export interface CrmResp { ok: true; deals: Deal[]; podeGerir: boolean; eu?: string; tags?: CrmTag[];
+  dealTags?: Record<string, string[]>; prox?: Record<string, { id: string; prazo: string; texto: string; resp: string }> }
 
-export const MACRO = [
-  { id: "prosp", label: "Prospecção & Qualificação", base: 1, lo: 1, hi: 4 },
-  { id: "diag", label: "Diagnóstico Técnico", base: 5, lo: 5, hi: 8 },
-  { id: "prop", label: "Proposta", base: 9, lo: 9, hi: 12 },
-  { id: "neg", label: "Negociação & Contrato", base: 13, lo: 13, hi: 16 },
-  { id: "exec", label: "Execução", base: 17, lo: 17, hi: 20 },
-  { id: "pos", label: "Pós-venda & Expansão", base: 21, lo: 21, hi: 21 },
-];
-export function faseDeSt(st: number): string | null {
-  const s = Number(st) || 0;
-  if (s <= 0) return null; // ainda não entrou no funil (lead candidato)
-  const c = MACRO.find((m) => s >= m.lo && s <= m.hi);
-  return c ? c.id : null;
-}
+// Fases e subetapas: fonte única em src/crm.mjs (a mesma regra que o servidor aplica).
+export { FASES as MACRO, faseDeSt } from "../../src/crm.mjs";
 
 export const fmtBRL = (n: number) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export const fmtHoras = (n: number) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " h";
