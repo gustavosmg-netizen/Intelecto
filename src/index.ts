@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { marked } from "marked";
 import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.mjs";
+import { montaPromptSugestaoCC, parseSugestaoCC } from "./onda3c.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -321,6 +322,8 @@ const FLAGS: Record<string, { desc: string; def: boolean }> = {
   horas_aprovacao: { desc: "Exige aprovação da coordenação para as horas entrarem nos indicadores.", def: false },
   // Onda 3-A — contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.
   contrato_abre_projeto: { desc: "Contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.", def: false },
+  // Onda 3-C — conciliação assistida por IA: sugere (nunca grava) o CC de um movimento de caixa sem CC.
+  conciliacao_ia: { desc: "Oferece 'Sugerir CC (IA)' na fila de conciliação (a IA só sugere; o humano confirma).", def: false },
 };
 async function flagsAtivas(tenant: string = TENANT_INTELECTO): Promise<Record<string, boolean>> {
   const out: Record<string, boolean> = {};
@@ -1987,7 +1990,7 @@ const MIN: Record<string, Papel> = {
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
-  conciliacao: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
+  conciliacao: "coordenacao", conciliaSugerir: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
   capacidade: "coordenacao",
@@ -3843,6 +3846,36 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     });
     const n = Number((tot.rows[0] as P).n) || 0;
     return { ok: true, fila: r.rows, total: n, valorPendente: arred2(Number((tot.rows[0] as P).v) || 0), limit, offset, temMais: offset + limit < n };
+  }
+  /* CONCILIAÇÃO ASSISTIDA POR IA (Onda 3-C) — SUGERE o CC de um movimento de caixa sem CC. READ-ONLY:
+     não grava nada e não chama fluxoSet; o cc só é gravado pelo fluxoSet/fluxoCc existente, por clique
+     humano em "Aceitar". A IA só propõe CC de projeto ATIVO (parseSugestaoCC valida contra a lista;
+     alucinação → incerto). Atrás da flag conciliacao_ia; OFF/sem binding → sugestão vazia. Gate financeiro.ver. */
+  if (action === "conciliaSugerir") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const id = String(p.id || "").trim(); if (!id) throw new Error("ID do lançamento ausente.");
+    const mv = await sqlite.execute({ sql: "SELECT descricao, valor, data_real, data_prev, cc FROM fluxo WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id] });
+    if (!mv.rows.length || String((mv.rows[0] as P).cc || "").trim()) return { ok: true, cc: "", confianca: "", motivo: "Movimento inexistente ou já tem CC." };
+    const m0 = mv.rows[0] as P;
+    const fl = await flagsAtivas(u.tenant_id);
+    if (!fl.conciliacao_ia || !ENV || !ENV.AI || typeof ENV.AI.run !== "function") return { ok: true, cc: "", confianca: "", motivo: "IA indisponível" };
+    const cand = await sqlite.execute({ sql: "SELECT cc, cliente, projeto FROM proj WHERE tenant_id = ? AND registro='ATIVO' ORDER BY cc LIMIT 300", args: [u.tenant_id] });
+    const hist = await sqlite.execute({ sql: "SELECT descricao, cc FROM fluxo WHERE tenant_id = ? AND COALESCE(cc,'') <> '' ORDER BY criado DESC LIMIT 60", args: [u.tenant_id] });
+    const candidatos = cand.rows.map((x: any) => ({ cc: String(x.cc || ""), cliente: String(x.cliente || ""), projeto: String(x.projeto || "") }));
+    if (!candidatos.length) return { ok: true, cc: "", confianca: "", motivo: "Nenhum projeto ativo para sugerir." };
+    const { system, user } = montaPromptSugestaoCC(
+      { descricao: String(m0.descricao || ""), valor: Number(m0.valor) || 0, data: String(m0.data_real || m0.data_prev || "") },
+      candidatos, hist.rows.map((x: any) => ({ descricao: String(x.descricao || ""), cc: String(x.cc || "") })));
+    let sug: { cc: string; confianca: number | ""; motivo: string };
+    try {
+      const r: any = await ENV.AI.run(BRIEF_MODELO, {
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        max_tokens: 300, temperature: 0.1,
+      });
+      sug = parseSugestaoCC(String((r && (r.response ?? (r.result && r.result.response))) || ""), candidatos.map((c) => c.cc));
+    } catch (_) { return { ok: true, cc: "", confianca: "", motivo: "IA indisponível" }; }
+    await audit("conciliacao_ia", u.slug, id + " -> " + (sug.cc || "incerto"), ip);
+    return { ok: true, ...sug };
   }
   /* PARCELAS DO CONTRATO (Onda 1) — plano de recebimento de um contrato (base da conciliação).
      Lista por contrato OU por CC. Gate financeiro.ver. */

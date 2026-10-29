@@ -129,6 +129,29 @@ test("Onda 3-A: exceção do guard é cap-only (projetos.aprovar), coerente com 
   assert.doesNotMatch(ts, /podeAprovar(Add|Ed) = .*u\.coord/);
 });
 
+test("Onda 3-C: acao conciliaSugerir read-only, atras da flag, reusa env.AI", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /from "\.\/onda3c\.mjs"/);
+  assert.match(ts, /conciliacao_ia: \{[^}]*def: false/); // flag nasce OFF
+  assert.match(ts, /conciliaSugerir: "coordenacao"/); // piso no mapa de acoes
+  const ini = ts.indexOf('action === "conciliaSugerir"');
+  assert.ok(ini > 0, "acao conciliaSugerir ausente");
+  // corpo inteiro da acao: ate o proximo `if (action === ` de nivel do handler.
+  const fim = ts.indexOf('\n  if (action === "', ini + 10);
+  const corpo = ts.slice(ini, fim > 0 ? fim : ini + 6000);
+  assert.ok(corpo.length > 400 && corpo.length < 6000, "corpo da acao mal delimitado");
+  // read-only: o corpo da acao nao grava fluxo nem chama fluxoSet/fluxoCc
+  assert.doesNotMatch(corpo, /UPDATE fluxo|INSERT INTO fluxo|DELETE FROM fluxo|fluxoSet|fluxoCc/);
+  assert.doesNotMatch(corpo, /INSERT |UPDATE |DELETE /); // nenhuma escrita (audit() e funcao, nao SQL aqui)
+  // reusa o padrao do triagemIA e o guard anti-invencao
+  assert.match(corpo, /ENV\.AI\.run\(/);
+  assert.match(corpo, /parseSugestaoCC\(/);
+  assert.match(corpo, /montaPromptSugestaoCC\(/);
+  assert.match(corpo, /conciliacao_ia/);
+  assert.match(corpo, /registro='ATIVO'/); // so candidatos ATIVOS
+  assert.match(corpo, /financeiro\.ver/);
+});
+
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
   const pkg = JSON.parse(read("app/package.json"));
   assert.ok(pkg.dependencies.react, "app sem react");
