@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { marked } from "marked";
 import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.mjs";
+import { deveRodar, nivelEstouro, periodoSemanaISO, notifStatements } from "./onda3b.mjs";
 import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
@@ -305,7 +306,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-26c";
+const SCHEMA_VER = "2026-10-28a";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -325,6 +326,11 @@ const FLAGS: Record<string, { desc: string; def: boolean }> = {
   horas_aprovacao: { desc: "Exige aprovação da coordenação para as horas entrarem nos indicadores.", def: false },
   // Onda 3-A — contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.
   contrato_abre_projeto: { desc: "Contrato confirmado abre o projeto (PROPOSTO) e a parcela inicial automaticamente.", def: false },
+  // Onda 3-B — regras agendadas (cron diário) que NOTIFICAM no portal: projeto parado 30d,
+  // estouro de horas por CC (80/100/120%), sexta sem apontamento e snapshot mensal do resumo
+  // executivo. Nasce OFF e SEM seed: ligar é decisão explícita do dono (Administração › Flags).
+  // Ligar não gera nada retroativo — as regras só olham o estado do dia em que rodam.
+  regras_agendadas: { desc: "Avisa no portal (sino) sobre projeto parado, estouro de horas e apontamento em atraso, e fecha o resumo executivo todo mês.", def: false },
   // Onda 3-C — conciliação assistida por IA: sugere (nunca grava) o CC de um movimento de caixa sem CC.
   conciliacao_ia: { desc: "Oferece 'Sugerir CC (IA)' na fila de conciliação (a IA só sugere; o humano confirma).", def: false },
 };
@@ -1218,6 +1224,31 @@ function ensureSchema(): Promise<void> {
       try { await sqlite.execute({ sql: "DELETE FROM vitrine_case WHERE tenant_id = ? AND cid IN ('vexemplo-ete','vexemplo-tratabilidade') AND u = 'seed'", args: [TENANT_INTELECTO] }); } catch (_) {}
     } catch (_) { /* ja existe */ }
 
+    /* ONDA 3-B — NOTIFICACOES IN-PORTAL. Caixa de avisos gerada pelas REGRAS AGENDADAS (cron
+     * diario, atras da flag `regras_agendadas`). Nao ha e-mail (sem binding), entao o aviso
+     * mora aqui e e lido pelo "sino" do portal. `destino` e o slug do colaborador OU o token de
+     * grupo '@coordenacao' (proj nao tem campo responsavel; ver spec §2). O UNIQUE
+     * (tenant_id,tipo,ref,periodo) e a DEDUP POR JANELA: com `INSERT OR IGNORE`, re-rodar o cron
+     * no mesmo periodo nao duplica nada e nao reabre o que ja foi lido; a condicao que persistir
+     * reaparece no periodo seguinte (semana ISO / nivel de estouro / mes). */
+    try {
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS notificacao (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'intelecto',
+        destino TEXT NOT NULL, tipo TEXT NOT NULL, ref TEXT DEFAULT '', periodo TEXT DEFAULT '',
+        titulo TEXT DEFAULT '', texto TEXT DEFAULT '', criado TEXT DEFAULT '',
+        UNIQUE(tenant_id, tipo, ref, periodo))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS notificacao_cx ON notificacao (tenant_id, destino, criado)"); } catch (_) {}
+      /* QUEM JA LEU, POR PESSOA. A caixa '@coordenacao' e UMA linha compartilhada por quatro
+       * coordenadores: um `lido` unico na notificacao fazia o primeiro a ler apagar o aviso para
+       * os outros tres ate a proxima janela de dedup. Aqui "lido" e uma linha por (notificacao,
+       * pessoa), e o `lido` que a UI recebe e DERIVADO por LEFT JOIN com o slug de quem consulta. */
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS notificacao_lida (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', notif_id TEXT NOT NULL, slug TEXT NOT NULL,
+        lido_em TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, notif_id, slug))`);
+      try { await sqlite.execute("CREATE INDEX IF NOT EXISTS notificacao_lida_slug ON notificacao_lida (tenant_id, slug)"); } catch (_) {}
+    } catch (_) { /* ja existe */ }
+
     /* Setup completo concluido (idempotente). Grava a sentinela: a partir daqui
      * os cold starts seguintes deste D1 (nova instancia = `ready` resetado) leem
      * schema_ver == SCHEMA_VER e pulam todo o setup. Em D1 EXISTENTE sem sentinela
@@ -1920,6 +1951,10 @@ const MIN: Record<string, Papel> = {
   // RITOS & CADENCIA (catalogo da Agenda): leitura p/ todo logado; editar/remover = coordenacao
   // (o handler ainda confere agenda.editar, alinhado ao resto da Agenda).
   ritos: "cliente", ritoset: "coordenacao", ritodel: "coordenacao",
+  // ONDA 3-B — caixa de notificações do portal ("sino"). Piso 'cliente': todo logado lê as SUAS;
+  // o recorte por destino (slug próprio + '@coordenacao' só para quem aprova projetos) é DENTRO
+  // da ação, no WHERE — o guard aqui é só o piso.
+  notificacoes: "cliente", notifLida: "cliente",
   progcurso: "equipe", setprog: "equipe", addparam: "equipe", delparam: "equipe",
   addbiblio: "equipe", delbiblio: "equipe", add: "equipe", edit: "equipe", del: "equipe",
   acervo_busca: "equipe",
@@ -4049,6 +4084,59 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await cfgSet("flag:" + nome, on ? "1" : "0");
     await audit("flag_set", u.slug, nome + "=" + (on ? "1" : "0"), ip);
     return { ok: true, flag: nome, on, flags: await flagsAtivas() };
+  }
+
+  /* ONDA 3-B — NOTIFICACOES IN-PORTAL (o "sino"). Caixa de avisos das REGRAS AGENDADAS. Piso
+   * 'cliente' no guard: todo logado le as SUAS. O recorte e por DESTINO, aqui dentro: o proprio
+   * slug SEMPRE, e o alvo de grupo '@coordenacao' SO para quem aprova projetos (coordenacao,
+   * spec §4) — para um nao-coordenador o parametro desliga a condicao, e as notificacoes de
+   * grupo nem aparecem na consulta. Filtrado por tenant: caixa de um tenant nunca vaza noutro. */
+  if (action === "notificacoes") {
+    const u = await auth(p);
+    const coord = (await podeGestaoProjeto(u)) ? 1 : 0;
+    const r = await sqlite.execute({
+      /* `lido` e DERIVADO do slug de quem consulta (notificacao_lida), nao um estado da linha: a
+         caixa '@coordenacao' e compartilhada, e o que um coordenador leu nao e o que o outro leu. */
+      sql: "SELECT n.id id, n.destino destino, n.tipo tipo, n.ref ref, n.periodo periodo, n.titulo titulo, "
+        + "n.texto texto, n.criado criado, (CASE WHEN x.slug IS NULL THEN 0 ELSE 1 END) lido "
+        + "FROM notificacao n LEFT JOIN notificacao_lida x ON x.tenant_id = n.tenant_id AND x.notif_id = n.id AND x.slug = ? "
+        + "WHERE n.tenant_id = ? AND (n.destino = ? OR (n.destino = '@coordenacao' AND ? = 1)) "
+        + "ORDER BY lido ASC, n.criado DESC LIMIT 100",
+      args: [u.slug, u.tenant_id, u.slug, coord],
+    });
+    /* Contagem PRÓPRIA: contada sobre as 100 linhas da janela, o badge saturaria em 100 e
+       subnotificaria. Mesmo recorte de visibilidade, só as que EU não li (x.slug IS NULL). */
+    const cnt = await sqlite.execute({
+      sql: "SELECT COUNT(*) qtd FROM notificacao n LEFT JOIN notificacao_lida x "
+        + "ON x.tenant_id = n.tenant_id AND x.notif_id = n.id AND x.slug = ? "
+        + "WHERE n.tenant_id = ? AND (n.destino = ? OR (n.destino = '@coordenacao' AND ? = 1)) AND x.slug IS NULL",
+      args: [u.slug, u.tenant_id, u.slug, coord],
+    });
+    const notificacoes = r.rows as P[];
+    const naoLidas = Number((cnt.rows[0] as P || {}).qtd) || 0;
+    return { ok: true, notificacoes, naoLidas, coord: coord === 1 };
+  }
+
+  /* ONDA 3-B — marcar como lida: uma (por `id`) ou todas as que EU vejo (`id: "all"`). O mesmo
+   * recorte de destino do `notificacoes` vai no WHERE, então ninguém marca pela conta de outro:
+   * um id que o usuário não vê simplesmente não entra no SELECT. A marca é por PESSOA. */
+  if (action === "notifLida") {
+    const u = await auth(p);
+    const coord = (await podeGestaoProjeto(u)) ? 1 : 0;
+    const id = String(p.id || "");
+    if (!id) throw new Error("Informe a notificação (ou \"all\").");
+    const r = await sqlite.execute({
+      /* Marca POR PESSOA: grava em notificacao_lida, nunca na notificacao. Por isso "all" pode
+         alcançar também a caixa '@coordenacao' — marcar como lida não silencia mais ninguém, e cada
+         coordenador segue vendo o aviso até ler o SEU. O SELECT embutido é o mesmo recorte de
+         visibilidade do `notificacoes`: um id que o usuário não vê simplesmente não entra. */
+      sql: "INSERT OR IGNORE INTO notificacao_lida (tenant_id, notif_id, slug, lido_em) "
+        + "SELECT n.tenant_id, n.id, ?, ? FROM notificacao n "
+        + "WHERE n.tenant_id = ? AND (n.destino = ? OR (n.destino = '@coordenacao' AND ? = 1)) "
+        + "AND (? = 'all' OR n.id = ?)",
+      args: [u.slug, now, u.tenant_id, u.slug, coord, id, id],
+    });
+    return { ok: true, marcadas: Number((r as P).rowsAffected ?? (r as P).changes ?? 0) };
   }
 
   /* ============================================================================
@@ -6935,12 +7023,167 @@ async function briefColetar(env: any, opts: { fonteId?: string; autor?: string }
   }
 }
 
+/* ---------- Onda 3-B: REGRAS AGENDADAS (cron diario "0 11 * * *") ----------
+ * O portal passa a AVISAR SOZINHO, num "sino" in-portal (nao ha e-mail: sem binding). Um cron
+ * so: cada regra se autolimita pela data em `deveRodar` (R3 so sexta, R4 so dia 1, R1/R2 todo
+ * dia). Toda a logica de decisao mora nos helpers PUROS de ./onda3b.mjs (testados por
+ * comportamento); aqui ficam apenas as CONSULTAS D1 e a execucao dos statements.
+ *
+ * Idempotencia: nenhuma regra grava notificacao direto — tudo passa por `notifStatements`, que
+ * emite `INSERT OR IGNORE` contra o UNIQUE(tenant_id,tipo,ref,periodo). Re-rodar o cron no mesmo
+ * periodo nao duplica nada e nao reabre o que ja foi lido. R4 tem a propria guarda (nao grava um
+ * segundo snapshot do mesmo dia).
+ *
+ * Robustez: cada regra em try/catch proprio — uma consulta que falha nao cancela as outras, e o
+ * wrapper `run` do scheduled() registra o resultado no Workers Logs (observabilidade).
+ * Tudo atras da flag `regras_agendadas` (OFF por padrao): desligada, a funcao nao escreve nada. */
+async function rodarRegrasAgendadas(env: any): Promise<P> {
+  ENV = env; /* mesmo padrao do keepAlive/backupD1: os helpers usam o ENV global */
+  await ensureSchema();
+  const T = TENANT_INTELECTO;
+  if (!(await flagsAtivas(T)).regras_agendadas) return { ok: true, flag: "off", geradas: 0 };
+  const hoje = new Date();
+  const now = hoje.toISOString();
+  const semana = periodoSemanaISO(hoje);
+  const mes = now.slice(0, 7);
+  const det: P = {};
+  const itens: Array<P> = [];
+  let seq = 0;
+  const nid = () => "NT-" + Date.now().toString(36).toUpperCase() + (seq++).toString(36).toUpperCase()
+    + Math.random().toString(36).slice(2, 5).toUpperCase();
+  const erro = (e: any) => String((e && e.message) || e).slice(0, 120);
+
+  /* R1 — projeto EM ANDAMENTO sem nenhum apontamento nos ultimos 30 dias. Vai para a
+   * Coordenacao: `proj` nao tem campo responsavel e nao se cria um agora (spec §2). */
+  if (deveRodar("parado", hoje)) {
+    try {
+      const r = await sqlite.execute({
+        sql: "SELECT p.cc, p.projeto FROM proj p WHERE p.tenant_id = ? AND p.status = 'EM ANDAMENTO' "
+          + "AND NOT EXISTS (SELECT 1 FROM lanc l WHERE l.cc = p.cc AND l.tenant_id = p.tenant_id AND l.d >= date('now','-30 day')) "
+          + "ORDER BY p.cc",
+        args: [T],
+      });
+      for (const x of r.rows as P[]) {
+        itens.push({
+          id: nid(), tenant: T, destino: "@coordenacao", tipo: "proj_parado", ref: String(x.cc), periodo: semana,
+          titulo: "Projeto sem apontamento há 30 dias: " + String(x.cc),
+          texto: String(x.projeto || x.cc) + " está EM ANDAMENTO e não recebeu nenhum lançamento de horas nos últimos 30 dias. Confirme o andamento ou atualize o status.",
+          now,
+        });
+      }
+      det.parado = r.rows.length;
+    } catch (e: any) { det.parado_erro = erro(e); }
+  }
+
+  /* R2 — estouro de horas por CC: consumido (lanc efetivo) ÷ previsto (prevf). O NIVEL
+   * (80/100/120) e tambem a chave de dedup, logo cada faixa avisa uma vez por CC. */
+  if (deveRodar("estouro", hoje)) {
+    try {
+      /* So CC de projeto VIVO: `prevf` sobrevive ao encerramento do projeto, e sem este JOIN a
+       * primeira rodada com a flag ligada alertaria estouro de projeto CONCLUIDO/CANCELADO (e a
+       * dedup por nivel nunca reabre, entao o alerta inutil ficaria na caixa para sempre). */
+      const pr = await sqlite.execute({
+        sql: "SELECT f.cc cc, COALESCE(SUM(f.h),0) p FROM prevf f JOIN proj p ON p.cc = f.cc AND p.tenant_id = f.tenant_id "
+          + "WHERE f.tenant_id = ? AND p.registro = 'ATIVO' AND p.status IN ('A INICIAR','EM ANDAMENTO','EM ESPERA') GROUP BY f.cc",
+        args: [T],
+      });
+      const cr = await sqlite.execute({ sql: "SELECT cc, COALESCE(SUM(h),0) c FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') GROUP BY cc", args: [T] });
+      const cons: Record<string, number> = {};
+      for (const x of cr.rows as P[]) cons[String(x.cc)] = Number(x.c) || 0;
+      let n = 0;
+      for (const x of pr.rows as P[]) {
+        const cc = String(x.cc);
+        const prev = Number(x.p) || 0;
+        const c = cons[cc] || 0;
+        const nivel = nivelEstouro(c, prev);
+        if (!nivel) continue;
+        itens.push({
+          id: nid(), tenant: T, destino: "@coordenacao", tipo: "estouro", ref: cc, periodo: nivel,
+          titulo: "Horas do projeto " + cc + " em " + nivel + "% do previsto",
+          texto: "O projeto " + cc + " consumiu " + Math.round(c) + "h das " + Math.round(prev) + "h previstas na proposta (faixa de " + nivel + "%). Reavalie o esforço ou o escopo.",
+          now,
+        });
+        n++;
+      }
+      det.estouro = n;
+    } catch (e: any) { det.estouro_erro = erro(e); }
+  }
+
+  /* R3 — sexta sem apontamento: colaborador ATIVO sem nenhum lancamento na semana corrente.
+   * Vai para o PROPRIO colaborador (destino = slug). Dedup pela semana ISO. */
+  if (deveRodar("sem_apontamento", hoje)) {
+    try {
+      // Segunda da semana corrente (o cron roda na sexta, mas a conta nao depende disso).
+      const seg = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate()));
+      seg.setUTCDate(seg.getUTCDate() - ((seg.getUTCDay() || 7) - 1));
+      const desde = seg.toISOString().slice(0, 10);
+      const r = await sqlite.execute({
+        /* Só gente DA CASA: `membro` também guarda cliente/fornecedor (ensureMembroCliente,
+         * membroadd), que nunca lançam horas — sem o filtro de papel eles receberiam o lembrete
+         * toda sexta. Mesmo recorte que o resto do portal usa ao listar o quadro. */
+        sql: "SELECT m.slug FROM membro m WHERE m.tenant_id = ? AND m.ativo = 1 AND m.papel NOT IN ('cliente','fornecedor') "
+          + "AND NOT EXISTS (SELECT 1 FROM lanc l WHERE l.slug = m.slug AND l.tenant_id = m.tenant_id AND l.d >= ?) "
+          + "ORDER BY m.slug",
+        args: [T, desde],
+      });
+      for (const x of r.rows as P[]) {
+        const slug = String(x.slug);
+        itens.push({
+          id: nid(), tenant: T, destino: slug, tipo: "sem_apontamento", ref: slug, periodo: semana,
+          titulo: "Sem apontamento de horas nesta semana",
+          texto: "Nenhuma hora lançada desde " + desde + ". Lance as horas da semana em Escritório › Horas antes do fechamento.",
+          now,
+        });
+      }
+      det.sem_apontamento = r.rows.length;
+    } catch (e: any) { det.sem_apontamento_erro = erro(e); }
+  }
+
+  /* R4 — snapshot mensal: materializa o resumo executivo no dia 1, reusando o MESMO helper da
+   * acao resumoExecFechar (nao reimplementa o calculo). Guarda propria de idempotencia: se o
+   * cron ja fechou o snapshot de hoje, nao grava um segundo. Sem valor monetario na notificacao. */
+  if (deveRodar("snapshot", hoje)) {
+    try {
+      const d = now.slice(0, 10);
+      /* Pergunta certa: "ja existe snapshot de hoje?" — nao "ja existe o MEU". Se a coordenacao
+       * financeira fechar o resumo pela acao `resumoExecFechar` na manha do dia 1, o cron nao
+       * grava um segundo retrato do mesmo dia na linha do tempo de `resumoExecHist`. */
+      const ja = await sqlite.execute({ sql: "SELECT 1 FROM fin_snapshot WHERE tenant_id = ? AND d = ? LIMIT 1", args: [T, d] });
+      if (!ja.rows.length) {
+        const resumo = await resumoExecutivo(TENANT_INTELECTO);
+        const id = "FS-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+        await sqlite.execute({
+          sql: "INSERT INTO fin_snapshot (id, tenant_id, d, dados, autor, criado) VALUES (?,?,?,?,?,?)",
+          args: [id, T, d, JSON.stringify(resumo), "cron", now],
+        });
+        det.snapshot = id;
+      } else { det.snapshot = "ja_existe"; }
+      itens.push({
+        id: nid(), tenant: T, destino: "@coordenacao", tipo: "snapshot", ref: d, periodo: mes,
+        titulo: "Resumo executivo do mês fechado",
+        texto: "O retrato do resumo executivo foi materializado em " + d + ". Veja a linha do tempo em Financeiro › Resumo executivo.",
+        now,
+      });
+    } catch (e: any) { det.snapshot_erro = erro(e); }
+  }
+
+  /* Grava as notificacoes. INSERT OR IGNORE: o que ja existe no periodo e simplesmente ignorado. */
+  const stmts = notifStatements(itens);
+  let geradas = 0;
+  if (stmts.length) {
+    try { await sqlite.batch(stmts); geradas = stmts.length; } catch (e: any) { det.gravacao_erro = erro(e); }
+  }
+  logEvent({ ev: "regras_agendadas", tenant: T, candidatas: stmts.length, ...det });
+  return { ok: true, geradas, detalhe: det };
+}
+
 export default {
   fetch: app.fetch,
   scheduled: (event: any, env: any, ctx: any) => {
     /* ramifica por cron (ver [triggers] no wrangler.toml):
      *  - "0 6 * * *" : backup diario do D1 -> R2
      *  - "0 9 * * *" : coletor do Daily Brief (fontes ativas e devidas pela cadencia)
+     *  - "0 11 * * *": regras agendadas da Onda 3-B (notificacoes in-portal), atras da flag
      *  - demais ("*​/5 * * * *") : keep-alive */
     const cron = (event && event.cron) || "?";
     // Observabilidade: cada disparo de cron deixa uma linha (quem/quando/resultado) no Workers Logs.
@@ -6951,6 +7194,7 @@ export default {
     };
     if (event && event.cron === "0 6 * * *") ctx.waitUntil(run("backup", backupD1(env)));
     else if (event && event.cron === "0 9 * * *") ctx.waitUntil(run("daily_brief", briefColetar(env, { autor: "cron" })));
+    else if (event && event.cron === "0 11 * * *") ctx.waitUntil(run("regras_agendadas", rodarRegrasAgendadas(env)));
     else ctx.waitUntil(run("keep_alive", keepAlive(env)));
   },
 };

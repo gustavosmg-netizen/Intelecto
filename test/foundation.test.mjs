@@ -477,3 +477,114 @@ test("migrations/ só tem arquivos .sql numerados em ordem", () => {
   assert.ok(files.length >= 1, "nenhuma migração");
   for (const f of files) assert.match(f, /^\d{4}_/, "migração sem prefixo numérico: " + f);
 });
+
+test("Onda 3-B: tabela notificacao + ações + SCHEMA_VER bump", () => {
+  const ts = read("src/index.ts");
+  // Tabela no ensureSchema (nasce em D1 novo) + dedup por janela no próprio schema.
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS notificacao/);
+  assert.match(ts, /UNIQUE\(tenant_id, ?tipo, ?ref, ?periodo\)/);
+  // Sem bump, o D1 existente pula o setup e a tabela nunca nasce lá.
+  assert.doesNotMatch(ts, /const SCHEMA_VER = "2026-10-26c"/, "SCHEMA_VER precisa ser bumpado");
+  // Ações novas + piso no guard (todo logado vê as SUAS; o recorte fino é dentro da ação).
+  assert.match(ts, /action === "notificacoes"/);
+  assert.match(ts, /action === "notifLida"/);
+  assert.match(ts, /notificacoes: "cliente"/);
+  assert.match(ts, /notifLida: "cliente"/);
+  // Visibilidade: o alvo de grupo só aparece para quem é coordenação (spec §4) — o parâmetro
+  // desliga a condição, então um não-coordenador NUNCA casa com destino='@coordenacao'.
+  assert.match(ts, /destino = '@coordenacao' AND \? = 1/);
+  // Migração versionada espelha o CREATE (D1 existente aplica por `d1 migrations apply`).
+  const mig = read("migrations/0010_notificacao.sql");
+  assert.match(mig, /CREATE TABLE IF NOT EXISTS notificacao/);
+  assert.match(mig, /UNIQUE\(tenant_id, ?tipo, ?ref, ?periodo\)/);
+});
+
+test("Onda 3-B: cron diário + regras agendadas atrás da flag", () => {
+  // Trigger novo (o scheduled() ramifica por event.cron; staging segue com crons=[]).
+  assert.match(read("wrangler.toml"), /"0 11 \* \* \*"/);
+  const ts = read("src/index.ts");
+  // Flag nasce OFF (def:false) e SEM seed — ligar é decisão explícita do dono.
+  assert.match(ts, /regras_agendadas: \{ desc:[^}]*def: false \}/);
+  assert.doesNotMatch(ts, /cfgSet\("flag:regras_agendadas"/, "a flag não pode ser semeada ligada");
+  // Função + branch do cron + observabilidade pelo wrapper run().
+  assert.match(ts, /async function rodarRegrasAgendadas/);
+  assert.match(ts, /event\.cron === "0 11 \* \* \*"/);
+  assert.match(ts, /run\("regras_agendadas"/);
+  // Reusa os helpers puros (lógica testada por comportamento em test/onda3b.test.mjs).
+  assert.match(ts, /from "\.\/onda3b\.mjs"/);
+  assert.match(ts, /deveRodar\("parado"/);
+  assert.match(ts, /deveRodar\("estouro"/);
+  assert.match(ts, /deveRodar\("sem_apontamento"/);
+  assert.match(ts, /deveRodar\("snapshot"/);
+  // Dedup: nenhuma regra grava notificação fora do notifStatements (que é INSERT OR IGNORE).
+  assert.match(ts, /notifStatements\(/);
+  assert.doesNotMatch(ts, /INSERT INTO notificacao/, "notificação só entra por INSERT OR IGNORE");
+  // R4 reusa o helper já existente do resumo executivo (não reimplementa o cálculo).
+  assert.match(ts, /await resumoExecutivo\(TENANT_INTELECTO\)/);
+  assert.match(ts, /INSERT INTO fin_snapshot/);
+});
+
+test("Onda 3-B: casca clássica tem o sino de notificações", () => {
+  const html = read("public/index.html");
+  // Consome as duas ações novas (listar + marcar lida) e tem o gatilho na casca.
+  assert.match(html, /api\("notificacoes"\)/);
+  assert.match(html, /api\("notifLida"/);
+  assert.match(html, /id="ap-sino"/);
+  // Conteúdo vem escapado (o texto da notificação é gerado pelo servidor, mas nunca cru no DOM).
+  assert.match(html, /esc\(n\.titulo\)/);
+});
+
+test("Onda 3-B (revisão): as regras alcançam exatamente quem devem alcançar", () => {
+  const ts = read("src/index.ts");
+  // R3: `membro` também guarda cliente/fornecedor (ensureMembroCliente/membroadd), que nunca
+  // lançam horas — sem filtro, receberiam "lance suas horas" toda sexta, para sempre.
+  assert.match(ts, /AND m\.papel NOT IN \('cliente','fornecedor'\)/);
+  // R2: `prevf` sobrevive ao encerramento do projeto. Sem filtro, a primeira rodada com a flag
+  // ligada alerta estouro de projeto CONCLUÍDO/CANCELADO — e a dedup por nível nunca reabre.
+  assert.match(ts, /FROM prevf f JOIN proj p ON p\.cc = f\.cc AND p\.tenant_id = f\.tenant_id/);
+  assert.match(ts, /p\.registro = 'ATIVO'/);
+  // Caixa '@coordenacao': mesmo predicado de autoridade do resto da gestão de projeto. Cap-only
+  // esvazia a caixa em silêncio para um coordenador com cargo coord_comercial/coord_financeira
+  // (nenhum dos dois concede projetos.aprovar, e capsDe deixa de cair no fallback por papel).
+  assert.equal((ts.match(/const coord = \(await podeGestaoProjeto\(u\)\) \? 1 : 0;/g) || []).length, 2);
+  // (O recorte de "marcar todas" que entrou aqui foi SUPERADO pelo `lido` por pessoa — ver o
+  //  teste "`lido` é por pessoa (notificacao_lida)". Com notificacao_lida, marcar não silencia.)
+  // Guarda da R4 não pode ser por autor: se a coordenação financeira fechar o resumo na manhã
+  // do dia 1, o cron gravaria um SEGUNDO snapshot do mesmo dia na linha do tempo.
+  assert.doesNotMatch(ts, /AND autor = 'cron' LIMIT 1/);
+});
+
+test("Onda 3-B: `lido` é por pessoa (notificacao_lida), não compartilhado", () => {
+  const ts = read("src/index.ts");
+  // Tabela própria: uma linha por (notificação, pessoa). Sem ela, o primeiro coordenador a ler
+  // apagava o aviso de projeto parado para os outros três até a próxima janela de dedup.
+  assert.match(ts, /CREATE TABLE IF NOT EXISTS notificacao_lida/);
+  assert.match(ts, /PRIMARY KEY \(tenant_id, notif_id, slug\)/);
+  assert.match(read("migrations/0011_notificacao_lida.sql"), /CREATE TABLE IF NOT EXISTS notificacao_lida/);
+  // `notificacao` deixa de ter coluna `lido`: o estado de leitura é derivado por pessoa.
+  assert.doesNotMatch(read("migrations/0010_notificacao.sql"), /lido INTEGER/);
+  assert.match(ts, /LEFT JOIN notificacao_lida x ON/);
+  assert.match(ts, /INSERT OR IGNORE INTO notificacao_lida/);
+  // Nova tabela => novo bump (senão o D1 existente pula o setup e ela não nasce lá).
+  assert.doesNotMatch(ts, /const SCHEMA_VER = "2026-10-27a"/);
+  // "all" volta a alcançar a caixa de grupo — marcar é por pessoa, não silencia mais ninguém.
+  assert.doesNotMatch(ts, /\? = 'all' AND destino = \?/);
+  assert.match(read("public/index.html"), /Marcar todas/);
+});
+
+test("Onda 3-B: sino segue o padrão da casca (data-*) e conta não-lidas fora do LIMIT", () => {
+  const html = read("public/index.html");
+  // O id não vai interpolado dentro de um onclick: o parser decodifica &#39; ANTES de compilar o
+  // atributo como JS, então esc() é o escape errado nesse contexto. A casca usa data-* em todo
+  // o resto (ver [data-apr]/[data-delandam]); o sino era a única exceção.
+  assert.doesNotMatch(html, /onclick="marcarNotif/);
+  assert.match(html, /data-notif="/);
+  assert.match(html, /querySelectorAll\("\[data-notif\]"\)\.forEach/);
+  // NOTIF_ICONE sem cadeia de protótipos: um tipo "constructor"/"toString" despejaria o código
+  // da função na caixa em vez de cair no bullet.
+  assert.match(html, /const NOTIF_ICONE=Object\.assign\(Object\.create\(null\)/);
+  const ts = read("src/index.ts");
+  // naoLidas vem de um COUNT próprio: contado sobre as 100 linhas da janela, o badge satura.
+  assert.match(ts, /SELECT COUNT\(\*\) qtd FROM notificacao n LEFT JOIN notificacao_lida/);
+  assert.doesNotMatch(ts, /notificacoes\.reduce/);
+});
