@@ -1,0 +1,558 @@
+{
+ "folha": {
+  "titulo": "P&ID F01 - RECEBIMENTO, TRITURAÇÃO E DILUIÇÃO",
+  "numero": "PID-TBU-F01",
+  "revisao": "A",
+  "folha": "1/2",
+  "projeto": "THERMOBIOGASUP",
+  "unidade": "M1/M2 RECEPÇÃO",
+  "escala": "S/E",
+  "desenho": "",
+  "verificacao": "",
+  "data": "",
+  "empresa": "INTELECTO & CSTR",
+  "escala_simbolos": 2.0
+ },
+ "sheet": {
+  "layer_set": "pid",
+  "sheet_size": "A1",
+  "scale": 1.0,
+  "intent": "ThermoBiogasUp F01 recebimento e diluicao"
+ },
+ "equipment": [
+  {
+   "id": "ES-101",
+   "symbol": "horizontal_vessel",
+   "x": 120,
+   "y": 500,
+   "tag": "ES-101",
+   "desc": "ESTEIRA DE TRIAGEM",
+   "params": {
+    "width": 20.0,
+    "height": 8.0,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "MAG-101",
+   "symbol": "filter",
+   "x": 195,
+   "y": 500,
+   "tag": "MAG-101",
+   "desc": "ARMADILHA MAGNÉTICA"
+  },
+  {
+   "id": "TRI-101",
+   "symbol": "horizontal_vessel",
+   "x": 270,
+   "y": 500,
+   "tag": "TRI-101",
+   "desc": "TRITURADOR DE DOIS EIXOS",
+   "params": {
+    "width": 20.0,
+    "height": 8.0,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "CT-101",
+   "symbol": "horizontal_vessel",
+   "x": 358,
+   "y": 500,
+   "tag": "CT-101",
+   "desc": "TRANSPORTADOR INCLINADO FECHADO",
+   "params": {
+    "width": 20.0,
+    "height": 8.0,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "TQ-101",
+   "symbol": "tank",
+   "x": 520,
+   "y": 330,
+   "tag": "TQ-101",
+   "desc": "TANQUE DE DILUIÇÃO E HOMOGENEIZAÇÃO",
+   "params": {
+    "width": 45,
+    "height": 55,
+    "roof": "flat",
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.85
+     },
+     {
+      "name": "N2",
+      "side": "left",
+      "fraction": 0.9
+     },
+     {
+      "name": "N3",
+      "side": "left",
+      "fraction": 0.75
+     },
+     {
+      "name": "N4",
+      "side": "left",
+      "fraction": 0.6
+     },
+     {
+      "name": "N5",
+      "side": "left",
+      "fraction": 0.45
+     },
+     {
+      "name": "N6",
+      "side": "bottom",
+      "fraction": 0.7
+     },
+     {
+      "name": "N7",
+      "side": "bottom",
+      "fraction": 0.3
+     }
+    ]
+   }
+  },
+  {
+   "id": "DOS-101",
+   "symbol": "pd_pump",
+   "x": 410,
+   "y": 357.5,
+   "tag": "DOS-101",
+   "desc": "SKID DOSAGEM FeCl3"
+  },
+  {
+   "id": "P-101",
+   "symbol": "pd_pump",
+   "x": 640,
+   "y": 230,
+   "tag": "P-101",
+   "desc": "ALIMENTAÇÃO R-101"
+  },
+  {
+   "id": "P-102",
+   "symbol": "pd_pump",
+   "x": 640,
+   "y": 140,
+   "tag": "P-102",
+   "desc": "ALIMENTAÇÃO R-101 (RESERVA)"
+  }
+ ],
+ "valves": [
+  {
+   "id": "DV-101",
+   "symbol": "three_way",
+   "actuator": "motor",
+   "x": 430,
+   "y": 500,
+   "tag": "DV-101",
+   "desc": "DIVISOR 70/30"
+  },
+  {
+   "id": "VE-101",
+   "symbol": "gate",
+   "actuator": "hand",
+   "x": 595,
+   "y": 230,
+   "tag": "VE-101",
+   "desc": "FACA"
+  },
+  {
+   "id": "VF-101",
+   "symbol": "gate",
+   "actuator": "hand",
+   "x": 680,
+   "y": 230,
+   "tag": "VF-101",
+   "desc": "FACA"
+  },
+  {
+   "id": "VR-101",
+   "symbol": "check",
+   "x": 710,
+   "y": 230,
+   "tag": "VR-101"
+  },
+  {
+   "id": "VS-101FC",
+   "symbol": "ball",
+   "actuator": "piston",
+   "fail": "FC",
+   "x": 740,
+   "y": 230,
+   "tag": "VS-101FC"
+  },
+  {
+   "id": "VA-101",
+   "symbol": "relief",
+   "x": 660,
+   "y": 260,
+   "tag": "VA-101"
+  },
+  {
+   "id": "VF-102",
+   "symbol": "gate",
+   "actuator": "hand",
+   "x": 680,
+   "y": 140,
+   "tag": "VF-102",
+   "desc": "FACA"
+  },
+  {
+   "id": "VR-102",
+   "symbol": "check",
+   "x": 710,
+   "y": 140,
+   "tag": "VR-102"
+  },
+  {
+   "id": "VA-102",
+   "symbol": "relief",
+   "x": 660,
+   "y": 170,
+   "tag": "VA-102"
+  }
+ ],
+ "instruments": [
+  {
+   "id": "LSHH-101",
+   "type": "plc",
+   "location": "field",
+   "x": 600,
+   "y": 375,
+   "tag": "LSHH-101"
+  },
+  {
+   "id": "LT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 600,
+   "y": 345,
+   "tag": "LT-101"
+  },
+  {
+   "id": "TT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 600,
+   "y": 315,
+   "tag": "TT-101"
+  },
+  {
+   "id": "FT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 760,
+   "y": 262,
+   "tag": "FT-101"
+  },
+  {
+   "id": "FT-102",
+   "type": "plc",
+   "location": "field",
+   "x": 470,
+   "y": 540,
+   "tag": "FT-102"
+  }
+ ],
+ "lines": [
+  {
+   "from": "ES-101.N2",
+   "to": "MAG-101.in",
+   "class": "process_minor",
+   "number": "ND-SOL-1001"
+  },
+  {
+   "from": "MAG-101.out",
+   "to": "TRI-101.N1",
+   "class": "process_minor",
+   "number": "ND-SOL-1002"
+  },
+  {
+   "from": "TRI-101.N2",
+   "to": "CT-101.N1",
+   "class": "process_minor",
+   "number": "ND-SOL-1003"
+  },
+  {
+   "from": "CT-101.N2",
+   "to": "DV-101.in",
+   "class": "process_minor",
+   "number": "DN750-SOL-1004"
+  },
+  {
+   "from": "DV-101.out",
+   "to": "TQ-101.N1",
+   "class": "process_minor",
+   "number": "DN750-SOL-1005"
+  },
+  {
+   "from": "DOS-101.out",
+   "to": "TQ-101.N3",
+   "class": "utility",
+   "number": "DE20-QUIM-1008"
+  },
+  {
+   "from": "TQ-101.N6",
+   "to": "VE-101.in",
+   "class": "process_major",
+   "number": "DE63-LODO-1009"
+  },
+  {
+   "from": "VE-101.out",
+   "to": "P-101.in",
+   "class": "process_major",
+   "number": "DE63-LODO-1009"
+  },
+  {
+   "from": "P-101.out",
+   "to": "VF-101.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "from": "VF-101.out",
+   "to": "VR-101.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "from": "VR-101.out",
+   "to": "VS-101FC.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "from": "TQ-101.N7",
+   "to": "P-102.in",
+   "class": "process_major",
+   "number": "DE63-LODO-1011",
+   "route": [
+    [
+     502,
+     140
+    ]
+   ]
+  },
+  {
+   "from": "P-102.out",
+   "to": "VF-102.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1012"
+  },
+  {
+   "from": "VF-102.out",
+   "to": "VR-102.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1012"
+  }
+ ],
+ "connectors": [
+  {
+   "id": "BL-RES",
+   "direction": "in",
+   "x": 40,
+   "y": 500,
+   "tag": "BL-RES",
+   "link": "RESIDUO BRUTO",
+   "to": "ES-101.N1",
+   "class": "process_minor",
+   "number": "DN750-SOL-1000"
+  },
+  {
+   "id": "TQ-102",
+   "direction": "out",
+   "x": 500,
+   "y": 455,
+   "tag": "F07 TQ-102",
+   "link": "SOL-1006",
+   "from": "DV-101.branch",
+   "class": "process_minor",
+   "number": "DN100-SOL-1006"
+  },
+  {
+   "id": "BL-AGUA",
+   "direction": "in",
+   "x": 340,
+   "y": 374,
+   "tag": "BL-AGUA",
+   "link": "AGUA REDE",
+   "to": "TQ-101.N2",
+   "class": "utility",
+   "number": "DE32-AGUA-1007"
+  },
+  {
+   "id": "P-301",
+   "direction": "in",
+   "x": 340,
+   "y": 341,
+   "tag": "F06 P-301",
+   "link": "LODO-1020",
+   "to": "TQ-101.N4",
+   "class": "process_major",
+   "number": "DE63-LODO-1020"
+  },
+  {
+   "id": "TQ-103",
+   "direction": "in",
+   "x": 340,
+   "y": 324.5,
+   "tag": "F07 TQ-103",
+   "link": "LODO-1048",
+   "to": "TQ-101.N5",
+   "class": "process_major",
+   "number": "DN80-LODO-1048"
+  },
+  {
+   "id": "R101A",
+   "direction": "out",
+   "x": 800,
+   "y": 230,
+   "tag": "F02 R-101",
+   "link": "LODO-1010",
+   "from": "VS-101FC.out",
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "id": "R101B",
+   "direction": "out",
+   "x": 800,
+   "y": 140,
+   "tag": "F02 R-101",
+   "link": "LODO-1012",
+   "from": "VR-102.out",
+   "class": "process_major",
+   "number": "DE50-LODO-1012"
+  },
+  {
+   "id": "TA-101",
+   "direction": "out",
+   "x": 410,
+   "y": 415,
+   "tag": "F07 TA-101",
+   "link": "AGUA-1055",
+   "from": "BL-AGUA",
+   "class": "utility",
+   "number": "DE32-AGUA-1055"
+  }
+ ],
+ "derivacoes": [
+  {
+   "from": "VA-101.in",
+   "to": [
+    660,
+    230
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "from": "VA-101.out",
+   "to": [
+    615,
+    230
+   ],
+   "route": [
+    [
+     676,
+     260
+    ],
+    [
+     676,
+     272
+    ],
+    [
+     615,
+     272
+    ]
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "from": "VA-102.in",
+   "to": [
+    660,
+    140
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1012"
+  },
+  {
+   "from": "VA-102.out",
+   "to": [
+    615,
+    140
+   ],
+   "route": [
+    [
+     676,
+     170
+    ],
+    [
+     676,
+     182
+    ],
+    [
+     615,
+     182
+    ]
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1012"
+  }
+ ],
+ "notas": {
+  "x": 30,
+  "y": 150,
+  "altura": 3.0,
+  "linhas": [
+   "NOTAS",
+   "1. Fonte: P&ID ThermoBiogasUp Rev10 (pid_model.json), folha F01. Simbologia ISO 10628-2 / ANSI-ISA-5.1 / NBR 8190.",
+   "2. ES-101, TRI-101 e CT-101: símbolo PROVISÓRIO (vaso horizontal) até existir bloco da casa; transporte de sólidos sem tubulação.",
+   "3. MAG-101: armadilha magnética passiva representada por filtro. DV-101: divisor 3 vias (70% TQ-101 / 30% trem térmico F07), malha MC-11 por FT-102.",
+   "4. LSHH-101 (SIF-13) bloqueia P-101/P-102. VS-101FC falha-FECHADA: anti-retorno de gás/sifão na descarga de P-101.",
+   "5. VA-101/VA-102: alívio com retorno à sucção (bombas de deslocamento positivo). Redução excêntrica RED-R101i no bocal do R-101 (folha F02).",
+   "6. VE-101, VF-101 e VF-102: válvulas faca de passagem plena (lodo). Sincronismo P-101/P-201 por FT-101 (P-EQP-04).",
+   "7. Exemplo gerado pela skill fluxograma-pid; não substitui a Rev10 nem está liberado para construção."
+  ]
+ }
+}

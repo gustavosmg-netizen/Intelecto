@@ -17,6 +17,8 @@ planilha paralela). Tudo gratuito: `autocad-mcp-pro` (MIT), `ezdxf` (MIT), `fast
    uv run --no-project --with "autocad-mcp-pro[pdf]==1.7.0" --with pyyaml \
        python .claude/skills/fluxograma-pid/scripts/gerar_pid.py <spec.json|yaml> --saida saida_pid
    ```
+   Exemplos reais: `modelos/ete_exemplo.json` (A3) e `modelos/thermobiogasup/F01.json`,
+   `F02.json` (A1, planta CSTR/FINEP a partir da Rev10).
    Saídas: `<numero>.dxf`, `<numero>.pdf` (monocromático, tamanho da folha), `<numero>.png`
    (conferência colorida por camada), `<numero>_line_list.csv`, `_equipment_list.csv`,
    `_instrument_index.csv`. Código de saída 1 = algo bloqueante (ver "Conferência").
@@ -47,19 +49,32 @@ planilha paralela). Tudo gratuito: `autocad-mcp-pro` (MIT), `ezdxf` (MIT), `fast
 ```jsonc
 {
   "folha": {"titulo": "...", "numero": "PID-XXX-001", "revisao": "0", "folha": "1/2",
-            "projeto": "<centro de custo>", "unidade": "ETE - FASE LÍQUIDA", "escala": "S/E",
-            "desenho": "", "verificacao": "", "data": "", "empresa": "INTELECTO & CSTR"},
+            "projeto": "<curto>", "unidade": "<curto>", "escala": "S/E",
+            "desenho": "", "verificacao": "", "data": "", "empresa": "INTELECTO & CSTR",
+            "escala_simbolos": 2.0},                       // A3 = 1 (padrão), A1 = 2
   "sheet": {"layer_set": "pid", "sheet_size": "A3", "scale": 1.0, "intent": "texto curto, ASCII"},
   "equipment":  [{"id", "symbol", "x", "y", "rotation"?, "tag", "desc", "params"?}],
   "valves":     [{"id", "symbol", "actuator"?, "fail"?, "x", "y", "tag"}],
   "instruments":[{"id", "type": "plc|dcs|discrete|computer", "location": "field|primary|...", "x", "y", "tag"}],
   "lines":      [{"from": "ID.porta", "to": "ID.porta", "class", "number", "route"?}],
   "connectors": [{"id", "direction": "in|out", "x", "y", "tag": "PID-002", "from"|"to", "class", "number"}],
-  "derivacoes": [{"from": "ID.porta", "to": [x, y], "route"?: [[x, y]], "class", "number"}]
+  "derivacoes": [{"from": "ID.porta" | [x, y], "to": [x, y] | "ID.porta", "route"?: [[x, y]], "class", "number"}],
+  "notas": {"x": 30, "y": 150, "altura": 3.0, "linhas": ["NOTAS", "1. ...", "2. ..."]}
 }
 ```
 
-- `folha` e `derivacoes` são da casa (o script trata); o resto vai direto para `pid_from_spec`.
+- `folha`, `derivacoes` e `notas` são da casa (o script trata); o resto vai direto para `pid_from_spec`.
+- `escala_simbolos` multiplica a escala de todo símbolo (e as dimensões em `params`, que então
+  são dadas no tamanho base: tanque 45×55 sai 90×110 no A1). Acessório pequeno pode ter
+  `"scale": 0.5` próprio (válvula de dreno, conector de engate rápido).
+- Linha com `"label": false` não recebe rótulo (o número continua na lista de linhas). Conector
+  carrega a própria linha (`to` se `in`, `from` se `out`); dois conectores podem ligar-se
+  (`"from": "BL-AGUA"`).
+- `rotation` 90/270 põe válvula em linha vertical e misturador lateral; o script devolve os
+  rótulos à horizontal. Conector girado deixa o TAG vertical — prefira conector na horizontal.
+- TAG de projeto com malha alfanumérica (`LT-R101`, `ZS-VE01`) é aceito: a bolha mostra função
+  em cima e malha embaixo, e o aviso do servidor vira informativo. TAG de válvula fora da ISA
+  (`VF-101`, `VS-101FC`) gera aviso `pid_illegal_tag` — informativo quando é padrão do cliente.
 - Portas: bombas `suction`/`discharge` (recalque sai para cima); válvulas `in`/`out` (+`signal`
   nas atuadas); tanques e vasos `N1..Nn` definidos em `params.nozzles` (`side`, `fraction`);
   soprador/compressor `in`/`out`; misturador `shaft` (para baixo); instrumento `signal`.
@@ -70,8 +85,9 @@ planilha paralela). Tudo gratuito: `autocad-mcp-pro` (MIT), `ezdxf` (MIT), `fast
 
 ## Regras de leiaute (aprendidas no teste; seguir para não gerar retrabalho)
 
-- Coordenadas em mm na folha 1:1. A3: área útil x 25–405, y 15–280; **o carimbo ocupa
-  x ≥ 230 e y ≤ 75** — nada ali. A1: multiplique por 2.
+- Coordenadas em mm na folha 1:1. A3: área útil x 25–405, y 15–280, **carimbo em x ≥ 230 e
+  y ≤ 75**. A1: área útil x 25–825, y 15–580, **carimbo em x ≥ 651 e y ≤ 75**, e
+  `escala_simbolos: 2` (com ela, deixe ≥ 25 mm entre válvulas em série).
 - Válvula e bomba a ≥ 20 mm uma da outra no eixo do fluxo, com o `y` da válvula igual ao
   do bocal (sucção da bomba = `y` da bomba; recalque = `x` da bomba e sobe 6 mm).
 - Duas linhas que sairiam pelo mesmo eixo: dê `route` com waypoints em eixos distintos
@@ -86,9 +102,10 @@ planilha paralela). Tudo gratuito: `autocad-mcp-pro` (MIT), `ezdxf` (MIT), `fast
 
 - Crítica do servidor: linha solta, TAG duplicado, ligação incompatível, instrumento sem
   TAG, TAG ISA ilegal, equipamento sem ligação (este último é só informativo).
-- Da casa: trechos de linhas diferentes colados (erro); texto/rótulo sobre linha, símbolo
-  ou outro texto (aviso). Antes de acusar, o script já **reposiciona** números de linha (um
-  por linha, no trecho livre mais longo) e rótulos TAG/DESC (abaixo, à direita, acima ou à
+- Da casa: trechos de linhas diferentes colados (erro; se saem do mesmo bocal, vira aviso de
+  tê); texto/rótulo sobre linha, símbolo ou outro texto (aviso). Antes de acusar, o script já **reposiciona** números de linha (um
+  por linha, deslizando no trecho livre mais longo e reduzindo a fonte se preciso; sequencial
+  automático de linha sem número é apagado) e rótulos TAG/DESC (abaixo, à direita, acima ou à
   esquerda do símbolo). Aviso que sobra = ajustar coordenadas na spec.
 - Carimbo traduzido para PT-BR e título reduzido para caber no campo.
 

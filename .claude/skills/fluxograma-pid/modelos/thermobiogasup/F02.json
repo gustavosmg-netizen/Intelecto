@@ -1,0 +1,1356 @@
+{
+ "folha": {
+  "titulo": "P&ID F02 - DIGESTÃO ANAERÓBIA (DUPLA FASE)",
+  "numero": "PID-TBU-F02",
+  "revisao": "A",
+  "folha": "2/2",
+  "projeto": "THERMOBIOGASUP",
+  "unidade": "M3 DIGESTÃO",
+  "escala": "S/E",
+  "desenho": "",
+  "verificacao": "",
+  "data": "",
+  "empresa": "INTELECTO & CSTR",
+  "escala_simbolos": 2.0
+ },
+ "sheet": {
+  "layer_set": "pid",
+  "sheet_size": "A1",
+  "scale": 1.0,
+  "intent": "ThermoBiogasUp F02 digestao anaerobia"
+ },
+ "equipment": [
+  {
+   "id": "R-101",
+   "symbol": "reactor",
+   "x": 170,
+   "y": 330,
+   "tag": "R-101",
+   "desc": "REATOR ACIDOGÊNICO (PRFV)",
+   "params": {
+    "width": 30,
+    "height": 45,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.25
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.6
+     },
+     {
+      "name": "N3",
+      "side": "bottom",
+      "fraction": 0.3
+     },
+     {
+      "name": "N4",
+      "side": "bottom",
+      "fraction": 0.45
+     },
+     {
+      "name": "N5",
+      "side": "bottom",
+      "fraction": 0.7
+     },
+     {
+      "name": "N6",
+      "side": "bottom",
+      "fraction": 0.9
+     },
+     {
+      "name": "N7",
+      "side": "right",
+      "fraction": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "id": "R-201",
+   "symbol": "reactor",
+   "x": 430,
+   "y": 330,
+   "tag": "R-201",
+   "desc": "REATOR METANOGÊNICO 1 (PRFV)",
+   "params": {
+    "width": 30,
+    "height": 45,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.25
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.6
+     },
+     {
+      "name": "N3",
+      "side": "bottom",
+      "fraction": 0.85
+     },
+     {
+      "name": "N4",
+      "side": "bottom",
+      "fraction": 0.2
+     },
+     {
+      "name": "N5",
+      "side": "bottom",
+      "fraction": 0.45
+     },
+     {
+      "name": "N6",
+      "side": "right",
+      "fraction": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "id": "R-202",
+   "symbol": "reactor",
+   "x": 610,
+   "y": 330,
+   "tag": "R-202",
+   "desc": "REATOR METANOGÊNICO 2 (PRFV)",
+   "params": {
+    "width": 30,
+    "height": 45,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.4
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.8
+     },
+     {
+      "name": "N3",
+      "side": "bottom",
+      "fraction": 0.3
+     },
+     {
+      "name": "N4",
+      "side": "bottom",
+      "fraction": 0.6
+     },
+     {
+      "name": "N5",
+      "side": "bottom",
+      "fraction": 0.85
+     },
+     {
+      "name": "N6",
+      "side": "left",
+      "fraction": 0.1
+     }
+    ]
+   }
+  },
+  {
+   "id": "AG-R101",
+   "symbol": "agitator",
+   "x": 128,
+   "y": 330,
+   "tag": "AG-R101",
+   "desc": "MISTURADOR LATERAL",
+   "rotation": 90
+  },
+  {
+   "id": "AG-R201",
+   "symbol": "agitator",
+   "x": 388,
+   "y": 330,
+   "tag": "AG-R201",
+   "desc": "MISTURADOR LATERAL",
+   "rotation": 90
+  },
+  {
+   "id": "AG-R202",
+   "symbol": "agitator",
+   "x": 652,
+   "y": 330,
+   "tag": "AG-R202",
+   "desc": "MISTURADOR LATERAL",
+   "rotation": 270
+  },
+  {
+   "id": "POT-AGR101",
+   "symbol": "vertical_vessel",
+   "x": 90,
+   "y": 300,
+   "tag": "POT-AGR101",
+   "desc": "POTE FLUIDO BARREIRA",
+   "params": {
+    "width": 8,
+    "height": 12,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "POT-AGR201",
+   "symbol": "vertical_vessel",
+   "x": 350,
+   "y": 300,
+   "tag": "POT-AGR201",
+   "desc": "POTE FLUIDO BARREIRA",
+   "params": {
+    "width": 8,
+    "height": 12,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "POT-AGR202",
+   "symbol": "vertical_vessel",
+   "x": 690,
+   "y": 300,
+   "tag": "POT-AGR202",
+   "desc": "POTE FLUIDO BARREIRA",
+   "params": {
+    "width": 8,
+    "height": 12,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "SH-101",
+   "symbol": "vertical_vessel",
+   "x": 100,
+   "y": 470,
+   "tag": "SH-101",
+   "desc": "SELO HIDRÁULICO",
+   "params": {
+    "width": 12,
+    "height": 20,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "right",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "SH-201",
+   "symbol": "vertical_vessel",
+   "x": 360,
+   "y": 470,
+   "tag": "SH-201",
+   "desc": "SELO HIDRÁULICO",
+   "params": {
+    "width": 12,
+    "height": 20,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "right",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "SH-202",
+   "symbol": "vertical_vessel",
+   "x": 700,
+   "y": 470,
+   "tag": "SH-202",
+   "desc": "SELO HIDRÁULICO",
+   "params": {
+    "width": 12,
+    "height": 20,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "COL-01",
+   "symbol": "horizontal_vessel",
+   "x": 520,
+   "y": 560,
+   "tag": "COL-01",
+   "desc": "COLETOR DE BIOGÁS",
+   "params": {
+    "width": 60,
+    "height": 10,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "bottom",
+      "fraction": 0.1
+     },
+     {
+      "name": "N3",
+      "side": "bottom",
+      "fraction": 0.9
+     },
+     {
+      "name": "N4",
+      "side": "right",
+      "fraction": 0.5
+     },
+     {
+      "name": "N5",
+      "side": "bottom",
+      "fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "DC-GB01",
+   "symbol": "drain_vent",
+   "x": 520,
+   "y": 530,
+   "tag": "DC-GB01",
+   "desc": "SELO 450 mmCA"
+  },
+  {
+   "id": "TIE-GB",
+   "symbol": "tie_in",
+   "x": 200,
+   "y": 560,
+   "tag": "TIE-GB",
+   "desc": "TIE-IN GÁS R-101 (IIC)"
+  },
+  {
+   "id": "P-201",
+   "symbol": "pd_pump",
+   "x": 280,
+   "y": 200,
+   "tag": "P-201",
+   "desc": "TRANSFERÊNCIA"
+  },
+  {
+   "id": "P-202",
+   "symbol": "pd_pump",
+   "x": 520,
+   "y": 175,
+   "tag": "P-202",
+   "desc": "RETIRADA"
+  },
+  {
+   "id": "RED-R101i",
+   "symbol": "reducer",
+   "x": 110,
+   "y": 240,
+   "tag": "RED-R101i",
+   "shape": "eccentric"
+  },
+  {
+   "id": "RED-R201i",
+   "symbol": "reducer",
+   "x": 428,
+   "y": 200,
+   "tag": "RED-R201i",
+   "shape": "eccentric"
+  },
+  {
+   "id": "RED-R202i",
+   "symbol": "reducer",
+   "x": 535,
+   "y": 90,
+   "tag": "RED-R202i",
+   "shape": "eccentric"
+  }
+ ],
+ "valves": [
+  {
+   "id": "VE-01",
+   "symbol": "gate",
+   "x": 176,
+   "y": 420,
+   "tag": "VE-01",
+   "actuator": "hand",
+   "rotation": 90,
+   "desc": "TRAVADA ABERTA"
+  },
+  {
+   "id": "VE-02",
+   "symbol": "gate",
+   "x": 436,
+   "y": 420,
+   "tag": "VE-02",
+   "actuator": "hand",
+   "rotation": 90,
+   "desc": "TRAVADA ABERTA"
+  },
+  {
+   "id": "VE-03",
+   "symbol": "gate",
+   "x": 604,
+   "y": 420,
+   "tag": "VE-03",
+   "actuator": "hand",
+   "rotation": 90,
+   "desc": "TRAVADA ABERTA"
+  },
+  {
+   "id": "VG-U",
+   "symbol": "gate",
+   "x": 300,
+   "y": 560,
+   "tag": "VG-U",
+   "actuator": "hand",
+   "desc": "UNIÃO"
+  },
+  {
+   "id": "VG-S",
+   "symbol": "gate",
+   "x": 262,
+   "y": 530,
+   "tag": "VG-S",
+   "actuator": "hand",
+   "desc": "SEGREGAÇÃO"
+  },
+  {
+   "id": "VF-201",
+   "symbol": "gate",
+   "x": 320,
+   "y": 200,
+   "tag": "VF-201",
+   "actuator": "hand",
+   "desc": "FACA"
+  },
+  {
+   "id": "VR-201",
+   "symbol": "check",
+   "x": 345,
+   "y": 200,
+   "tag": "VR-201"
+  },
+  {
+   "id": "VS-201FC",
+   "symbol": "ball",
+   "x": 372,
+   "y": 200,
+   "tag": "VS-201FC",
+   "actuator": "piston",
+   "fail": "FC"
+  },
+  {
+   "id": "VE-201",
+   "symbol": "gate",
+   "x": 405,
+   "y": 200,
+   "tag": "VE-201",
+   "actuator": "hand"
+  },
+  {
+   "id": "VE-202",
+   "symbol": "gate",
+   "x": 500,
+   "y": 90,
+   "tag": "VE-202",
+   "actuator": "hand"
+  },
+  {
+   "id": "VA-201",
+   "symbol": "relief",
+   "x": 300,
+   "y": 230,
+   "tag": "VA-201"
+  },
+  {
+   "id": "VA-202",
+   "symbol": "relief",
+   "x": 538,
+   "y": 197,
+   "tag": "VA-202"
+  },
+  {
+   "id": "VF-R101d",
+   "symbol": "gate",
+   "x": 182,
+   "y": 262,
+   "tag": "VF-R101d",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.5
+  },
+  {
+   "id": "VF-R101p",
+   "symbol": "gate",
+   "x": 194,
+   "y": 262,
+   "tag": "VF-R101p",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.5
+  },
+  {
+   "id": "VF-R201d",
+   "symbol": "gate",
+   "x": 412,
+   "y": 262,
+   "tag": "VF-R201d",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.5
+  },
+  {
+   "id": "VF-R201p",
+   "symbol": "gate",
+   "x": 427,
+   "y": 262,
+   "tag": "VF-R201p",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.5
+  },
+  {
+   "id": "VF-R202d",
+   "symbol": "gate",
+   "x": 616,
+   "y": 262,
+   "tag": "VF-R202d",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.5
+  },
+  {
+   "id": "VF-R202p",
+   "symbol": "gate",
+   "x": 631,
+   "y": 262,
+   "tag": "VF-R202p",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.5
+  }
+ ],
+ "instruments": [
+  {
+   "id": "LT-R101",
+   "type": "plc",
+   "location": "field",
+   "x": 50,
+   "y": 425,
+   "tag": "LT-R101"
+  },
+  {
+   "id": "PT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 80,
+   "y": 425,
+   "tag": "PT-101"
+  },
+  {
+   "id": "AT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 110,
+   "y": 425,
+   "tag": "AT-101"
+  },
+  {
+   "id": "PSL-R101",
+   "type": "plc",
+   "location": "field",
+   "x": 50,
+   "y": 395,
+   "tag": "PSL-R101"
+  },
+  {
+   "id": "LSHH-R101",
+   "type": "plc",
+   "location": "field",
+   "x": 80,
+   "y": 395,
+   "tag": "LSHH-R101"
+  },
+  {
+   "id": "LSL-M101",
+   "type": "plc",
+   "location": "field",
+   "x": 110,
+   "y": 395,
+   "tag": "LSL-M101"
+  },
+  {
+   "id": "LIAL-SH101",
+   "type": "plc",
+   "location": "field",
+   "x": 50,
+   "y": 470,
+   "tag": "LIAL-SH101"
+  },
+  {
+   "id": "LSH-SH101",
+   "type": "plc",
+   "location": "field",
+   "x": 50,
+   "y": 500,
+   "tag": "LSH-SH101"
+  },
+  {
+   "id": "LDE-AGR101",
+   "type": "plc",
+   "location": "field",
+   "x": 50,
+   "y": 265,
+   "tag": "LDE-AGR101"
+  },
+  {
+   "id": "PI-AGR101",
+   "type": "plc",
+   "location": "field",
+   "x": 80,
+   "y": 265,
+   "tag": "PI-AGR101"
+  },
+  {
+   "id": "PSL-AGR101",
+   "type": "plc",
+   "location": "field",
+   "x": 110,
+   "y": 265,
+   "tag": "PSL-AGR101"
+  },
+  {
+   "id": "ZS-VE01",
+   "type": "plc",
+   "location": "field",
+   "x": 235,
+   "y": 445,
+   "tag": "ZS-VE01"
+  },
+  {
+   "id": "LT-201",
+   "type": "plc",
+   "location": "field",
+   "x": 255,
+   "y": 425,
+   "tag": "LT-201"
+  },
+  {
+   "id": "PT-201",
+   "type": "plc",
+   "location": "field",
+   "x": 285,
+   "y": 425,
+   "tag": "PT-201"
+  },
+  {
+   "id": "AT-201",
+   "type": "plc",
+   "location": "field",
+   "x": 315,
+   "y": 425,
+   "tag": "AT-201"
+  },
+  {
+   "id": "PSL-R201",
+   "type": "plc",
+   "location": "field",
+   "x": 255,
+   "y": 395,
+   "tag": "PSL-R201"
+  },
+  {
+   "id": "LSL-M201",
+   "type": "plc",
+   "location": "field",
+   "x": 285,
+   "y": 395,
+   "tag": "LSL-M201"
+  },
+  {
+   "id": "LIAL-SH201",
+   "type": "plc",
+   "location": "field",
+   "x": 320,
+   "y": 470,
+   "tag": "LIAL-SH201"
+  },
+  {
+   "id": "LSH-SH201",
+   "type": "plc",
+   "location": "field",
+   "x": 320,
+   "y": 500,
+   "tag": "LSH-SH201"
+  },
+  {
+   "id": "LDE-AGR201",
+   "type": "plc",
+   "location": "field",
+   "x": 255,
+   "y": 300,
+   "tag": "LDE-AGR201"
+  },
+  {
+   "id": "PI-AGR201",
+   "type": "plc",
+   "location": "field",
+   "x": 285,
+   "y": 300,
+   "tag": "PI-AGR201"
+  },
+  {
+   "id": "PSL-AGR201",
+   "type": "plc",
+   "location": "field",
+   "x": 315,
+   "y": 300,
+   "tag": "PSL-AGR201"
+  },
+  {
+   "id": "ZS-VE02",
+   "type": "plc",
+   "location": "field",
+   "x": 495,
+   "y": 445,
+   "tag": "ZS-VE02"
+  },
+  {
+   "id": "FT-201",
+   "type": "plc",
+   "location": "field",
+   "x": 345,
+   "y": 235,
+   "tag": "FT-201"
+  },
+  {
+   "id": "LT-202",
+   "type": "plc",
+   "location": "field",
+   "x": 690,
+   "y": 425,
+   "tag": "LT-202"
+  },
+  {
+   "id": "PT-202",
+   "type": "plc",
+   "location": "field",
+   "x": 720,
+   "y": 425,
+   "tag": "PT-202"
+  },
+  {
+   "id": "AT-202",
+   "type": "plc",
+   "location": "field",
+   "x": 750,
+   "y": 425,
+   "tag": "AT-202"
+  },
+  {
+   "id": "PSL-R202",
+   "type": "plc",
+   "location": "field",
+   "x": 780,
+   "y": 425,
+   "tag": "PSL-R202"
+  },
+  {
+   "id": "LSL-M202",
+   "type": "plc",
+   "location": "field",
+   "x": 690,
+   "y": 395,
+   "tag": "LSL-M202"
+  },
+  {
+   "id": "LIAL-SH202",
+   "type": "plc",
+   "location": "field",
+   "x": 760,
+   "y": 470,
+   "tag": "LIAL-SH202"
+  },
+  {
+   "id": "LSH-SH202",
+   "type": "plc",
+   "location": "field",
+   "x": 760,
+   "y": 500,
+   "tag": "LSH-SH202"
+  },
+  {
+   "id": "LDE-AGR202",
+   "type": "plc",
+   "location": "field",
+   "x": 730,
+   "y": 300,
+   "tag": "LDE-AGR202"
+  },
+  {
+   "id": "PI-AGR202",
+   "type": "plc",
+   "location": "field",
+   "x": 760,
+   "y": 300,
+   "tag": "PI-AGR202"
+  },
+  {
+   "id": "PSL-AGR202",
+   "type": "plc",
+   "location": "field",
+   "x": 790,
+   "y": 300,
+   "tag": "PSL-AGR202"
+  },
+  {
+   "id": "ZS-VE03",
+   "type": "plc",
+   "location": "field",
+   "x": 540,
+   "y": 400,
+   "tag": "ZS-VE03"
+  },
+  {
+   "id": "FT-202",
+   "type": "plc",
+   "location": "field",
+   "x": 500,
+   "y": 135,
+   "tag": "FT-202"
+  }
+ ],
+ "lines": [
+  {
+   "from": "RED-R101i.out",
+   "to": "R-101.N3",
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "from": "R-101.N7",
+   "to": "P-201.in",
+   "class": "process_major",
+   "number": "DE63-LODO-1013",
+   "route": [
+    [
+     230,
+     294
+    ],
+    [
+     230,
+     200
+    ]
+   ]
+  },
+  {
+   "from": "P-201.out",
+   "to": "VF-201.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VF-201.out",
+   "to": "VR-201.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VR-201.out",
+   "to": "VS-201FC.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VS-201FC.out",
+   "to": "VE-201.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VE-201.out",
+   "to": "RED-R201i.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "RED-R201i.out",
+   "to": "R-201.N3",
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VE-202.out",
+   "to": "RED-R202i.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1015"
+  },
+  {
+   "from": "RED-R202i.out",
+   "to": "R-202.N3",
+   "class": "process_major",
+   "number": "DE50-LODO-1015"
+  },
+  {
+   "from": "R-201.N6",
+   "to": "P-202.in",
+   "class": "process_major",
+   "number": "DE63-LODO-1016",
+   "route": [
+    [
+     480,
+     294
+    ],
+    [
+     480,
+     175
+    ]
+   ]
+  },
+  {
+   "from": "R-101.N2",
+   "to": "VE-01.in",
+   "class": "utility",
+   "number": "DE90-BYP-1023"
+  },
+  {
+   "from": "VE-01.out",
+   "to": "TIE-GB.in",
+   "class": "utility",
+   "number": "DE90-BYP-1023"
+  },
+  {
+   "from": "TIE-GB.out",
+   "to": "VG-U.in",
+   "class": "utility",
+   "number": "DE90-BYP-1026"
+  },
+  {
+   "from": "VG-U.out",
+   "to": "COL-01.N1",
+   "class": "utility",
+   "number": "DE90-BYP-1026"
+  },
+  {
+   "from": "R-201.N2",
+   "to": "VE-02.in",
+   "class": "utility",
+   "number": "DE90-BRUTO-1024"
+  },
+  {
+   "from": "VE-02.out",
+   "to": "COL-01.N2",
+   "class": "utility",
+   "number": "DE90-BRUTO-1024"
+  },
+  {
+   "from": "R-202.N1",
+   "to": "VE-03.in",
+   "class": "utility",
+   "number": "DE90-BRUTO-1025"
+  },
+  {
+   "from": "VE-03.out",
+   "to": "COL-01.N3",
+   "class": "utility",
+   "number": "DE90-BRUTO-1025"
+  },
+  {
+   "from": "COL-01.N5",
+   "to": "DC-GB01.in",
+   "class": "process_minor",
+   "number": "DC-GB01",
+   "label": false
+  },
+  {
+   "from": "R-101.N1",
+   "to": "SH-101.N1",
+   "class": "utility",
+   "number": "DE63-BYP-1064"
+  },
+  {
+   "from": "R-201.N1",
+   "to": "SH-201.N1",
+   "class": "utility",
+   "number": "DE63-BRUTO-1066"
+  },
+  {
+   "from": "R-202.N2",
+   "to": "SH-202.N1",
+   "class": "utility",
+   "number": "DE63-BRUTO-1068"
+  },
+  {
+   "from": "R-101.N5",
+   "to": "VF-R101d.in",
+   "class": "process_major",
+   "number": "6in-LODO-1070",
+   "label": false
+  },
+  {
+   "from": "R-101.N6",
+   "to": "VF-R101p.in",
+   "class": "process_major",
+   "number": "6in-LODO-1071",
+   "label": false
+  },
+  {
+   "from": "R-201.N4",
+   "to": "VF-R201d.in",
+   "class": "process_major",
+   "number": "6in-LODO-1072",
+   "label": false
+  },
+  {
+   "from": "R-201.N5",
+   "to": "VF-R201p.in",
+   "class": "process_major",
+   "number": "6in-LODO-1073",
+   "label": false
+  },
+  {
+   "from": "R-202.N4",
+   "to": "VF-R202d.in",
+   "class": "process_major",
+   "number": "6in-LODO-1074",
+   "label": false
+  },
+  {
+   "from": "R-202.N5",
+   "to": "VF-R202p.in",
+   "class": "process_major",
+   "number": "6in-LODO-1075",
+   "label": false
+  }
+ ],
+ "connectors": [
+  {
+   "id": "EC-R101d",
+   "direction": "out",
+   "x": 182,
+   "y": 238,
+   "rotation": 270,
+   "scale": 0.5,
+   "tag": "EC-R101d",
+   "from": "VF-R101d.out",
+   "class": "process_major"
+  },
+  {
+   "id": "EC-R101p",
+   "direction": "out",
+   "x": 194,
+   "y": 238,
+   "rotation": 270,
+   "scale": 0.5,
+   "tag": "EC-R101p",
+   "from": "VF-R101p.out",
+   "class": "process_major"
+  },
+  {
+   "id": "EC-R201d",
+   "direction": "out",
+   "x": 412,
+   "y": 238,
+   "rotation": 270,
+   "scale": 0.5,
+   "tag": "EC-R201d",
+   "from": "VF-R201d.out",
+   "class": "process_major"
+  },
+  {
+   "id": "EC-R201p",
+   "direction": "out",
+   "x": 427,
+   "y": 238,
+   "rotation": 270,
+   "scale": 0.5,
+   "tag": "EC-R201p",
+   "from": "VF-R201p.out",
+   "class": "process_major"
+  },
+  {
+   "id": "EC-R202d",
+   "direction": "out",
+   "x": 616,
+   "y": 238,
+   "rotation": 270,
+   "scale": 0.5,
+   "tag": "EC-R202d",
+   "from": "VF-R202d.out",
+   "class": "process_major"
+  },
+  {
+   "id": "EC-R202p",
+   "direction": "out",
+   "x": 631,
+   "y": 238,
+   "rotation": 270,
+   "scale": 0.5,
+   "tag": "EC-R202p",
+   "from": "VF-R202p.out",
+   "class": "process_major"
+  },
+  {
+   "id": "F01A",
+   "direction": "in",
+   "x": 40,
+   "y": 240,
+   "tag": "F01 P-101",
+   "link": "LODO-1010",
+   "to": "RED-R101i.in",
+   "class": "process_major",
+   "number": "DE50-LODO-1010"
+  },
+  {
+   "id": "F01B",
+   "direction": "in",
+   "x": 40,
+   "y": 215,
+   "tag": "F01 P-102",
+   "link": "LODO-1012",
+   "to": "R-101.N4",
+   "class": "process_major",
+   "number": "DE50-LODO-1012"
+  },
+  {
+   "id": "G1",
+   "direction": "out",
+   "x": 150,
+   "y": 520,
+   "tag": "F03 GAS-01",
+   "link": "BYP-1065",
+   "from": "SH-101.N2",
+   "class": "utility",
+   "number": "DE63-BYP-1065"
+  },
+  {
+   "id": "G2",
+   "direction": "out",
+   "x": 405,
+   "y": 520,
+   "tag": "F03 GAS-01",
+   "link": "BRUTO-1067",
+   "from": "SH-201.N2",
+   "class": "utility",
+   "number": "DE63-BRUTO-1067"
+  },
+  {
+   "id": "G3",
+   "direction": "out",
+   "x": 750,
+   "y": 520,
+   "tag": "F03 GAS-01",
+   "link": "BRUTO-1069",
+   "from": "SH-202.N2",
+   "class": "utility",
+   "number": "DE63-BRUTO-1069"
+  },
+  {
+   "id": "G4",
+   "direction": "out",
+   "x": 310,
+   "y": 530,
+   "tag": "F03 GAS-01",
+   "link": "BYP-1027",
+   "from": "VG-S.out",
+   "class": "utility",
+   "number": "DE90-BYP-1027"
+  },
+  {
+   "id": "G5",
+   "direction": "out",
+   "x": 690,
+   "y": 560,
+   "tag": "F03 GAS-01",
+   "link": "BRUTO-1028",
+   "from": "COL-01.N4",
+   "class": "utility",
+   "number": "DE110-BRUTO-1028"
+  },
+  {
+   "id": "F06",
+   "direction": "out",
+   "x": 575,
+   "y": 150,
+   "tag": "F06 TQ-301",
+   "link": "LODO-1018",
+   "from": "P-202.out",
+   "class": "process_major",
+   "number": "DE50-LODO-1018"
+  }
+ ],
+ "derivacoes": [
+  {
+   "from": [
+    391,
+    200
+   ],
+   "to": "VE-202.in",
+   "route": [
+    [
+     391,
+     90
+    ]
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1015"
+  },
+  {
+   "from": "R-202.N6",
+   "to": [
+    480,
+    240
+   ],
+   "route": [
+    [
+     555,
+     294
+    ],
+    [
+     555,
+     240
+    ]
+   ],
+   "class": "process_major",
+   "number": "DE63-LODO-1017"
+  },
+  {
+   "from": [
+    240,
+    560
+   ],
+   "to": "VG-S.in",
+   "route": [
+    [
+     240,
+     530
+    ]
+   ],
+   "class": "utility",
+   "number": "DE90-BYP-1027"
+  },
+  {
+   "from": "VA-201.in",
+   "to": [
+    300,
+    200
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VA-201.out",
+   "to": [
+    255,
+    200
+   ],
+   "route": [
+    [
+     316,
+     230
+    ],
+    [
+     316,
+     242
+    ],
+    [
+     255,
+     242
+    ]
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1014"
+  },
+  {
+   "from": "VA-202.in",
+   "to": [
+    538,
+    175
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1018"
+  },
+  {
+   "from": "VA-202.out",
+   "to": [
+    495,
+    175
+   ],
+   "route": [
+    [
+     556,
+     197
+    ],
+    [
+     556,
+     212
+    ],
+    [
+     495,
+     212
+    ]
+   ],
+   "class": "process_major",
+   "number": "DE50-LODO-1018"
+  }
+ ],
+ "notas": {
+  "x": 30,
+  "y": 150,
+  "altura": 3.0,
+  "linhas": [
+   "NOTAS",
+   "1. Fonte: P&ID ThermoBiogasUp Rev10 (pid_model.json), folha F02. Simbologia ISO 10628-2 / ANSI-ISA-5.1 / NBR 8190.",
+   "2. R-101 acidogênico e R-201/R-202 metanogênicos em paralelo (PRFV). Misturadores laterais com selo duplo e pote de barreira.",
+   "3. SH-101/201/202: selos hidráulicos (alívio pressão/vácuo), símbolo PROVISÓRIO (vaso vertical). Linhas reator-selo-GAS-01 SEM bloqueio (LOPA C1/C2).",
+   "4. VE-01/02/03 travadas abertas com chave de posição ZS (SIF-02, I-04). TIE-GB: ramal do R-101 (grupo IIC, H2) unido (VG-U) ou segregado (VG-S).",
+   "5. COL-01 coletor crítico: perda de carga máx. 2 mbar, sem bloqueio automático; DC-GB01 dreno de condensado com selo >= 450 mmCA.",
+   "6. Drenos (d) e purgas (p) 6\": válvula faca + camlock com tampa cega, sem tubo fixo; dreno só com reator em PARADA (D-058); bocais a ratificar (#84).",
+   "7. LSL-M101/201/202 em HOLD. Exemplo gerado pela skill fluxograma-pid; não substitui a Rev10 nem está liberado para construção."
+  ]
+ }
+}
