@@ -2790,6 +2790,7 @@ function _finConciliacao(){
     var projOpts=projs.map(function(p){return [p.cc,(p.cc+' — '+(p.cliente||p.projeto||''))];}).sort(function(a,b){return String(a[1]).localeCompare(String(b[1]));});
     var sel=function(id){return '<select class="sm conc-cc" id="'+id+'" data-id="'+id.slice(3)+'"><option value="">— escolher centro de custo —</option>'+projOpts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("")+'</select>';};
     var td='padding:7px 8px;border-bottom:1px solid var(--line);font-size:.82rem';
+    var iaOn=!!((state.hub&&state.hub.flags)||{}).conciliacao_ia; /* Onda 3-C: botão só com a flag ligada (o servidor também checa) */
     if(j.total===0){box.innerHTML='<div class="card"><p style="margin:0">✅ Todos os movimentos de caixa têm centro de custo. Nada na fila de conciliação.</p></div>';return;}
     var filtro='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px"><span class="muted" style="font-size:.78rem">Mostrar:</span>'+
       ['','entrada','saida'].map(function(t){var lbl=t===''?'Tudo':(t==='entrada'?'Entradas':'Saídas');return '<button class="btn '+(window.__concTipo===t?'':'sec')+' sm conc-f" data-t="'+t+'">'+lbl+'</button>';}).join('')+'</div>';
@@ -2799,12 +2800,13 @@ function _finConciliacao(){
       var sinal=x.tipo==='entrada'?'+':'−';var cor=x.tipo==='entrada'?'var(--ok,#1f7a3d)':'var(--crit)';
       return '<tr><td style="'+td+'">'+esc(dtt)+'</td><td style="'+td+'">'+esc(x.descricao||'')+(x.categoria?' <span class="muted" style="font-size:.72rem">· '+esc(x.categoria)+'</span>':'')+'</td>'+
         '<td style="'+td+';text-align:right;color:'+cor+';font-variant-numeric:tabular-nums">'+sinal+fmtBRL(x.valor)+'</td>'+
-        '<td style="'+td+'">'+sel('cc-'+x.id)+'</td></tr>';
+        '<td style="'+td+'">'+sel('cc-'+x.id)+'</td>'+
+        (iaOn?'<td style="'+td+'"><button class="btn sec sm conc-sug" data-id="'+esc(x.id)+'" type="button">Sugerir CC (IA)</button><div class="conc-sug-out muted" id="sug-'+esc(x.id)+'" style="font-size:.74rem;margin-top:4px"></div></td>':'')+'</tr>';
     }).join("");
     box.innerHTML='<div class="card" style="margin-bottom:10px;border-color:var(--crit)"><b>'+j.total+'</b> movimento(s) de caixa sem centro de custo · <span class="muted">'+fmtBRL(j.valorPendente)+' pendente de conciliação</span>'+
       '<div class="muted" style="font-size:.72rem;margin-top:4px">Escolha o projeto de cada movimento para ligar o caixa ao centro de custo. O vínculo é manual (nunca inferido) e fica na auditoria.</div></div>'+
       filtro+
-      '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Data</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor</th><th style="'+td+';text-align:left">Centro de custo</th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+      '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Data</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor</th><th style="'+td+';text-align:left">Centro de custo</th>'+(iaOn?'<th style="'+td+';text-align:left">Sugestão (IA)</th>':'')+'</tr></thead><tbody>'+linhas+'</tbody></table></div>'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:.8rem"><span class="muted">'+ini+'–'+fim+' de '+j.total+'</span><span><button class="btn sec sm conc-prev"'+(j.offset<=0?' disabled':'')+'>← anteriores</button> <button class="btn sec sm conc-next"'+(j.temMais?'':' disabled')+'>próximos →</button></span></div>'+
       '<div id="conc-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div>';
     box.querySelectorAll(".conc-f").forEach(function(b){b.onclick=function(){window.__concTipo=b.getAttribute("data-t");window.__concOffset=0;_finConciliacao();};});
@@ -2813,6 +2815,24 @@ function _finConciliacao(){
     box.querySelectorAll(".conc-cc").forEach(function(s){s.onchange=function(){
       if(!s.value)return;var m=$("#conc-msg");if(m)m.textContent="Conciliando…";
       api("fluxoCc",{id:s.getAttribute("data-id"),cc:s.value}).then(function(){if(m)m.textContent="Conciliado.";_finConciliacao();_finResumo();_finCarteira();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
+    };});
+    /* Onda 3-C — a IA só SUGERE (conciliaSugerir é read-only); "Aceitar" é o clique humano que grava, pelo
+       mesmo fluxoCc da escolha manual acima (gate financeiro.editar). Sem aceitar, nada muda. */
+    box.querySelectorAll(".conc-sug").forEach(function(b){b.onclick=function(){
+      var id=b.getAttribute("data-id");var out=box.querySelector("#sug-"+id);if(!out)return;
+      b.disabled=true;out.textContent="Consultando a IA…";
+      api("conciliaSugerir",{id:id}).then(function(r){
+        b.disabled=false;
+        if(!r.cc){out.textContent=(r.motivo==="IA indisponível"?"IA indisponível.":"Incerto — escolha o centro de custo manualmente.")+(r.motivo&&r.motivo!=="IA indisponível"?" "+r.motivo:"");return;}
+        var pr=projs.filter(function(p){return p.cc===r.cc;})[0];
+        var conf=(r.confianca===""||r.confianca==null)?"":" · confiança "+Math.round(Number(r.confianca)*100)+"%";
+        out.innerHTML='<b>'+esc(r.cc)+'</b>'+(pr?' — '+esc(pr.cliente||pr.projeto||''):'')+esc(conf)+(r.motivo?'<br>'+esc(r.motivo):'')+'<br><span style="font-size:.7rem">Sugestão da IA — confira antes de aceitar.</span><br><button class="btn sm conc-aceitar" data-id="'+esc(id)+'" data-cc="'+esc(r.cc)+'" type="button">Aceitar</button>';
+        var ac=out.querySelector(".conc-aceitar");
+        if(ac)ac.onclick=function(){
+          ac.disabled=true;var m=$("#conc-msg");if(m)m.textContent="Conciliando…";
+          api("fluxoCc",{id:ac.getAttribute("data-id"),cc:ac.getAttribute("data-cc")}).then(function(){if(m)m.textContent="Conciliado.";_finConciliacao();_finResumo();_finCarteira();}).catch(function(e){ac.disabled=false;if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});
+        };
+      }).catch(function(e){b.disabled=false;out.textContent=e.message||"Erro";});
     };});
   }).catch(function(e){var box=$("#fin-conc");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }

@@ -129,6 +129,54 @@ test("Onda 3-A: exceção do guard é cap-only (projetos.aprovar), coerente com 
   assert.doesNotMatch(ts, /podeAprovar(Add|Ed) = .*u\.coord/);
 });
 
+test("Onda 3-C: acao conciliaSugerir read-only, atras da flag, reusa env.AI", () => {
+  const ts = read("src/index.ts");
+  assert.match(ts, /from "\.\/onda3c\.mjs"/);
+  assert.match(ts, /conciliacao_ia: \{[^}]*def: false/); // flag nasce OFF
+  assert.match(ts, /conciliaSugerir: "coordenacao"/); // piso no mapa de acoes
+  const ini = ts.indexOf('action === "conciliaSugerir"');
+  assert.ok(ini > 0, "acao conciliaSugerir ausente");
+  // corpo inteiro da acao: ate o proximo `if (action === ` de nivel do handler.
+  const fim = ts.indexOf('\n  if (action === "', ini + 10);
+  const corpo = ts.slice(ini, fim > 0 ? fim : ini + 6000);
+  assert.ok(corpo.length > 400 && corpo.length < 6000, "corpo da acao mal delimitado");
+  // read-only: o corpo da acao nao grava fluxo nem chama fluxoSet/fluxoCc
+  assert.doesNotMatch(corpo, /UPDATE fluxo|INSERT INTO fluxo|DELETE FROM fluxo|fluxoSet|fluxoCc/);
+  assert.doesNotMatch(corpo, /INSERT |UPDATE |DELETE /); // nenhuma escrita (audit() e funcao, nao SQL aqui)
+  // reusa o padrao do triagemIA e o guard anti-invencao
+  assert.match(corpo, /ENV\.AI\.run\(/);
+  assert.match(corpo, /parseSugestaoCC\(/);
+  assert.match(corpo, /montaPromptSugestaoCC\(/);
+  assert.match(corpo, /conciliacao_ia/);
+  assert.match(corpo, /registro='ATIVO'/); // so candidatos ATIVOS
+  assert.match(corpo, /financeiro\.ver/);
+  // C1 (revisao): llama-3.1-8b-instruct foi DESCONTINUADO em 2026-05-30 (so -fast/-lora seguem ativos):
+  // a acao usa modelo proprio ativo e nao engole o erro do modelo em silencio.
+  assert.match(ts, /const CONC_MODELO = "@cf\/meta\/llama-3\.1-8b-instruct-fast"/);
+  assert.match(corpo, /ENV\.AI\.run\(CONC_MODELO/);
+  assert.match(corpo, /console\.error\(/);
+  assert.match(corpo, /selecionaCandidatos\(/); // I1: prompt limitado
+});
+
+test("Onda 3-C: casca clássica tem sugerir+aceitar na conciliação (IA só sugere; Aceitar grava por clique)", () => {
+  const html = read("public/index.html");
+  const ini = html.indexOf("function _finConciliacao(");
+  const fim = html.indexOf("function _finFluxo(", ini);
+  assert.ok(ini > 0 && fim > ini, "funcao _finConciliacao nao localizada");
+  const conc = html.slice(ini, fim);
+  assert.match(conc, /Sugerir CC \(IA\)/);
+  assert.match(conc, /api\("conciliaSugerir"/);
+  assert.match(conc, /conciliacao_ia/); // botao so aparece com a flag ligada
+  assert.match(conc, /Aceitar/);
+  // o unico caminho de escrita do cc continua sendo o fluxoCc/fluxoSet existente, disparado por clique
+  const sug = conc.slice(conc.indexOf('api("conciliaSugerir"'));
+  const aceitar = sug.slice(sug.indexOf("conc-aceitar"));
+  assert.match(aceitar, /api\("fluxoCc"/);
+  // a resposta da sugestao NAO grava: o handler de sugerir nao chama fluxoCc/fluxoSet
+  const soSugerir = sug.slice(0, sug.indexOf("conc-aceitar"));
+  assert.doesNotMatch(soSugerir, /fluxoCc|fluxoSet/);
+});
+
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
   const pkg = JSON.parse(read("app/package.json"));
   assert.ok(pkg.dependencies.react, "app sem react");
