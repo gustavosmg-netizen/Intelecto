@@ -112,9 +112,10 @@ const ACERVO_TOOLS = ["acervo_search","buscar_norma","buscar_referencia","buscar
 /* ---------- DAILY BRIEF — radar com triagem por IA (inteligencia INTERNA) ----------
  * Modelo de texto do Workers AI (binding env.AI). A chave/binding vive SO no servidor;
  * o front nunca fala com a IA. Troca de modelo = trocar esta constante. */
-const BRIEF_MODELO = "@cf/meta/llama-3.1-8b-instruct";
-/* Onda 3-C: o llama-3.1-8b-instruct (sem sufixo) foi DESCONTINUADO pela Cloudflare em 2026-05-30 (só as variantes
-   -fast/-lora seguem ativas) — a conciliação usa a -fast, mesma família. BRIEF_MODELO (triagemIA) fica a cargo do dono. */
+/* O llama-3.1-8b-instruct (sem sufixo) foi DESCONTINUADO pela Cloudflare em 2026-05-30 (só as variantes -fast/-lora
+   seguem ativas): desde então o triagemIA caía no catch e todo item ficava A_TRIAR. Mesma família, mesma API (messages). */
+const BRIEF_MODELO = "@cf/meta/llama-3.1-8b-instruct-fast";
+/* Onda 3-C: a conciliação usa o mesmo modelo ativo. */
 const CONC_MODELO = "@cf/meta/llama-3.1-8b-instruct-fast";
 /** As 4 areas-foco da triagem. Codigo curto -> rotulo (o rotulo e so apresentacao). */
 const BRIEF_AREAS: Record<string, string> = {

@@ -15,20 +15,24 @@ Escolha a trilha:
 
 ## Trilha E — entregável de engenharia
 
-1. **Diagnóstico dos dados.** Estabeleça a base factual: linha de base, predecessores (fichas e
+As skills `intelecto-diagnostico`, `intelecto-leitor-dwg`, `balanco-massa`, `balanco-energia` e
+`intelecto-revisor` vêm do plugin `intelecto-engenharia` (catálogo no Escritório de IA do portal).
+Use-as quando o plugin estiver instalado; sem ele, siga o substituto indicado em cada passo.
+
+1. **Diagnóstico dos dados** (`intelecto-diagnostico`). Estabeleça a base factual: linha de base, predecessores (fichas e
    precedentes via `acervo-consulta`), auditoria dos dados de entrada. Nada é dimensionado ou
    publicado sobre dado não verificado. Contexto da casa e macroprocesso: `intelecto-contexto`.
-2. **Medir, não assumir.** Toda dimensão (largura, cota, área, vazão) vem de **medição** na
-   prancha/dado, com fonte rastreável (para DWG/DXF: `cad-engineering`; locação e cotas:
+2. **Medir, não assumir** (`intelecto-leitor-dwg`). Toda dimensão (largura, cota, área, vazão) vem
+   de **medição** na prancha/dado, com fonte rastreável (sem o plugin, para DWG/DXF: `cad-engineering`; locação e cotas:
    `verificacao-locacao-cotas-terraplenagem`; topografia: `mdt-de-curvas-de-nivel`).
    **Premissa sem medida é bloqueio.**
 3. **Grau de liberdade** (`grau-de-liberdade`). Liste TODA variável assumida e justifique; confirme
    GL = 0 antes de resolver. Subespecificado ou sobreespecificado = pare.
-4. **Cálculo conferido.** Fórmula e unidades conferidas; para ETE use os crivos de
+4. **Cálculo conferido** (`balanco-massa` / `balanco-energia` e afins). Fórmula e unidades conferidas; para ETE use os crivos de
    `intelecto-ete`. **Verifique a célula/faixa selecionada** em cada planilha. Refaça um ponto-chave
    por caminho independente para bater o resultado. Pranchas: `intelecto-prancha-executiva` /
    `intelecto-pranchas-cortes`; emissão do motor Python: `eng-auditor`.
-5. **Crivo Intelecto A-F** (definido em `intelecto-contexto`): conteúdo/evidência, rigor
+5. **Crivo Intelecto A-F** (`intelecto-revisor`; sem o plugin, o crivo está em `intelecto-contexto`): conteúdo/evidência, rigor
    matemático, compliance normativo, redação/tom, elementos visuais, integridade/versão. Reprova
    retorna ao passo do erro.
 
