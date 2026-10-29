@@ -1,5 +1,6 @@
-# Tanque de equalização com chegada por gravidade, extravasor sifonado, descarga de fundo
-# e recalque por bomba centrífuga afogada. Coordenadas em mm; piso acabado em z = 0;
+# Tanque de equalização aberto (pressão atmosférica): chegada por gravidade com descarga
+# livre acima do transbordamento, extravasor livre (sem sifão, sem válvula), descarga de
+# fundo com registro e recalque por bomba centrífuga afogada com quebra-vórtice. Coordenadas em mm; piso acabado em z = 0;
 # x para leste, y para norte. Origem do tanque = centro do fundo interno.
 projeto: TQ-01 equalização (exemplo)
 arquivo: tanque_equalizacao
@@ -11,16 +12,18 @@ equipamentos:
     origem: [0, 0, 0]
     comprimento: 4000        # interno, em x
     largura: 3000            # interno, em y
-    altura: 3200             # do fundo à borda
+    altura: 3700             # do fundo à borda
     parede: 250
     laje: 300
     na: 2600                 # N.A. de operação
-    na_max: 2800             # N.A. máximo (início do extravasamento)
+    na_max: 2850             # N.A. máximo = soleira do extravasor
+    na_min: 1200             # nível de desligamento da bomba (submergência H16)
+    vazao_max_ls: 30         # pico de chegada (capacidade do extravasor H19)
     bocais:
-      - {tag: N1, papel: entrada,    parede: oeste, posicao: 0,     dn: 150, geratriz_inferior: 2900}
+      - {tag: N1, papel: entrada,    parede: oeste, posicao: 0,     dn: 150, geratriz_inferior: 3330, defletor: true}
       - {tag: N2, papel: extravasor, parede: norte, posicao: 1200,  dn: 150, geratriz_inferior: 2850}
       - {tag: N3, papel: descarga,   parede: sul,   posicao: 1200,  dn: 100, geratriz_inferior: 0}
-      - {tag: N4, papel: succao,     parede: leste, posicao: 0,     dn: 150, eixo: 450}
+      - {tag: N4, papel: succao,     parede: leste, posicao: 0,     dn: 150, eixo: 450, quebra_vortice: true}
 
   - tipo: bomba
     tag: B-01
@@ -38,7 +41,8 @@ linhas:
     material: pvc_esgoto
     dn: 150
     suportes: true
-    origem: {ponto: [-8000, 0, 3034.5], direcao: [1, 0, 0], descricao: "chegada do tratamento preliminar"}
+    vazao_ls: 25
+    origem: {ponto: [-8000, 0, 3464.5], direcao: [1, 0, 0], descricao: "chegada do tratamento preliminar"}
     destino: TQ-01.N1
 
   - tag: L-002
@@ -46,15 +50,11 @@ linhas:
     regime: gravidade
     material: pvc_esgoto
     dn: 150
-    raio_curva: 0.75          # curvas curtas no sifão
     suportes: true
-    sifao: {selo_min: 100}
     origem: TQ-01.N2
     pontos:
-      - [-1200, 2500, 2922.5]
-      - {sifao: {selo: 100}}
-      - [-1200, 4400, 2600]
-    destino: {ponto: [-1200, 4400, 400], descricao: "caixa de drenagem"}
+      - [-1200, 3200, 2915.5]
+    destino: {ponto: [-1200, 3200, 400], descricao: "caixa de drenagem (descarga livre)"}
 
   - tag: L-003
     servico: esgoto

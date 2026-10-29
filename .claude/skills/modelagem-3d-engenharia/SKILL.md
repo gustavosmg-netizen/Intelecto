@@ -12,7 +12,7 @@ Todo desenho tem que funcionar fisicamente. Por isso o caminho padrão é **espe
 ## Fluxo
 
 1. **Especificar.** Extraia do memorial/croqui e escreva `<projeto>.yaml` no formato de `exemplos/tanque_equalizacao.yaml` (comentado). Pergunte o que faltar; nunca invente cota, DN ou N.A. (ver `grau-de-liberdade`).
-   - `equipamentos`: `tanque`/`caixa` (retangular `comprimento × largura` ou `diametro`; `altura`, `parede`, `laje`, `na`, `na_max`, `bocais` com `papel` = entrada | saida | extravasor | descarga | succao) e `bomba` (`modelo: centrifuga | submersivel`, `dn_succao`, `dn_recalque`, `altura_eixo`, `origem`, `rotacao`).
+   - `equipamentos`: `tanque`/`caixa` (retangular `comprimento × largura` ou `diametro`; `altura`, `parede`, `laje`, `na`, `na_max`, `na_min`, `vazao_max_ls`, `fechado`/`respiro`, `chicanas`, `uso`, `bocais` com `papel` = entrada | saida | extravasor | descarga | succao), `misturador` (`tanque`, `d_rotor`, `altura_rotor`, `potencia_kw`) e `bomba` (`modelo: centrifuga | submersivel`, `dn_succao`, `dn_recalque`, `altura_eixo`, `origem`, `rotacao`).
    - Bocal: `parede` (leste/oeste/norte/sul) ou `azimute`, `posicao`, `dn`, `pn`, e `eixo` **ou** `geratriz_inferior` (soleira).
    - `linhas`: `material` (`pvc_esgoto`, `pvc_predial`, `pvc_pba`, `pvc_defofo`, `pead`), `dn` (PVC) ou `de` + `sdr` (PEAD), `regime` (gravidade | pressao), `servico`, `origem`/`destino` (porta `TQ-01.N4`, ponto livre, ou `{te: L-005, ponto: [...]}`), `pontos` (vértices), `componentes` (`gaveta`, `borboleta`, `retencao`, `esfera`, `junta_desmontagem`, `reducao` com `de2`/`dn2` e `excentrica`, `ventosa`), `vazao_ls`, `sifao`, `raio_curva` (× DE), `suportes`.
    - Sentido do escoamento = `origem` → `destino`. Componentes sem `distancia` ficam colados um ao outro na ordem escrita; `distancia: fim` encosta no destino.
@@ -26,6 +26,23 @@ Todo desenho tem que funcionar fisicamente. Por isso o caminho padrão é **espe
 3. **Conferir visualmente** os pontos críticos (bomba, sifão, ligações nos bocais) com closes no Blender (`cena-industrial-3d`) ou no visualizador web.
 4. **Refinar no desktop (opcional):** STEP no FreeCAD (MCP `freecad`, bancada Quetzal, TechDraw, IFC); render no Blender (MCP `blender`).
 5. **Entregar** STEP + GLB + relatório de verificação + lista de materiais, pelo `gate-de-lancamento`.
+
+## Entradas e saídas de tanques (sempre à pressão atmosférica)
+
+Tanque de concreto não trabalha com sobrepressão nem subpressão. Use, nesta ordem de preferência:
+
+| Função | Recomendado | Chave no YAML (bocal) | Evitar |
+|---|---|---|---|
+| Entrada | Descarga livre acima do transbordamento, separação de ar ≥ 3·DI (bocal na parede) e chapa defletora | `geratriz_inferior` alta + `defletor: true` | Entrada afogada sem proteção (remanso e sifonamento para a linha de chegada) |
+| Entrada mergulhada (quando o jato não pode cair) | Tubo mergulhado com furo quebra-vácuo acima do transbordamento | `tubo_imersao: {ate: z, quebra_vacuo: true}` | Tubo mergulhado sem quebra-vácuo |
+| Saída contínua (mistura/reação) | Transbordamento numa caixa de nível com vertedor de soleira livre: a crista fixa o N.A. | `caixa_nivel: {crista, fundo, largura, profundidade}` | Sifão ou "pescoço" sem respiro na saída |
+| Saída de fundo com nível fixo | Perna de nível externa com respiro aberto acima da borda na crista | na linha: `respiro: {ponto, dn, topo}` | Ponto alto seguido de descida sem respiro (esvazia o tanque) |
+| Saída para bomba | Submergência ≥ S = D(1+2,3Fr) (ANSI/HI 9.8) no N.A. mínimo + quebra-vórtice | `quebra_vortice: true`; tanque `na_min` | Sucção rasa (entrada de ar por vórtice) |
+| Extravasor | Bocal livre no N.A. máximo, sem válvula, sem sifão, descarga livre; capacidade ≥ pico de entrada | `papel: extravasor`; tanque `vazao_max_ls` | Registro no extravasor; sifão logo na saída |
+| Tanque fechado | Respiro com tela, DN ≥ maior ligação | tanque `fechado: true`, `respiro: {dn}` | Tampa sem respiro (vácuo ao esvaziar) |
+| Mistura | Entrada e saída opostas (≥ 90°, ideal 180°), 4 chicanas D/12 com misturador | tanque `uso: mistura`, `chicanas: 4`; equipamento `misturador` | Entrada ao lado da saída (curto-circuito) |
+
+Referência: `exemplos/reator_mistura.yaml` (tanque cilíndrico de mistura/reação). O sifão (`{sifao: …}`) fica só para desconector de gases depois de uma caixa aberta, nunca como controle de nível do tanque.
 
 ## O que a verificação cobre
 
@@ -43,9 +60,16 @@ Todo desenho tem que funcionar fisicamente. Por isso o caminho padrão é **espe
 | H10 | Ventosa em ponto alto de linha pressurizada |
 | H11 | Bocal sem linha |
 | H12 | Vão entre apoios ≤ tabela do material |
-| H13 | Interferência física entre peças sem ligação |
+| H13 | Interferência física (entre peças ligadas, só tolera contato na própria junta) |
+| H14 | Entrada: separação atmosférica ≥ 3·DI do transbordamento, ou tubo mergulhado com quebra-vácuo; entrada afogada sem proteção reprova |
+| H15 | Saída com ponto alto (perna de nível) exige respiro na crista terminando acima da borda |
+| H16 | Submergência mínima ANSI/HI 9.8 no N.A. mínimo; quebra-vórtice na sucção |
+| H17 | Tanque fechado com respiro de DN ≥ maior ligação |
+| H18 | Caixa de nível: lâmina do vertedor (Francis), N.A. calculado × declarado, folga até o extravasor, bocal da caixa sem afogar |
+| H19 | Extravasor sem válvula, capacidade ≥ pico de entrada, descarga livre |
+| H20 | Mistura: entrada × saída ≥ 90° em planta; chicanas com misturador |
 
-`python scripts/testes_hidraulica.py` roda 10 casos (cada um injeta um erro típico e confere a regra). Rode depois de mexer em `hidraulica/`.
+`python scripts/testes_hidraulica.py` roda 24 casos nos três exemplos (cada um injeta um erro típico e confere a regra). Rode depois de mexer em `hidraulica/`.
 
 ## Representação física
 

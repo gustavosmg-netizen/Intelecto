@@ -1,6 +1,7 @@
 # Elevatória com bomba submersível em poço enterrado recalcando para tanque cilíndrico.
-# Chegada por gravidade no poço; recalque PEAD com ampliação, retenção, registro e junta
-# de desmontagem na coluna; descarga livre no topo do tanque. mm; piso acabado z = 0.
+# Chegada por gravidade no poço acima do nível de alarme; recalque PEAD com ampliação,
+# retenção, registro e junta de desmontagem na coluna; descarga livre no tanque, acima do
+# transbordamento (separação atmosférica). mm; piso acabado z = 0.
 projeto: EE-01 poço de sucção (exemplo)
 arquivo: elevatoria_submersivel
 piso: 0
@@ -14,8 +15,9 @@ equipamentos:
     altura: 3300
     parede: 200
     laje: 250
-    na: -1500
-    na_max: -800
+    na: -1800              # operação
+    na_max: -1200          # alarme de nível alto (abaixo da chegada: separação de ar)
+    na_min: -2300          # desliga a bomba
     bocais:
       - {tag: N1, papel: entrada, parede: oeste, dn: 150, geratriz_inferior: -700}
 
@@ -31,13 +33,13 @@ equipamentos:
     tag: TQ-02
     origem: [6000, 0, 0]
     diametro: 3000
-    altura: 3000
+    altura: 3400
     parede: 200
     laje: 250
     na: 2500
     na_max: 2700
     bocais:
-      - {tag: N1, papel: entrada, azimute: 180, dn: 100, geratriz_inferior: 2750}
+      - {tag: N1, papel: entrada, azimute: 180, dn: 100, geratriz_inferior: 3050, defletor: true}
 
 linhas:
   - tag: L-010
@@ -60,5 +62,5 @@ linhas:
       - {tipo: retencao, tag: V-011}
       - {tipo: gaveta, tag: V-012}
       - {tipo: junta_desmontagem, tag: JD-011}
-    pontos: [[257, 0, 1500], [3500, 0, 1500], [3500, 0, 2804.5]]
+    pontos: [[257, 0, 1500], [3500, 0, 1500], [3500, 0, 3104.5]]
     destino: TQ-02.N1

@@ -269,7 +269,9 @@ function carregar(fonte, rotulo) {
       pecas.push(peca);
     }
     // cada misturador gira num pivô próprio, no eixo vertical do seu centro
-    for (const m of pecas.filter((p) => p.userData.tipo === "MX")) {
+    // gira só o eixo+rotor (grupo "MX-..-ROTOR") quando existe; senão o misturador inteiro
+    const temRotor = pecas.some((p) => /ROTOR/i.test(p.name));
+    for (const m of pecas.filter((p) => p.userData.tipo === "MX" && (!temRotor || /ROTOR/i.test(p.name)))) {
       const pivo = new THREE.Group();
       new THREE.Box3().setFromObject(m).getCenter(pivo.position);
       scene.add(pivo); pivo.attach(m); misturadores.push(pivo);

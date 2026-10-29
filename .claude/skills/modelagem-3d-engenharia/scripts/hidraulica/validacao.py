@@ -45,8 +45,13 @@ def validar(m: Modelo) -> list[Achado]:
         r.append(Achado(cod, niv, obj, msg))
 
     for ln in m.linhas.values():
+        if ln.regime == "ventilacao":
+            for e in ln.erros_montagem:
+                add("H01", "ERRO", ln.tag, f"Montagem impossível: {e}.")
+            continue
         _validar_linha(m, ln, add)
     _validar_bocais(m, add)
+    _validar_tanques(m, add)
     _validar_colisoes(m, add)
     return r
 
@@ -108,12 +113,22 @@ def _validar_gravidade(ln: Linha, segs, add) -> None:
     i_min = float(ln.spec.get("declividade_minima", normas.declividade_minima(tb.material, tb.dn)))
     subidas = []
     u = ln.sifao_u
+    # perna de nível: até a crista o tubo trabalha afogado sob a carga do tanque; as regras de
+    # conduto livre valem da crista em diante
+    z_crista = max(p.Z for p in ln.vertices) if ln.spec.get("respiro") else None
+    s_crista = None
+    if z_crista is not None:
+        s_crista = next((el[4] for el in segs if el[1].Z >= z_crista - 0.5 * tb.de), None)
     for _, A, B, d, s0, s1 in segs:
         h = math.hypot(B.X - A.X, B.Y - A.Y)
         dz = B.Z - A.Z
+        if s_crista is not None and s1 <= s_crista + 1e-6:
+            continue                                   # trecho afogado antes da crista
         if u and _sobre(A, B, u[1], u[2]):
             continue                                   # ramo ascendente do sifão
         if dz > 1.0:
+            if z_crista is not None and B.Z <= z_crista + 1:
+                continue                               # perna de nível: sobe até a crista
             subidas.append((A, B))
             continue
         if u and _sobre(A, B, u[0], u[1]):
@@ -126,7 +141,7 @@ def _validar_gravidade(ln: Linha, segs, add) -> None:
     if subidas:
         add("H05", "ERRO", tag, "Conduto livre com trecho em aclive (contra o escoamento) sem "
             "sifão declarado: forma bolsão de sólidos e represa a linha.")
-    z_ini = _invert(ln.vertices[0].Z, tb)
+    z_ini = _invert(z_crista if z_crista is not None else ln.vertices[0].Z, tb)
     z_fim = _invert(ln.vertices[-1].Z, ln.tubo_em(ln.comprimento - 1))
     if z_fim >= z_ini:
         add("H05", "ERRO", tag, f"Saída (soleira {z_fim:.0f}) não está abaixo da entrada "
@@ -227,16 +242,14 @@ def _validar_bocais(m: Modelo, add) -> None:
             if coroa > borda:
                 add("H07", "ERRO", nome, f"Extravasor com geratriz superior {coroa:.0f} acima da "
                     f"borda {borda:.0f}: o tanque transborda antes de extravasar.")
-        if p.papel == "entrada" and na_max is not None and soleira < na_max:
-            add("H07", "AVISO", nome, f"Entrada afogada (soleira {soleira:.0f} < N.A. máx "
-                f"{na_max:.0f}): remanso na linha de chegada; confirme se é intencional.")
         if p.papel == "descarga":
             if soleira > fundo + 150:
                 add("H07", "AVISO", nome, f"Descarga de fundo com soleira {soleira - fundo:.0f} mm "
                     "acima do fundo: não esvazia o tanque.")
         if p.papel in ("descarga", "saida", "succao") and ln and ln.origem.nome == nome:
             perto = [c for c in ln.componentes if c.s0 < 3000 and c.tipo in BLOQUEIO]
-            abaixo_na = eq.get("na") is not None and coroa < float(eq["na"])
+            abaixo_na = (eq.get("na") is not None and coroa < float(eq["na"])
+                         and not p.extra.get("caixa_nivel"))   # caixa de nível: lado atmosférico
             if not perto and (p.papel == "descarga" or abaixo_na):
                 add("H07", "ERRO" if p.papel != "saida" else "AVISO", nome,
                     f"Bocal de {p.papel} abaixo do N.A. sem registro nos primeiros 3 m da linha "
@@ -263,6 +276,8 @@ def _validar_vaos(m: Modelo, ln: Linha, segs, add) -> None:
 
 
 def _dono(m: Modelo, grupo: str) -> str:
+    if grupo.endswith("-ROTOR"):          # eixo+rotor pertence ao próprio misturador
+        return grupo[: -len("-ROTOR")]
     for ln in m.linhas.values():
         if grupo.startswith(ln.tag + "-") or grupo == f"S-{ln.tag}":
             return ln.tag
@@ -366,7 +381,181 @@ def relatorio(m: Modelo, achados: list[Achado]) -> str:
             "H04 curvas comerciais · H05 declividade e sentido em conduto livre · H06 selo hídrico "
             "do sifão · H07 entrada, extravasor e descarga do tanque · H08 sucção e recalque de "
             "bombas · H09 velocidades · H10 ventosas em pontos altos · H11 bocais sem ligação · "
-            "H12 vão entre apoios · H13 interferências físicas.", "",
+            "H12 vão entre apoios · H13 interferências físicas · H14 separação atmosférica / "
+            "quebra-vácuo na entrada · H15 perna de nível com respiro · H16 submergência mínima "
+            "(ANSI/HI 9.8) · H17 respiro de tanque fechado · H18 caixa de nível e lâmina do "
+            "vertedor · H19 extravasor livre e com capacidade · H20 curto-circuito e vórtice em "
+            "tanque de mistura.", "",
             "Dimensões de tubos e flanges: tabelas em `hidraulica/normas.py` (DE e furação "
             "normativos; espessuras e face a face típicos de catálogo)."]
     return "\n".join(out) + "\n"
+
+
+# --- Tanques atmosféricos: entrada, saída, extravasor, respiro, submergência ----------------
+
+G = 9.81
+
+
+def _vazao_entrada(m: Modelo, tag: str) -> float | None:
+    eq = m.equipamentos[tag]
+    if eq.get("vazao_max_ls"):
+        return float(eq["vazao_max_ls"])
+    qs = [ln.spec["vazao_ls"] for ln in m.linhas.values()
+          if ln.destino.equipamento == tag and ln.spec.get("vazao_ls")]
+    return float(sum(qs)) if qs else None
+
+
+def _orificio(di_mm: float, carga_mm: float, cd: float = 0.6) -> float:
+    """Vazão (L/s) de um bocal afogado sob carga sobre o eixo."""
+    if carga_mm <= 0:
+        return 0.0
+    a = math.pi * (di_mm / 1000) ** 2 / 4
+    return cd * a * math.sqrt(2 * G * carga_mm / 1000) * 1000
+
+
+def _validar_tanques(m: Modelo, add) -> None:
+    for tag, eq in m.equipamentos.items():
+        if eq.get("tipo") != "tanque":
+            continue
+        portas = [p for p in m.portas.values() if p.equipamento == tag]
+        sai_de = {ln.origem.nome: ln for ln in m.linhas.values()}
+        chega_em = {ln.destino.nome: ln for ln in m.linhas.values()}
+        extravasores = [p for p in portas if p.papel == "extravasor"]
+        transb = (min(p.ponto.Z - (p.di or p.dn) / 2 for p in extravasores) if extravasores
+                  else eq.get("na_max"))
+        q_in = _vazao_entrada(m, tag)
+        for p in portas:
+            di = p.di or float(p.dn)
+            soleira = p.ponto.Z - di / 2
+            # H14 entradas: separação atmosférica ou tubo mergulhado com quebra-vácuo
+            if p.papel == "entrada" and transb is not None:
+                ln = chega_em.get(p.nome)
+                if p.extra.get("tubo_imersao"):
+                    zq = p.extra.get("_z_quebra_vacuo")
+                    if zq is None:
+                        add("H14", "ERRO", p.nome, "Tubo mergulhado sem furo quebra-vácuo: ao "
+                            "parar a alimentação o tanque sifona de volta para a linha de chegada.")
+                    elif zq < transb + 25:
+                        add("H14", "ERRO", p.nome, f"Quebra-vácuo em EL {zq:.0f} abaixo do nível de "
+                            f"transbordamento {transb:.0f} + 25 mm: fica afogado e não admite ar.")
+                else:
+                    req = 3 * di          # bocal na parede: 3×DI (parede junto à saída)
+                    if soleira >= transb + req:
+                        pass
+                    elif soleira >= transb:
+                        add("H14", "ERRO", p.nome, f"Separação atmosférica de {soleira - transb:.0f} mm "
+                            f"entre a soleira da entrada e o nível de transbordamento ({transb:.0f}); "
+                            f"mínimo {req:.0f} mm (3×DI, ASME A112.1.2 / códigos prediais).")
+                    elif ln and any(c.tipo == "retencao" for c in ln.componentes):
+                        add("H14", "AVISO", p.nome, "Entrada afogada protegida só por retenção: "
+                            "prefira descarga livre acima do transbordamento ou tubo mergulhado com "
+                            "quebra-vácuo.")
+                    else:
+                        add("H14", "ERRO", p.nome, f"Entrada afogada (soleira {soleira:.0f} abaixo do "
+                            f"transbordamento {transb:.0f}) sem proteção: o tanque pressuriza a linha "
+                            "de chegada (remanso) e pode sifonar para ela.")
+            # H15 perna de nível: ponto alto na saída exige respiro acima da borda
+            ln = sai_de.get(p.nome)
+            if p.papel in ("saida", "descarga") and ln is not None:
+                zs = [v.Z for v in ln.vertices]
+                i_c = max(range(len(zs)), key=lambda i: zs[i])
+                if zs[i_c] > zs[0] + 1 and min(zs[i_c:]) < zs[i_c] - 1:
+                    respiros = [x for x in m.linhas.values() if x.regime == "ventilacao"
+                                and x.origem.equipamento == ln.tag
+                                and abs(x.vertices[0].Z - zs[i_c]) < 2 * ln.tubo.de]
+                    if not respiros:
+                        add("H15", "ERRO", ln.tag, f"Saída sobe até EL {zs[i_c]:.0f} e desce sem "
+                            "respiro na crista: o trecho descendente funciona como sifão e esvazia o "
+                            "tanque até a cota do bocal (subpressão).")
+                    for r in respiros:
+                        topo = r.destino.ponto.Z
+                        if topo <= eq["borda"]:
+                            add("H15", "ERRO", r.tag, f"Respiro termina em EL {topo:.0f}, abaixo da "
+                                f"borda {eq['borda']:.0f}: transborda pelo respiro.")
+                    nivel = zs[i_c] - ln.tubo.di / 2
+                    if eq.get("na") is not None and abs(nivel - float(eq["na"])) > 50:
+                        add("H15", "AVISO", ln.tag, f"Perna de nível fixa o N.A. em ~{nivel:.0f} "
+                            f"(soleira da crista), diferente do N.A. declarado {eq['na']}.")
+            # H16 submergência mínima (ANSI/HI 9.8) em saídas pressurizadas e sucções
+            if ln is not None and p.papel in ("succao", "saida") and ln.spec.get("vazao_ls") and (
+                    ln.regime == "pressao") and eq.get("na_min") is not None:
+                D = di / 1000
+                v = ln.spec["vazao_ls"] / 1000 / (math.pi * D ** 2 / 4)
+                S = D * (1 + 2.3 * v / math.sqrt(G * D)) * 1000
+                disp = float(eq["na_min"]) - p.ponto.Z
+                if disp < S:
+                    add("H16", "ERRO", p.nome, f"Submergência {disp:.0f} mm sobre o eixo no N.A. "
+                        f"mínimo; exigido {S:.0f} mm (S = D(1+2,3Fr), ANSI/HI 9.8): entra ar por "
+                        "vórtice.")
+                if p.papel == "succao" and not p.extra.get("quebra_vortice"):
+                    add("H16", "AVISO", p.nome, "Sucção sem quebra-vórtice na boca.")
+            # H18 caixa de nível (saída por transbordamento)
+            cfg = p.extra.get("caixa_nivel")
+            if cfg:
+                crista, L = float(cfg["crista"]), float(cfg["largura"])
+                if p.ponto.Z + di / 2 > crista:
+                    add("H18", "ERRO", p.nome, "Bocal de saída acima da crista do vertedor: a caixa "
+                        "não drena.")
+                if float(cfg["fundo"]) > soleira:
+                    add("H18", "ERRO", p.nome, "Fundo da caixa de nível acima da soleira do bocal.")
+                if q_in:
+                    h = (q_in / 1000 / (1.84 * L / 1000)) ** (2 / 3) * 1000
+                    na_calc = crista + h
+                    eq["_na_calc"] = na_calc
+                    if eq.get("na") is not None and abs(float(eq["na"]) - na_calc) > 30:
+                        add("H18", "AVISO", tag, f"N.A. declarado {eq['na']} difere do calculado "
+                            f"{na_calc:.0f} (crista {crista:.0f} + lâmina {h:.0f} mm, Francis, "
+                            f"Q = {q_in:g} L/s, L = {L:.0f} mm).")
+                    if transb is not None and na_calc > transb - 50:
+                        add("H18", "ERRO", tag, f"N.A. de operação {na_calc:.0f} a menos de 50 mm "
+                            f"do transbordamento {transb:.0f}: o extravasor trabalha em regime normal.")
+                    q_cap = _orificio(di, crista - p.ponto.Z)
+                    if q_cap < q_in:
+                        add("H18", "ERRO", p.nome, f"Bocal da caixa de nível escoa {q_cap:.1f} L/s com "
+                            f"a carga disponível; entram {q_in:g} L/s: a caixa afoga o vertedor.")
+                if ln is not None and ln.regime != "gravidade":
+                    add("H18", "AVISO", ln.tag, "Saída da caixa de nível deveria ser conduto livre.")
+            # H19 extravasor
+            if p.papel == "extravasor":
+                if ln is not None:
+                    if any(c.tipo in BLOQUEIO or c.tipo == "retencao" for c in ln.componentes):
+                        add("H19", "ERRO", ln.tag, "Extravasor com válvula: fechado ou travado, o "
+                            "tanque transborda pela borda.")
+                    if ln.sifao:
+                        add("H19", "AVISO", ln.tag, "Sifão no extravasor: reduz a capacidade e pode "
+                            "travar com ar; use descarga livre em caixa aberta e, se precisar de "
+                            "fecho hídrico, ponha o desconector depois dela.")
+                    if ln.destino.junta != "livre" and ln.destino.papel != "entrada":
+                        add("H19", "AVISO", ln.tag, "Extravasor sem descarga livre visível no destino.")
+                if q_in:
+                    H = eq["borda"] - 100 - soleira
+                    q_cap = (_orificio(di, H - di / 2) if H > di else
+                             1.84 * (di / 1000) * max(H, 0) / 1000 * math.sqrt(max(H, 0) / 1000) * 1000)
+                    if q_cap < q_in:
+                        add("H19", "ERRO", p.nome, f"Extravasor escoa {q_cap:.1f} L/s até 100 mm "
+                            f"abaixo da borda; entram até {q_in:g} L/s.")
+        # H17 tanque fechado precisa respirar
+        if eq.get("fechado"):
+            dns = [p.dn for p in portas if p.papel in ("entrada", "saida", "succao", "descarga")]
+            if not eq.get("respiro"):
+                add("H17", "ERRO", tag, "Tanque fechado sem respiro: enche sob pressão e esvazia "
+                    "sob vácuo (risco de colapso da tampa e de sifonamento).")
+            elif dns and int(eq["respiro"]["dn"]) < max(dns):
+                add("H17", "ERRO", tag, f"Respiro DN{eq['respiro']['dn']} menor que a maior ligação "
+                    f"DN{max(dns)}: não acompanha a vazão de enchimento/esvaziamento.")
+        # H20 mistura: curto-circuito e vórtice
+        if eq.get("misturador") or eq.get("uso") == "mistura":
+            cx, cy = eq["centro"]
+            ent = [p for p in portas if p.papel == "entrada"]
+            sai = [p for p in portas if p.papel in ("saida", "succao")]
+            for a in ent:
+                for b in sai:
+                    va = Vector(a.ponto.X - cx, a.ponto.Y - cy, 0).normalized()
+                    vb = Vector(b.ponto.X - cx, b.ponto.Y - cy, 0).normalized()
+                    ang = math.degrees(math.acos(max(-1, min(1, va.dot(vb)))))
+                    if ang < 90:
+                        add("H20", "AVISO", f"{a.nome}/{b.nome}", f"Entrada e saída a {ang:.0f}° em "
+                            "planta: risco de curto-circuito; afaste para ≥ 90° (ideal 180°).")
+            if eq.get("misturador") and eq["cil"] and not eq.get("chicanas"):
+                add("H20", "AVISO", tag, "Tanque cilíndrico com misturador sem chicanas: forma "
+                    "vórtice central e a mistura gira em bloco (use 4 chicanas de D/12).")

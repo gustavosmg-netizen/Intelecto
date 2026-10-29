@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from build123d import Box, Compound, Cylinder, Location, Part, Pos, Rot, Vector
 
+from . import dispositivos as dv
 from . import geometria as g
 from . import normas
 
@@ -36,6 +37,8 @@ class Porta:
     papel: str | None = None  # entrada, saida, extravasor, descarga, succao, recalque
     equipamento: str | None = None
     de: float | None = None   # DE do tubo quando a junta é ponta
+    di: float | None = None   # DI do bocal (tubo de parede)
+    extra: dict = field(default_factory=dict)   # spec do bocal (dispositivos internos)
 
 
 @dataclass
@@ -110,10 +113,41 @@ def _bocal_parede(m: Modelo, eq_tag: str, b: dict, ponto_ext: Vector, normal: Ve
     nome = f"{b['tag']}-{eq_tag}-DN{dn}"
     m.add(nome, g.posicionar(peca, inicio, normal), CORES["metal"])
     face = ponto_ext + normal * proj_ext
-    p = Porta(f"{eq_tag}.{b['tag']}", face, normal, dn, pn, "flange", b.get("papel"), eq_tag)
+    di = de - 2 * max(de / 26, 4)
+    p = Porta(f"{eq_tag}.{b['tag']}", face, normal, dn, pn, "flange", b.get("papel"), eq_tag,
+              di=di, extra=dict(b))
     m.portas[p.nome] = p
     m.item("Tubo de parede flangeado c/ anel de vedação", f"DN{dn} PN{pn} L={L:.0f} mm", "un", 1)
+    _dispositivos_bocal(m, eq_tag, b, nome, de, di, inicio, ponto_ext - normal * parede, normal, p)
     return de
+
+
+def _dispositivos_bocal(m: Modelo, eq_tag: str, b: dict, grupo: str, de: float, di: float,
+                        ponta: Vector, face_int: Vector, normal: Vector, porta: Porta) -> None:
+    """Dispositivos internos ligados ao bocal (registrados no grupo do bocal ou do tanque)."""
+    if b.get("defletor"):
+        m.add(grupo, dv.defletor(de, ponta, normal), CORES["metal"])
+        m.item("Chapa defletora de entrada", f"{b['tag']} {eq_tag}", "un", 1)
+    if b.get("tubo_imersao"):
+        cfg = b["tubo_imersao"]
+        peca, z_furo = dv.tubo_imersao(de, di, ponta, normal, float(cfg["ate"]),
+                                       bool(cfg.get("quebra_vacuo", False)))
+        m.add(grupo, peca, CORES["metal"])
+        porta.extra["_z_quebra_vacuo"] = z_furo if cfg.get("quebra_vacuo") else None
+        porta.extra["_z_boca_imersa"] = float(cfg["ate"])
+        m.item("Tubo mergulhado de entrada" + (" c/ furo quebra-vácuo" if cfg.get("quebra_vacuo")
+                                               else ""), f"DN{b['dn']} até EL {cfg['ate']}", "un", 1)
+    if b.get("quebra_vortice"):
+        m.add(grupo, dv.quebra_vortice(de, ponta, normal), CORES["metal"])
+        m.item("Quebra-vórtice em cruz", f"{b['tag']} {eq_tag} DN{b['dn']}", "un", 1)
+    if b.get("caixa_nivel"):
+        cfg = b["caixa_nivel"]
+        topo = float(cfg.get("topo", m.equipamentos.get("_borda_tmp", cfg["crista"] + 500)))
+        caixa = dv.caixa_nivel(face_int, normal, float(cfg["crista"]), float(cfg["fundo"]),
+                               float(cfg["largura"]), float(cfg.get("profundidade", 500)), topo)
+        m.add(eq_tag, caixa, CORES["concreto"])
+        m.item("Caixa de nível com vertedor de soleira livre",
+               f"{eq_tag}: crista EL {cfg['crista']}, L = {cfg['largura']} mm", "un", 1)
 
 
 def tanque(m: Modelo, e: dict) -> None:
@@ -131,6 +165,7 @@ def tanque(m: Modelo, e: dict) -> None:
         corpo = Pos(x0, y0, z0 - laje) * Box(Lx + 2 * t, By + 2 * t, H + laje, align=g.BASE)
         corpo -= Pos(x0, y0, z0) * Box(Lx, By, H + 1, align=g.BASE)
     furos = []
+    m.equipamentos["_borda_tmp"] = z0 + H
     for b in e.get("bocais", []):
         if cil:
             az = math.radians(float(b["azimute"]))
@@ -154,11 +189,36 @@ def tanque(m: Modelo, e: dict) -> None:
                                   ponto_ext - n * (t * 2 + 200), n))
     for f in furos:
         corpo -= f
+    m.equipamentos.pop("_borda_tmp", None)
+    respiro = e.get("respiro")
+    if e.get("fechado"):
+        tampa = (Pos(x0, y0, z0 + H) * Cylinder(R + t, 200, align=g.BASE) if cil else
+                 Pos(x0, y0, z0 + H) * Box(Lx + 2 * t, By + 2 * t, 200, align=g.BASE))
+        if respiro:
+            dn_r = int(respiro["dn"])
+            tr = normas.tubo("pvc_defofo" if dn_r in normas.PVC_DEFOFO_DE else "pvc_esgoto", dn_r)
+            px, py = (float(v) for v in respiro.get("posicao", (0, 0)))
+            base = Vector(x0 + px, y0 + py, z0 + H)
+            tampa -= Pos(*base) * Cylinder(tr.de / 2 + 2, 600, align=(g.Align.CENTER,) * 3)
+            h_r = float(respiro.get("altura", 600))
+            topo = base + Vector(0, 0, 200 + h_r)
+            m.add(f"N-RESP-{tag}-DN{dn_r}", g.posicionar(g.tubo_reto(tr.de, tr.di, 200 + h_r),
+                                                       base, Vector(0, 0, 1)), CORES["metal"])
+            m.add(f"N-RESP-{tag}-DN{dn_r}", dv.respiro_topo(tr.de, tr.di, topo), CORES["metal"])
+            m.item("Respiro em pescoço de ganso c/ tela", f"{tag} DN{dn_r}", "un", 1)
+        corpo += tampa
+    if cil and e.get("chicanas"):
+        corpo += dv.chicanas(x0, y0, R, z0, z0 + H - 300, int(e["chicanas"]))
+        m.item("Chicanas verticais (largura D/12)", f"{tag}: {e['chicanas']} un", "un",
+               int(e["chicanas"]))
     m.add(tag, corpo, CORES["concreto"])
     m.equipamentos[tag] = {"tipo": "tanque", "solido": corpo, "z_fundo": z0, "borda": z0 + H,
                            "na": e.get("na"), "na_max": e.get("na_max", e.get("na")),
+                           "na_min": e.get("na_min", e.get("na")),
                            "cil": cil, "centro": (x0, y0), "dim": (R * 2, R * 2) if cil else (Lx, By),
-                           "parede": t}
+                           "parede": t, "fechado": bool(e.get("fechado")), "respiro": respiro,
+                           "chicanas": e.get("chicanas"), "uso": e.get("uso"),
+                           "vazao_max_ls": e.get("vazao_max_ls")}
     vol = (math.pi * R * R if cil else Lx * By) * H / 1e9
     m.item("Estrutura de concreto", f"{tag} volume útil bruto {vol:.1f} m³", "un", 1)
 
@@ -183,6 +243,24 @@ def bomba(m: Modelo, e: dict) -> None:
     m.equipamentos[tag] = {"tipo": "bomba", "solido": loc * corpo, "spec": e}
     m.item("Conjunto motobomba", f"{tag} {modelo} "
            f"{e.get('descricao', '')}".strip(), "un", 1)
+
+
+def misturador(m: Modelo, e: dict) -> None:
+    """Misturador vertical sobre ponte apoiada na borda do tanque indicado."""
+    tq = m.equipamentos[e["tanque"]]
+    cx, cy = tq["centro"]
+    vao = max(tq["dim"]) + 2 * tq["parede"]
+    z_rotor = tq["z_fundo"] + float(e["altura_rotor"])
+    fixo, rotor = dv.misturador(cx, cy, tq["borda"], vao, z_rotor, float(e["d_rotor"]),
+                                float(e.get("potencia_kw", 5.5)))
+    m.add(e["tag"], fixo, CORES["bomba"])
+    m.add(f"{e['tag']}-ROTOR", rotor, CORES["metal"])     # o visualizador gira só este grupo
+    peca = fixo + rotor
+    m.equipamentos[e["tag"]] = {"tipo": "misturador", "tanque": e["tanque"], "spec": e,
+                                "solido": peca}
+    tq["misturador"] = e["tag"]
+    m.item("Misturador vertical c/ ponte", f"{e['tag']} rotor Ø{e['d_rotor']} mm "
+           f"{e.get('potencia_kw', 5.5)} kW", "un", 1)
 
 
 # --- Linhas -----------------------------------------------------------------------------
@@ -333,6 +411,8 @@ def _porta_te(m: Modelo, ref: str, ramal: Linha, tes: dict, saindo: bool) -> Por
     pts = ramal.spec.get("pontos", [])
     alvo = (Vector(*map(float, pts[0])) if saindo and pts else
             Vector(*map(float, pts[-1])) if pts else None)
+    if isinstance(ref, dict) and "direcao" in ref:
+        alvo = P + Vector(*map(float, ref["direcao"])) * 1000
     if alvo is None:
         raise ValueError(f"{ramal.tag}: informe 'pontos' para definir a direção do ramal do tê")
     n = alvo - P
@@ -578,7 +658,7 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                 else:
                     m.add(nome, g.posicionar(g.bolsa(tb.de), A + d * (a + k - s0), d), cor)
                 k += barra
-            if b - a > 4 * tb.de:
+            if b - a > 4 * tb.de and linha.regime != "ventilacao":
                 meio = A + d * ((a + b) / 2 - s0)
                 m.add(nome, g.posicionar(g.seta_fluxo(tb.de), meio, d), (1.0, 0.75, 0.0, 1))
     for desc, L in comprimento_tubo.items():
@@ -586,6 +666,10 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
             continue
         m.item("Tubo", f"{desc} ({math.ceil(L / barra)} barra(s) de {barra / 1000:g} m)", "m",
                round(L / 1000, 2))
+    if linha.regime == "ventilacao":
+        tb = linha.tubo_em(linha.comprimento)
+        m.add(nome, dv.respiro_topo(tb.de, tb.di, linha.destino.ponto), CORES["metal"])
+        m.item("Pescoço de ganso c/ tela (topo do respiro)", tb.descricao, "un", 1)
     if linha.spec.get("suportes", linha.regime == "pressao") is not False:
         _suportes(m, linha, ocupados)
 
@@ -653,11 +737,22 @@ def _dentro_de_tanque(m: Modelo, P: Vector) -> bool:
 def montar(spec: dict) -> Modelo:
     m = Modelo(spec, piso=float(spec.get("piso", 0)))
     for e in spec.get("equipamentos", []):
-        {"tanque": tanque, "caixa": tanque, "bomba": bomba}[e["tipo"] if e["tipo"] in
-                                                            ("tanque", "caixa") else "bomba"](m, e)
+        {"tanque": tanque, "caixa": tanque, "bomba": bomba, "misturador": misturador}[e["tipo"]](m, e)
         if e["tipo"] == "caixa":
             m.equipamentos[e["tag"]]["tipo"] = "tanque"
-    linhas = [preparar_linha(m, s) for s in spec.get("linhas", [])]
+    specs = list(spec.get("linhas", []))
+    for s in spec.get("linhas", []):          # respiro na crista de perna de nível (quebra-sifão)
+        r = s.get("respiro")
+        if r:
+            P = list(map(float, r["ponto"]))
+            specs.append({"tag": f"{s['tag']}-RESP", "servico": "ar", "regime": "ventilacao",
+                          "material": r.get("material", s["material"]),
+                          ("de" if r.get("material", s["material"]) == "pead" else "dn"): r["dn"],
+                          "suportes": False,
+                          "origem": {"te": s["tag"], "ponto": P, "direcao": [0, 0, 1]},
+                          "destino": {"ponto": [P[0], P[1], float(r["topo"])],
+                                      "descricao": "respiro aberto"}})
+    linhas = [preparar_linha(m, s) for s in specs]
     for ln in linhas:
         m.linhas[ln.tag] = ln
     # linhas sem tê primeiro (as que recebem ramais precisam do traçado pronto)

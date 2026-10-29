@@ -1,0 +1,82 @@
+# Tanque de mistura/reação cilíndrico, aberto, operando sempre à pressão atmosférica.
+# Entrada: descarga livre acima do transbordamento (separação de ar >= 3 DI) + defletor.
+# Saída: por transbordamento numa caixa de nível com vertedor de soleira livre (a crista
+#        fixa o N.A.; nada de sifão nem de perna de nível sem respiro).
+# Extravasor: bocal livre acima do N.A., sem válvula, descarga livre em caixa de drenagem.
+# Descarga de fundo com registro. Misturador vertical com 4 chicanas D/12.
+# Entrada e saída diametralmente opostas (180°) contra curto-circuito.
+# mm; z = 0 no fundo interno do tanque; terreno em z = -800 (tanque sobre base).
+projeto: TQ-R1 tanque de mistura/reação (referência)
+arquivo: reator_mistura
+piso: -800
+
+equipamentos:
+  - tipo: tanque
+    tag: TQ-R1
+    uso: mistura
+    origem: [0, 0, 0]
+    diametro: 4000
+    altura: 4800
+    parede: 250
+    laje: 300
+    chicanas: 4
+    na: 3870               # crista 3800 + lâmina do vertedor (verificada em H18)
+    na_max: 4000           # soleira do extravasor
+    na_min: 3800           # tanque nunca fica abaixo da crista em operação
+    vazao_max_ls: 30       # pico de entrada (dimensiona extravasor e caixa de nível)
+    bocais:
+      - {tag: N1, papel: entrada,    azimute: 180, dn: 150, geratriz_inferior: 4480, defletor: true}
+      - {tag: N2, papel: saida,      azimute: 0,   dn: 200, eixo: 3300,
+         caixa_nivel: {crista: 3800, fundo: 3000, largura: 600, profundidade: 500}}
+      - {tag: N3, papel: extravasor, azimute: 90,  dn: 200, geratriz_inferior: 4000}
+      - {tag: N4, papel: descarga,   azimute: 270, dn: 150, geratriz_inferior: 0}
+
+  - tipo: misturador
+    tag: MX-01
+    tanque: TQ-R1
+    d_rotor: 1300
+    altura_rotor: 1300
+    potencia_kw: 5.5
+
+linhas:
+  - tag: L-101
+    servico: esgoto
+    regime: pressao
+    material: pead
+    de: 160
+    vazao_ls: 20
+    origem: {ponto: [-8000, 0, 600], direcao: [1, 0, 0], descricao: "recalque da EE-01"}
+    pontos:
+      - [-4000, 0, 600]
+      - [-4000, 0, 4558.5]
+    destino: TQ-R1.N1
+
+  - tag: L-102
+    servico: esgoto
+    regime: gravidade
+    material: pvc_esgoto
+    dn: 200
+    suportes: true
+    origem: TQ-R1.N2
+    destino: {ponto: [9000, 0, 3234], descricao: "para o decantador"}
+
+  - tag: L-103
+    servico: esgoto
+    regime: gravidade
+    material: pvc_esgoto
+    dn: 200
+    suportes: true
+    origem: TQ-R1.N3
+    pontos:
+      - [0, 3400, 4090.5]
+    destino: {ponto: [0, 3400, -500], descricao: "caixa de drenagem (descarga livre)"}
+
+  - tag: L-104
+    servico: esgoto
+    regime: gravidade
+    material: pvc_defofo
+    dn: 150
+    origem: TQ-R1.N4
+    componentes:
+      - {tipo: gaveta, tag: V-104}
+    destino: {ponto: [0, -4400, 58.5], descricao: "poço de esgotamento"}
