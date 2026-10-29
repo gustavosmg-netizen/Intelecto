@@ -152,6 +152,25 @@ test("Onda 3-C: acao conciliaSugerir read-only, atras da flag, reusa env.AI", ()
   assert.match(corpo, /financeiro\.ver/);
 });
 
+test("Onda 3-C: casca clássica tem sugerir+aceitar na conciliação (IA só sugere; Aceitar grava por clique)", () => {
+  const html = read("public/index.html");
+  const ini = html.indexOf("function _finConciliacao(");
+  const fim = html.indexOf("function _finFluxo(", ini);
+  assert.ok(ini > 0 && fim > ini, "funcao _finConciliacao nao localizada");
+  const conc = html.slice(ini, fim);
+  assert.match(conc, /Sugerir CC \(IA\)/);
+  assert.match(conc, /api\("conciliaSugerir"/);
+  assert.match(conc, /conciliacao_ia/); // botao so aparece com a flag ligada
+  assert.match(conc, /Aceitar/);
+  // o unico caminho de escrita do cc continua sendo o fluxoCc/fluxoSet existente, disparado por clique
+  const sug = conc.slice(conc.indexOf('api("conciliaSugerir"'));
+  const aceitar = sug.slice(sug.indexOf("conc-aceitar"));
+  assert.match(aceitar, /api\("fluxoCc"/);
+  // a resposta da sugestao NAO grava: o handler de sugerir nao chama fluxoCc/fluxoSet
+  const soSugerir = sug.slice(0, sug.indexOf("conc-aceitar"));
+  assert.doesNotMatch(soSugerir, /fluxoCc|fluxoSet/);
+});
+
 test("Onda 2: scaffold da casca nova (React/Vite) existe e aponta para /app", () => {
   const pkg = JSON.parse(read("app/package.json"));
   assert.ok(pkg.dependencies.react, "app sem react");
