@@ -1,0 +1,431 @@
+<title>Visualizador de Planta 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+/* Layout: cena 3D ocupando a tela, painel de comando lateral (rodapé no celular) */
+:root {
+  --bg: #e6e9ec;          /* cinza-aço claro */
+  --painel: #f6f7f8;
+  --fg: #1d2329;
+  --muted: #5d6873;
+  --linha: #c9cfd5;
+  --accent: #d99a00;      /* amarelo de segurança */
+  --accent-fg: #1d2329;
+  --sel: #0b6fb8;
+  --ceu-topo: #b9c6d2;
+  --ceu-base: #e9edf0;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171c; --painel: #1a2128; --fg: #e3e8ec; --muted: #94a1ad; --linha: #2c3640;
+    --accent: #f0b429; --accent-fg: #12171c; --sel: #5cb3f2; --ceu-topo: #0d1216; --ceu-base: #26313a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171c; --painel: #1a2128; --fg: #e3e8ec; --muted: #94a1ad; --linha: #2c3640;
+  --accent: #f0b429; --accent-fg: #12171c; --sel: #5cb3f2; --ceu-topo: #0d1216; --ceu-base: #26313a;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--f-display); font-size: 14px;
+  display: grid; grid-template-columns: 1fr 300px; overflow: hidden;
+}
+#cena { position: relative; min-width: 0; background: linear-gradient(var(--ceu-topo), var(--ceu-base)); }
+#cena canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#estado {
+  position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 16px;
+  font-family: var(--f-mono); font-size: 12px; color: var(--muted);
+  background: color-mix(in srgb, var(--painel) 85%, transparent); padding: 6px 10px; border-radius: 4px;
+}
+#vistas { position: absolute; top: 12px; left: max(16px, env(safe-area-inset-left, 0px)); display: flex; gap: 6px; flex-wrap: wrap; }
+#vistas button, .btn {
+  font: 500 12px var(--f-display); letter-spacing: .04em; text-transform: uppercase;
+  background: var(--painel); color: var(--fg); border: 1px solid var(--linha); border-radius: 4px;
+  padding: 6px 10px; cursor: pointer;
+}
+#vistas button:hover, .btn:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+aside {
+  background: var(--painel); border-left: 1px solid var(--linha); overflow-y: auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 18px;
+  padding-block: 16px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1 { font-size: 18px; font-weight: 600; margin: 0; text-wrap: balance; }
+h1 small { display: block; font: 400 12px var(--f-mono); color: var(--muted); margin-top: 4px; }
+h2 { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+section { display: flex; flex-direction: column; }
+#lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+#lista button {
+  all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 10px 1fr auto;
+  align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--linha); cursor: pointer;
+}
+#lista button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+#lista button[aria-pressed="true"] { background: color-mix(in srgb, var(--sel) 16%, transparent); }
+#lista .tag { font-family: var(--f-mono); font-size: 12.5px; }
+#lista .tipo { font-size: 12px; color: var(--muted); }
+.ponto { width: 10px; height: 10px; border-radius: 2px; }
+.camadas { display: flex; flex-wrap: wrap; gap: 6px; }
+.camadas label {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--linha);
+  border-radius: 4px; padding: 4px 8px; cursor: pointer;
+}
+.controle { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; font-size: 13px; }
+.controle input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.controle output { font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+#ficha { border: 1px solid var(--linha); border-radius: 4px; padding: 10px; font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
+#ficha dt { color: var(--muted); }
+#ficha dd { margin: 0; font-family: var(--f-mono); font-size: 12.5px; }
+.nota { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 0; }
+#soltar { border: 1px dashed var(--linha); border-radius: 4px; padding: 10px; text-align: center; font-size: 12px; color: var(--muted); }
+@media (max-width: 760px) {
+  body { grid-template-columns: 1fr; grid-template-rows: 58vh 1fr; overflow: auto; }
+  aside { border-left: 0; border-top: 1px solid var(--linha); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div id="cena">
+  <div id="vistas" role="toolbar" aria-label="Vistas de câmera">
+    <button type="button" data-vista="iso">Isométrica</button>
+    <button type="button" data-vista="planta">Planta</button>
+    <button type="button" data-vista="frente">Frente</button>
+    <button type="button" data-vista="lateral">Lateral</button>
+  </div>
+  <div id="estado">Carregando modelo…</div>
+</div>
+
+<aside>
+  <h1 id="titulo">Tanque de mistura TQ-01<small id="subtitulo">modelo de exemplo · unidades em m</small></h1>
+
+  <section aria-labelledby="h-eq">
+    <h2 id="h-eq">Equipamentos e linhas</h2>
+    <ul id="lista"></ul>
+  </section>
+
+  <section aria-labelledby="h-sel">
+    <h2 id="h-sel">Selecionado</h2>
+    <dl id="ficha"><dt>Tag</dt><dd>Clique numa peça</dd></dl>
+  </section>
+
+  <section aria-labelledby="h-cam">
+    <h2 id="h-cam">Camadas</h2>
+    <div class="camadas" id="camadas"></div>
+  </section>
+
+  <section aria-labelledby="h-op">
+    <h2 id="h-op">Operação</h2>
+    <div class="controle">
+      <label for="na">Nível d'água (N.A.)</label><output id="na-v" for="na"></output>
+      <input type="range" id="na" min="0" max="100" value="85">
+    </div>
+    <div class="controle">
+      <label for="corte">Corte vertical</label><output id="corte-v" for="corte"></output>
+      <input type="range" id="corte" min="0" max="100" value="100">
+    </div>
+    <label class="camadas"><span><input type="checkbox" id="girar" checked> Misturadores em operação</span></label>
+  </section>
+
+  <section aria-labelledby="h-arq">
+    <h2 id="h-arq">Outro modelo</h2>
+    <div id="soltar">Arraste um arquivo .glb aqui ou <label class="btn" for="arquivo">escolha</label>
+      <input type="file" id="arquivo" accept=".glb,.gltf" hidden>
+    </div>
+    <p class="nota">Peças nomeadas pela tag (TQ, N, L, V, MX, B) recebem material e entram na lista. Gere o .glb com a skill modelagem-3d-engenharia.</p>
+  </section>
+</aside>
+
+<script src="modelo.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const TIPOS = {
+  TQ: { nome: "Tanque", mat: { color: 0x6f6d68, metalness: 0.0, roughness: 0.85 } },
+  N:  { nome: "Bocal flangeado", mat: { color: 0xb4b7bb, metalness: 1.0, roughness: 0.32 } },
+  L:  { nome: "Tubulação", mat: { metalness: 0.55, roughness: 0.38 } },
+  V:  { nome: "Válvula", mat: { color: 0x8c140f, metalness: 0.3, roughness: 0.45 } },
+  MX: { nome: "Misturador", mat: { color: 0x284673, metalness: 0.45, roughness: 0.4 } },
+  B:  { nome: "Bomba", mat: { color: 0x1d4f8c, metalness: 0.45, roughness: 0.4 } },
+};
+const $ = (id) => document.getElementById(id);
+const cena = $("cena");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.localClippingEnabled = true;
+cena.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.65;
+const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 2000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x50483e, 0.6));
+const sol = new THREE.DirectionalLight(0xfff4e2, 2.2);
+sol.castShadow = true;
+sol.shadow.mapSize.set(2048, 2048);
+sol.shadow.bias = -0.0004;
+scene.add(sol, sol.target);
+
+const piso = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshStandardMaterial({ color: 0x7c7a75, roughness: 0.95 }));
+piso.rotation.x = -Math.PI / 2;
+piso.receiveShadow = true;
+scene.add(piso);
+const grade = new THREE.GridHelper(1, 1, 0x000000, 0x000000);
+grade.material.opacity = 0.12; grade.material.transparent = true;
+scene.add(grade);
+
+const planoCorte = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e6);
+let modelo = null, pecas = [], agua = [], misturadores = [], caixa = new THREE.Box3(), selecionada = null;
+
+function tipoDaTag(nome) {
+  const pref = (nome.split("-")[0] || "").replace(/\d+$/, "");
+  return Object.keys(TIPOS).sort((a, b) => b.length - a.length).find((k) => pref.startsWith(k)) || null;
+}
+function descrever(nome) {
+  const dn = (nome.match(/DN\s?(\d+)/i) || [])[1];
+  const partes = nome.split("-");
+  const desc = partes.filter((p, i) => i > 0 && !/^\d+$/.test(p) && !/^DN/i.test(p)).join(" ");
+  return { dn: dn ? `DN ${dn}` : "—", desc: desc || "—" };
+}
+
+function limpar() {
+  if (modelo) scene.remove(modelo);
+  [...agua, ...misturadores].forEach((a) => scene.remove(a));
+  pecas = []; agua = []; misturadores = []; selecionada = null;
+  $("lista").innerHTML = ""; $("camadas").innerHTML = "";
+}
+
+function carregar(fonte, rotulo) {
+  $("estado").textContent = "Carregando modelo…";
+  const falhou = () => {
+    $("estado").textContent = "Não foi possível abrir o modelo. Confira se o arquivo é .glb válido.";
+  };
+  const aoCarregar = (gltf) => {
+    limpar();
+    modelo = gltf.scene;
+    scene.add(modelo);
+    const camadas = new Map();
+    // peça = nó cujo nome é uma tag (TQ-01, L-002-DN80…); o glTF divide cada peça em várias malhas
+    const ehPeca = (o) => tipoDaTag(o.name) && !/_[0-9a-f]{6}$/.test(o.name);
+    modelo.traverse((o) => { if (o.isMesh || ehPeca(o)) o.userData.visto = false; });
+    const raizes = [];
+    modelo.traverse((o) => {
+      if (!ehPeca(o)) return;
+      let a = o.parent, dentro = false;
+      while (a) { if (ehPeca(a)) dentro = true; a = a.parent; }
+      if (!dentro) raizes.push(o);
+    });
+    for (const peca of raizes) {
+      const tipo = tipoDaTag(peca.name);
+      let corOriginal = null;
+      peca.traverse((m) => { if (m.isMesh && !corOriginal) corOriginal = m.material?.color?.clone?.(); });
+      const base = TIPOS[tipo].mat;
+      const mat = new THREE.MeshPhysicalMaterial({
+        color: base.color ?? corOriginal ?? 0x888888, metalness: base.metalness, roughness: base.roughness,
+        clearcoat: tipo === "L" || tipo === "V" ? 0.4 : 0, clippingPlanes: [planoCorte], side: THREE.DoubleSide,
+      });
+      peca.traverse((m) => {
+        if (!m.isMesh) return;
+        m.material = mat; m.castShadow = m.receiveShadow = true; m.userData.peca = peca;
+      });
+      peca.userData = { tipo, mat, corLista: "#" + mat.color.getHexString() };
+      const camada = TIPOS[tipo].nome;
+      if (!camadas.has(camada)) camadas.set(camada, []);
+      camadas.get(camada).push(peca);
+      pecas.push(peca);
+    }
+    // cada misturador gira num pivô próprio, no eixo vertical do seu centro
+    for (const m of pecas.filter((p) => p.userData.tipo === "MX")) {
+      const pivo = new THREE.Group();
+      new THREE.Box3().setFromObject(m).getCenter(pivo.position);
+      scene.add(pivo); pivo.attach(m); misturadores.push(pivo);
+    }
+    caixa.setFromObject(modelo);
+    montarAgua();
+    montarLista(); montarCamadas(camadas);
+    enquadrar("iso");
+    atualizarCorte(); atualizarNA();
+    $("estado").textContent = `${rotulo} · ${pecas.length} peças`;
+  };
+  // fonte: URL do .glb ou ArrayBuffer (modelo embutido em modelo.js)
+  if (typeof fonte === "string") new GLTFLoader().load(fonte, aoCarregar, undefined, falhou);
+  else new GLTFLoader().parse(fonte, "", aoCarregar, falhou);
+}
+
+function montarAgua() {
+  for (const t of pecas.filter((p) => p.userData.tipo === "TQ")) {
+    const b = new THREE.Box3().setFromObject(t);
+    const r = Math.min(b.max.x - b.min.x, b.max.z - b.min.z) / 2 * 0.985;
+    const geo = new THREE.CylinderGeometry(r, r, 1, 64);
+    geo.translate(0, 0.5, 0);
+    const m = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
+      color: 0x2f5e55, roughness: 0.08, metalness: 0, transmission: 0.35, transparent: true,
+      opacity: 0.88, clippingPlanes: [planoCorte], side: THREE.DoubleSide,
+    }));
+    m.position.set((b.min.x + b.max.x) / 2, Math.max(b.min.y, 0), (b.min.z + b.max.z) / 2);
+    m.userData = { altura: b.max.y - Math.max(b.min.y, 0), base: Math.max(b.min.y, 0) };
+    scene.add(m); agua.push(m);
+  }
+}
+
+function montarLista() {
+  const ul = $("lista");
+  for (const p of pecas) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("aria-pressed", "false");
+    b.innerHTML = `<span class="ponto"></span><span class="tag"></span><span class="tipo"></span>`;
+    b.querySelector(".ponto").style.background = p.userData.corLista;
+    b.querySelector(".tag").textContent = p.name;
+    b.querySelector(".tipo").textContent = p.userData.tipo ? TIPOS[p.userData.tipo].nome : "";
+    b.addEventListener("click", () => { selecionar(p); focar(p); });
+    p.userData.botao = b;
+    li.append(b); ul.append(li);
+  }
+}
+
+function montarCamadas(camadas) {
+  for (const [nome, objs] of camadas) {
+    const id = "cam-" + nome.replace(/\W+/g, "");
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="checkbox" id="${id}" checked> <span></span>`;
+    l.querySelector("span").textContent = nome;
+    l.querySelector("input").addEventListener("change", (e) => {
+      objs.forEach((o) => (o.visible = e.target.checked));
+      if (nome === "Tanque") agua.forEach((a) => (a.visible = e.target.checked));
+    });
+    $("camadas").append(l);
+  }
+}
+
+function selecionar(p) {
+  if (selecionada) { selecionada.userData.mat.emissive.setHex(0); selecionada.userData.botao.setAttribute("aria-pressed", "false"); }
+  selecionada = p;
+  const f = $("ficha"); f.innerHTML = "";
+  if (!p) { f.innerHTML = "<dt>Tag</dt><dd>Clique numa peça</dd>"; return; }
+  p.userData.mat.emissive.set(getComputedStyle(document.documentElement).getPropertyValue("--sel").trim() || "#0b6fb8");
+  p.userData.mat.emissiveIntensity = 0.35;
+  p.userData.botao.setAttribute("aria-pressed", "true");
+  const b = new THREE.Box3().setFromObject(p), s = b.getSize(new THREE.Vector3());
+  const { dn, desc } = descrever(p.name);
+  const linhas = [["Tag", p.name], ["Tipo", p.userData.tipo ? TIPOS[p.userData.tipo].nome : "—"],
+    ["Diâmetro", dn], ["Descrição", desc],
+    ["Envelope", `${s.x.toFixed(2)} × ${s.z.toFixed(2)} × ${s.y.toFixed(2)} m`],
+    ["Topo", `EL ${b.max.y.toFixed(2)} m`]];
+  for (const [k, v] of linhas) {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v; f.append(dt, dd);
+  }
+}
+
+function focar(p) {
+  const b = new THREE.Box3().setFromObject(p), c = b.getCenter(new THREE.Vector3());
+  const r = Math.max(b.getSize(new THREE.Vector3()).length(), 1.2);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  controls.target.copy(c);
+  camera.position.copy(c).addScaledVector(dir, r * 1.8);
+}
+
+function enquadrar(vista) {
+  const c = caixa.getCenter(new THREE.Vector3()), r = caixa.getSize(new THREE.Vector3()).length() / 2;
+  const d = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.05;
+  const dirs = { iso: [1, 0.75, 1.1], planta: [0, 1, 0.001], frente: [0, 0.12, 1], lateral: [1, 0.12, 0] };
+  const v = new THREE.Vector3(...dirs[vista]).normalize();
+  controls.target.copy(c);
+  camera.position.copy(c).addScaledVector(v, d);
+  camera.near = d / 200; camera.far = d * 20; camera.updateProjectionMatrix();
+  const lado = r * 8;
+  piso.scale.set(lado, lado, 1); piso.position.set(c.x, caixa.min.y - 0.002, c.z);
+  grade.scale.set(lado, 1, lado); grade.position.set(c.x, caixa.min.y, c.z);
+  sol.position.set(c.x + r * 2, c.y + r * 3, c.z + r * 1.5); sol.target.position.copy(c);
+  const sc = sol.shadow.camera; sc.left = sc.bottom = -r * 1.6; sc.right = sc.top = r * 1.6; sc.far = r * 10;
+  sc.updateProjectionMatrix();
+}
+
+function atualizarNA() {
+  const f = $("na").value / 100;
+  for (const a of agua) {
+    const h = Math.max(a.userData.altura * f, 0.001);
+    a.scale.y = h; a.visible = f > 0;
+    $("na-v").textContent = `EL ${(a.userData.base + h).toFixed(2)} m`;
+  }
+  if (!agua.length) $("na-v").textContent = "sem tanque";
+}
+function atualizarCorte() {
+  const f = $("corte").value / 100;
+  const x = caixa.min.x + (caixa.max.x - caixa.min.x) * f;
+  planoCorte.constant = f >= 1 ? 1e6 : x;
+  $("corte-v").textContent = f >= 1 ? "desligado" : `x = ${x.toFixed(2)} m`;
+}
+$("na").addEventListener("input", atualizarNA);
+$("corte").addEventListener("input", atualizarCorte);
+document.querySelectorAll("[data-vista]").forEach((b) => b.addEventListener("click", () => enquadrar(b.dataset.vista)));
+
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+let baixo = null;
+renderer.domElement.addEventListener("pointerdown", (e) => (baixo = [e.clientX, e.clientY]));
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!baixo || Math.hypot(e.clientX - baixo[0], e.clientY - baixo[1]) > 4) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects(pecas.filter((p) => p.visible), true)
+    .find((h) => planoCorte.distanceToPoint(h.point) >= 0);
+  selecionar(hit ? hit.object.userData.peca : null);
+});
+
+function abrirArquivo(f) {
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  $("titulo").firstChild.textContent = f.name.replace(/\.(glb|gltf)$/i, "");
+  $("subtitulo").textContent = "arquivo local · unidades em m";
+  carregar(url, f.name);
+}
+$("arquivo").addEventListener("change", (e) => abrirArquivo(e.target.files[0]));
+for (const alvo of [cena, $("soltar")]) {
+  alvo.addEventListener("dragover", (e) => e.preventDefault());
+  alvo.addEventListener("drop", (e) => { e.preventDefault(); abrirArquivo(e.dataTransfer.files[0]); });
+}
+
+const reduzir = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (reduzir) $("girar").checked = false;
+const relogio = new THREE.Clock();
+function redimensionar() {
+  const { clientWidth: w, clientHeight: h } = cena;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(redimensionar).observe(cena);
+renderer.setAnimationLoop(() => {
+  const dt = relogio.getDelta();
+  if ($("girar").checked) for (const p of misturadores) p.rotation.y += dt * 1.2;
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// modelo.js (gerado por embutir_modelo.py) define window.MODELO_GLB_B64; sem ele, busca modelo.glb
+const params = new URLSearchParams(location.search);
+if (window.MODELO_GLB_B64 && !params.get("modelo")) {
+  const bin = Uint8Array.from(atob(window.MODELO_GLB_B64), (c) => c.charCodeAt(0));
+  carregar(bin.buffer, "TQ-01 · exemplo");
+} else carregar(params.get("modelo") || "modelo.glb", "TQ-01 · exemplo");
+</script>
