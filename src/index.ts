@@ -10,6 +10,7 @@ import { deveRodar, nivelEstouro, periodoSemanaISO, notifStatements } from "./on
 import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
 import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
+import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -309,7 +310,7 @@ const RESTRITAS = ["financeiro", "comercial", "juridico"];
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-29b";
+const SCHEMA_VER = "2026-10-29c";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -681,6 +682,16 @@ function ensureSchema(): Promise<void> {
         modulo TEXT NOT NULL, nome TEXT NOT NULL DEFAULT '', filtro TEXT DEFAULT '{}', criado TEXT DEFAULT '',
         PRIMARY KEY (tenant_id, id))`,
       `CREATE INDEX IF NOT EXISTS idx_filtro_slug ON filtro_salvo (tenant_id, slug, modulo)`,
+      /* FINANCEIRO — tags dos lançamentos de caixa, POR PESSOA (mesma regra do CRM, decisão do dono).
+         A classificação que vale para todos segue sendo `fluxo.categoria`. Migração 0014. */
+      `CREATE TABLE IF NOT EXISTS fin_tag (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL,
+        nome TEXT NOT NULL DEFAULT '', cor TEXT NOT NULL DEFAULT 'cinza', criado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`,
+      `CREATE INDEX IF NOT EXISTS idx_fin_tag_slug ON fin_tag (tenant_id, slug)`,
+      `CREATE TABLE IF NOT EXISTS fluxo_tag (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, fluxo_id TEXT NOT NULL,
+        tag_id TEXT NOT NULL, PRIMARY KEY (tenant_id, slug, fluxo_id, tag_id))`,
       /* FINANCEIRO — RESUMO EXECUTIVO MATERIALIZADO. Cada linha é um snapshot DATADO do
          consolidado (financeiro + pipeline CRM + horas + fluxo), gravado como JSON em `dados`.
          "Materializar" = fechar o retrato de um dia e guardá-lo como registro histórico, com
@@ -1327,10 +1338,17 @@ async function crmPodeVer(u: { slug: string; papel: Papel }): Promise<boolean> {
 async function crmPodeGerir(u: { slug: string; papel: Papel }): Promise<boolean> {
   return (await podeComercial(u.slug)) || temCapSet(await capsAtribuidas(u), "comercial.gerir");
 }
+/** Financeiro: ver (dono ou financeiro.ver) e editar (dono ou financeiro.editar) — o gate das ações existentes. */
+async function finPodeVer(u: { slug: string; papel: Papel }): Promise<boolean> {
+  return isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver");
+}
+async function finPodeEditar(u: { slug: string; papel: Papel }): Promise<boolean> {
+  return isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar");
+}
 /** Filtro salvo só para módulo que a pessoa enxerga. Módulo desconhecido = negado. */
 async function podeFiltroModulo(u: { slug: string; papel: Papel }, modulo: string): Promise<boolean> {
   if (modulo === "crm") return crmPodeVer(u);
-  if (modulo === "financeiro") return isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver");
+  if (modulo === "financeiro") return finPodeVer(u);
   return false;
 }
 async function salt(): Promise<string> {
@@ -1385,7 +1403,7 @@ const REAUTH_MIN = 10; // minutos de validade da reautenticação
  *  financeiro, ou muda ACESSO/segurança. Sessão válida não basta — pede a senha de novo. */
 const SENSIVEIS = new Set<string>([
   "projfinSet", "custohoraSet", "custohoraDel", "contratoSet", "impostoPadraoSet",
-  "fluxoSet", "fluxoDel", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
+  "fluxoSet", "fluxoDel", "fluxoLote", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
   "capacidadeSet", "resumoExecFechar",
   "permset", "acset", "resetpin",
   "restore_backup", "flagset",
@@ -2074,6 +2092,8 @@ const MIN: Record<string, Papel> = {
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
+  // Quadro de contas (casca nova): leitura, tags por pessoa e operação em lote (esta com reauth: SENSIVEIS).
+  finQuadro: "coordenacao", finTagSet: "coordenacao", finTagDel: "coordenacao", fluxoTag: "coordenacao", fluxoLote: "coordenacao",
   conciliacao: "coordenacao", conciliaSugerir: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
   custoFixoList: "coordenacao", custoFixoSet: "coordenacao", custoFixoDel: "coordenacao",
@@ -2984,6 +3004,76 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, dealid: did };
   }
 
+  /* ===== FINANCEIRO na casca nova — quadro de contas a pagar/receber, tags por pessoa, lote =====
+     Base: `fluxo` (entrada = a receber, saída = a pagar). R$ só aqui (gate financeiro.ver/editar).
+     Situação, transições e plano do lote em src/fin.mjs (mesma regra que a UI). */
+  if (action === "finQuadro") {
+    const u = await auth(p);
+    if (!(await finPodeVer(u))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const r = await sqlite.execute({ sql: "SELECT id, tipo, categoria, descricao, cc, valor, data_prev, data_real, status, origem, atualizado FROM fluxo WHERE tenant_id = ? ORDER BY COALESCE(NULLIF(data_prev,''), data_real, criado) DESC LIMIT 5000", args: [u.tenant_id] });
+    const tg = await sqlite.execute({ sql: "SELECT id, nome, cor FROM fin_tag WHERE tenant_id = ? AND slug = ? ORDER BY nome", args: [u.tenant_id, u.slug] });
+    const it = await sqlite.execute({ sql: "SELECT fluxo_id, tag_id FROM fluxo_tag WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+    const itemTags: Record<string, string[]> = {};
+    for (const x of it.rows as P[]) (itemTags[String(x.fluxo_id)] = itemTags[String(x.fluxo_id)] || []).push(String(x.tag_id));
+    const pr = await sqlite.execute({ sql: "SELECT cc, projeto FROM proj WHERE tenant_id = ? ORDER BY cc", args: [u.tenant_id] });
+    const categorias = Array.from(new Set((r.rows as P[]).map((x) => String(x.categoria || "")).filter(Boolean))).sort();
+    return { ok: true, fluxos: r.rows, tags: tg.rows, itemTags, categorias, projetos: pr.rows, podeEditar: await finPodeEditar(u), eu: u.slug };
+  }
+  if (action === "finTagSet") {
+    const u = await auth(p);
+    if (!(await finPodeVer(u))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const { nome, cor } = validaTag(p.nome, p.cor);
+    let id = String(p.id || "").trim();
+    if (id) {
+      const r = await sqlite.execute({ sql: "UPDATE fin_tag SET nome = ?, cor = ? WHERE tenant_id = ? AND id = ? AND slug = ?", args: [nome, cor, u.tenant_id, id, u.slug] });
+      if (!r.rowsAffected) throw new Error("Tag não encontrada.");
+    } else {
+      const n = await sqlite.execute({ sql: "SELECT COUNT(*) n FROM fin_tag WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+      if (Number((n.rows[0] as P).n) >= 60) throw new Error("Limite de 60 tags por pessoa.");
+      id = "FT-" + crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO fin_tag (tenant_id, id, slug, nome, cor, criado) VALUES (?,?,?,?,?,?)", args: [u.tenant_id, id, u.slug, nome, cor, new Date().toISOString()] });
+    }
+    return { ok: true, tag: { id, nome, cor } };
+  }
+  if (action === "finTagDel") {
+    const u = await auth(p);
+    if (!(await finPodeVer(u))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const id = String(p.id || "").trim();
+    await sqlite.execute({ sql: "DELETE FROM fluxo_tag WHERE tenant_id = ? AND slug = ? AND tag_id = ?", args: [u.tenant_id, u.slug, id] });
+    await sqlite.execute({ sql: "DELETE FROM fin_tag WHERE tenant_id = ? AND slug = ? AND id = ?", args: [u.tenant_id, u.slug, id] });
+    return { ok: true, id };
+  }
+  /* Marca/desmarca UMA tag da pessoa em um ou vários lançamentos (lote de até 500). */
+  if (action === "fluxoTag") {
+    const u = await auth(p);
+    if (!(await finPodeVer(u))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const tag = String(p.tag || "").trim();
+    const t = await sqlite.execute({ sql: "SELECT 1 FROM fin_tag WHERE tenant_id = ? AND slug = ? AND id = ?", args: [u.tenant_id, u.slug, tag] });
+    if (!t.rows.length) throw new Error("Tag não encontrada.");
+    const ids = Array.from(new Set((Array.isArray(p.ids) ? p.ids : [p.id]).map((x: any) => String(x || "").trim()).filter(Boolean))).slice(0, 500) as string[];
+    if (!ids.length) throw new Error("Selecione ao menos um lançamento.");
+    if (p.on === false) {
+      await sqlite.execute({ sql: "DELETE FROM fluxo_tag WHERE tenant_id = ? AND slug = ? AND tag_id = ? AND fluxo_id IN (" + ids.map(() => "?").join(",") + ")", args: [u.tenant_id, u.slug, tag, ...ids] });
+    } else {
+      // Só marca lançamento que existe no tenant (INSERT ... SELECT, nada de id inventado).
+      await sqlite.execute({ sql: "INSERT OR IGNORE INTO fluxo_tag (tenant_id, slug, fluxo_id, tag_id) SELECT ?, ?, id, ? FROM fluxo WHERE tenant_id = ? AND id IN (" + ids.map(() => "?").join(",") + ")", args: [u.tenant_id, u.slug, tag, u.tenant_id, ...ids] });
+    }
+    return { ok: true, n: ids.length, on: p.on !== false };
+  }
+  /* Operação em lote (e o arraste no quadro, que é um lote de 1): baixar, reabrir, cancelar,
+     recategorizar. Gate financeiro.editar + reauth (SENSIVEIS). Auditado com a contagem. */
+  if (action === "fluxoLote") {
+    const u = await auth(p);
+    if (!(await finPodeEditar(u))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
+    const l = validaLote(p);
+    const now = new Date().toISOString();
+    const plano = planoLote(l, { tenant: u.tenant_id, slug: u.slug, now, hoje: now.slice(0, 10) });
+    const res = await sqlite.batch(plano);
+    const n = Number((res && res[0] && (res[0].meta ? res[0].meta.changes : res[0].rowsAffected)) || 0);
+    await audit("fluxo_lote", u.slug, l.op + (l.categoria ? "=" + l.categoria : "") + " em " + n + "/" + l.ids.length + " lançamento(s)", ip);
+    return { ok: true, op: l.op, n };
+  }
+
   /* ===== CRM na casca nova — tags (por pessoa), atividades do negócio, filtros salvos ===== */
   if (action === "crmTagSet") {
     const u = await auth(p);
@@ -3078,7 +3168,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     }
     const nome = String(p.nome || "").replace(/\s+/g, " ").trim().slice(0, 60);
     if (!nome) throw new Error("Dê um nome ao filtro.");
-    const filtro = modulo === "crm" ? normalizaFiltro(p.filtro) : (p.filtro && typeof p.filtro === "object" ? p.filtro : {});
+    const filtro = modulo === "crm" ? normalizaFiltro(p.filtro) : normalizaFiltroFin(p.filtro);
     const json = JSON.stringify(filtro);
     if (json.length > 4000) throw new Error("Filtro grande demais.");
     let id = String(p.id || "").trim();
