@@ -8,6 +8,7 @@ import { marked } from "marked";
 import { planoProporProjeto, decideBloqueioHoras, regrasExtra } from "./onda3a.mjs";
 import { deveRodar, nivelEstouro, periodoSemanaISO, notifStatements } from "./onda3b.mjs";
 import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
+import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -298,7 +299,7 @@ const STATUSES = ["A INICIAR","EM ANDAMENTO","EM ESPERA","CONCLUÍDO","CANCELADO
 const SITS = ["PENDENTE","APROVADO","DEVOLVIDO","LANÇADO"];
 const AREAS_LIST = ["avisos","treinamentos","procedimentos","produtos","links","seguranca","comercial","financeiro","juridico"];
 const RESTRITAS = ["financeiro", "comercial", "juridico"];
-const SESS_DIAS = 30;
+/* Prazo de sessão ("Manter conectado": 30 dias / 12 h sem uso) vive em src/sessao.mjs. */
 
 /* SENTINELA DE VERSAO DE SCHEMA — otimizacao de COLD START.
  * REGRA DE BUMP (obrigatoria): a cada mudanca de schema — nova tabela, nova
@@ -307,7 +308,7 @@ const SESS_DIAS = 30;
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-28a";
+const SCHEMA_VER = "2026-10-29a";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -762,6 +763,9 @@ function ensureSchema(): Promise<void> {
     } catch (_) { /* já existe */ }
     /* S-03 — carimbo de reautenticação por sessão (step-up). ALTER idempotente. */
     try { await sqlite.execute("ALTER TABLE sess ADD COLUMN reauth TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
+    /* "Manter conectado": 1 = 30 dias sem uso (padrão, comportamento anterior); 0 = 12 h sem uso e
+     * cookie de sessão. Linha antiga fica 1 pelo DEFAULT. ALTER idempotente (migração 0012). */
+    try { await sqlite.execute("ALTER TABLE sess ADD COLUMN persist INTEGER DEFAULT 1"); } catch (_) { /* já existe */ }
     /* ===== ACADEMIA (Onda 4) — cursos, módulos, aulas, matrícula, progresso, avaliação e
      * certificado ligado à ficha (pessoa_treino). Fecha o ciclo aprender → comprovar → alocar.
      * curso_aula.quiz guarda as perguntas E a alternativa correta (JSON); a correta NUNCA vai ao
@@ -1443,10 +1447,10 @@ async function checkLocks(slug: string, ip: string) {
 }
 
 /* ---------- sessões ---------- */
-async function newSess(slug: string): Promise<string> {
+async function newSess(slug: string, persist = true): Promise<string> {
   const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
   const now = new Date().toISOString();
-  await sqlite.execute({ sql: "INSERT INTO sess (token, slug, criado, ultimo, tenant_id) VALUES (?,?,?,?,?)", args: [token, slug, now, now, TENANT_INTELECTO] });
+  await sqlite.execute({ sql: "INSERT INTO sess (token, slug, criado, ultimo, tenant_id, persist) VALUES (?,?,?,?,?,?)", args: [token, slug, now, now, TENANT_INTELECTO, persist ? 1 : 0] });
   return token;
 }
 type P = Record<string, any>;
@@ -1472,11 +1476,12 @@ async function papelTenantDe(slug: string): Promise<{ papel: Papel; tenant_id: s
 async function auth(p: P): Promise<{ slug: string; coord: boolean; papel: Papel; tenant_id: string }> {
   const token = String(p.token || "");
   if (!token) throw new Error("Sessão expirada — entre de novo.");
-  const r = await sqlite.execute({ sql: "SELECT slug, ultimo FROM sess WHERE token = ? AND tenant_id = ?", args: [token, TENANT_INTELECTO] });
+  // SELECT * para tolerar a janela antes do ensureSchema criar `persist` (linha sem a coluna = mantida).
+  const r = await sqlite.execute({ sql: "SELECT * FROM sess WHERE token = ? AND tenant_id = ?", args: [token, TENANT_INTELECTO] });
   if (!r.rows.length) throw new Error("Sessão expirada — entre de novo.");
   const row = r.rows[0] as P;
   const ultimo = Date.parse(String(row.ultimo)) || 0;
-  if (Date.now() - ultimo > SESS_DIAS * 86400000) {
+  if (sessaoExpirada(String(row.ultimo), row.persist, Date.now())) {
     await sqlite.execute({ sql: "DELETE FROM sess WHERE token = ? AND tenant_id = ?", args: [token, TENANT_INTELECTO] });
     throw new Error("Sessão expirada — entre de novo.");
   }
@@ -3149,12 +3154,13 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (!slug) throw new Error("E-mail ou nome não encontrado. Confira ou fale com a Coordenação.");
     checaAtivo(slug);
     await loginSenha(slug, String(p.senha || ""), ip);
-    const token = await newSess(slug);
-    await audit("login", slug, "", ip);
+    const manter = querManter(p.manter);
+    const token = await newSess(slug, manter);
+    await audit("login", slug, manter ? "" : "sessao curta", ip);
     // Papel/coord REAIS vindos do modelo formal (membro) — correto tambem para cliente/fornecedor
     // do T7, nao so para COLABS internos. A UI refina no hub; aqui ja entrega o papel certo.
     const pt = await papelTenantDe(slug);
-    return { ok: true, coord: pt.papel === "coordenacao" || pt.papel === "admin", papel: pt.papel, token };
+    return { ok: true, coord: pt.papel === "coordenacao" || pt.papel === "admin", papel: pt.papel, token, persist: manter };
   }
 
   if (action === "recuperar") {
@@ -3208,7 +3214,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await cfgDel("rectok:" + slug);
     await cfgDel("fail:" + slug);
     await sqlite.execute({ sql: "DELETE FROM sess WHERE slug = ? AND tenant_id = ?", args: [slug, TENANT_INTELECTO] });
-    const token = await newSess(slug);
+    const manter = querManter(p.manter);
+    const token = await newSess(slug, manter);
     await audit("senha_recuperada", slug, "", ip);
     await notify(
       "Senha alterada: " + (NOMES[slug] || slug),
@@ -3216,7 +3223,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         + "Todas as sessões anteriores foram encerradas. Se não foi essa pessoa, redefina a senha dela na aba Gestão imediatamente.",
       slug,
     );
-    return { ok: true, coord: COORDS.includes(slug), papel: papelInferido(slug), token };
+    return { ok: true, coord: COORDS.includes(slug), papel: papelInferido(slug), token, persist: manter };
   }
 
   if (action === "reclink") {
@@ -3284,7 +3291,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await cfgDel("reclink:" + slug); // uso unico: consome o token
     await cfgDel("fail:" + slug);
     await sqlite.execute({ sql: "DELETE FROM sess WHERE slug = ? AND tenant_id = ?", args: [slug, TENANT_INTELECTO] });
-    const token = await newSess(slug);
+    const manter = querManter(p.manter);
+    const token = await newSess(slug, manter);
     await audit("senha_recuperada_link", slug, "", ip);
     await notify(
       "Senha alterada: " + (NOMES[slug] || slug),
@@ -3292,7 +3300,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         + "Todas as sessões anteriores foram encerradas. Se não foi essa pessoa, redefina a senha dela na aba Gestão imediatamente.",
       slug,
     );
-    return { ok: true, coord: COORDS.includes(slug), papel: papelInferido(slug), token };
+    return { ok: true, coord: COORDS.includes(slug), papel: papelInferido(slug), token, persist: manter };
   }
 
   if (action === "logout") {
@@ -6198,8 +6206,9 @@ app.post("/api", async (c) => {
     const out = await route(action, p, ip);
     // O token NUNCA volta ao JS: ação que cria sessão grava-o no cookie HttpOnly e some do corpo.
     if (out && (out as any).token) {
-      c.header("Set-Cookie", "ce_t=" + (out as any).token + "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=" + (SESS_DIAS * 86400));
-      delete (out as any).token;
+      // "Manter conectado": sem Max-Age quando a pessoa desmarcou (cookie some ao fechar o navegador).
+      c.header("Set-Cookie", cookieSessao(String((out as any).token), (out as any).persist !== false));
+      delete (out as any).token; delete (out as any).persist;
     } else if (action === "logout") {
       c.header("Set-Cookie", "ce_t=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
     }

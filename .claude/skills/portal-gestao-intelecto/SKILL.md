@@ -68,7 +68,7 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 - `ensureSchema()` cria/ajusta tabelas em runtime no 1º request após mudança de `SCHEMA_VER`
   (`src/index.ts`, `const SCHEMA_VER`). **Toda mudança de schema exige bump de `SCHEMA_VER`** — sem o
   bump o D1 existente pula o setup e a tabela nunca nasce em produção.
-- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0011 `notificacao_lida`). Toda
+- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0012 `sess_persist`). Toda
   tabela nova ganha migração própria, idempotente (`IF NOT EXISTS`, sem `DROP`/`DELETE`). Numerar em
   sequência e checar se outro PR aberto já usou o número.
 - D1 `--remote` rejeita `BEGIN/COMMIT/PRAGMA`; `DELETE` em massa é feito pelo dono no terminal dele.
@@ -78,8 +78,10 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 ## 4. Autenticação, papéis e capabilities
 
 - Login por senha: hash **PBKDF2 a 100000 iterações** (`hashSenhaNova`; teto do runtime do Worker —
-  nunca subir), legado SHA-256 salgado ainda verificado. Sessão em `sess`; token no `localStorage`
-  (`ce_tok`) e enviado no corpo do `POST /api`. Rate limit e tudo auditado em `audit`.
+  nunca subir), legado SHA-256 salgado ainda verificado. Sessão em `sess`; o token vive só no
+  cookie HttpOnly `ce_t` (o JS nunca o vê; `/api` lê do cookie). **Manter conectado** (login):
+  marcado = cookie de 30 dias e 30 dias sem uso; desmarcado = cookie de sessão e 12 h sem uso
+  (`sess.persist`, lógica em `src/sessao.mjs`). Rate limit e tudo auditado em `audit`.
 - **Reauth** (S-03): ações sensíveis (`SENSIVEIS`: flags, restore, etc.) exigem `reauth` recente
   (coluna `sess.reauth`).
 - **Papéis** (`PAPEIS`): `admin > coordenacao > equipe > cliente` aninhados + `fornecedor` lateral
