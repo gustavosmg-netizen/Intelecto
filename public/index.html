@@ -159,6 +159,7 @@ th{color:var(--tx2);font-weight:600;font-size:.78rem;text-transform:uppercase;le
           <label for="lg-epwd">Senha</label>
           <input id="lg-epwd" type="password" autocomplete="current-password">
         </div>
+        <label for="lg-manter" style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin:2px 0 10px;cursor:pointer"><input type="checkbox" id="lg-manter" checked style="width:auto;margin:0"> Manter conectado</label>
         <div id="lg-emsg" class="err" style="min-height:20px;font-size:.88rem"></div>
         <button id="lg-ebtn" class="btn" style="width:100%">Entrar</button>
         <div class="center" style="margin-top:12px;display:flex;flex-direction:column;gap:7px">
@@ -175,6 +176,7 @@ th{color:var(--tx2);font-weight:600;font-size:.78rem;text-transform:uppercase;le
         </div>
         <div id="lg-step" class="muted" style="font-size:.85rem;margin:-4px 0 12px"></div>
         <div id="lg-senhas"></div>
+        <label for="lg-manter-n" style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin:2px 0 10px;cursor:pointer"><input type="checkbox" id="lg-manter-n" checked style="width:auto;margin:0"> Manter conectado</label>
         <div id="lg-msg" class="err" style="min-height:20px;font-size:.88rem"></div>
         <button id="lg-btn" class="btn" style="width:100%">Continuar</button>
         <div class="center" style="margin-top:12px;display:flex;flex-direction:column;gap:7px">
@@ -353,6 +355,7 @@ function initLogin(){
   renderSenhas(null);
   /* novo: login por e-mail */
   $("#lg-ebtn").onclick=onEntrarEmail;
+  initManter();
   $("#lg-elink").onclick=onEsqueciLink;
   $("#lg-tonome").onclick=()=>{setMsg("lg-emsg","");showLoginBox("nome")};
   $("#lg-toemail").onclick=()=>{$("#lg-msg").textContent="";showLoginBox("email")};
@@ -382,12 +385,20 @@ async function onSolicitarAcesso(){
   }catch(e){setMsg("lg-ac-msg",e.message,true)}
   finally{btn.disabled=false}
 }
+/* "Manter conectado": as duas caixas (e-mail e nome) andam juntas e lembram a última escolha neste
+   navegador. Desmarcado, a sessão some ao fechar o navegador e expira em 12 h sem uso (servidor). */
+function manterConectado(){const c=document.getElementById("lg-manter");return !c||c.checked}
+function initManter(){
+  let v=true;try{v=localStorage.getItem("ce_manter")!=="0"}catch(_){}
+  const cs=[document.getElementById("lg-manter"),document.getElementById("lg-manter-n")].filter(Boolean);
+  cs.forEach(function(c){c.checked=v;c.onchange=function(){cs.forEach(function(o){o.checked=c.checked});try{localStorage.setItem("ce_manter",c.checked?"1":"0")}catch(_){}}});
+}
 async function onEntrarEmail(){
   const ident=$("#lg-email").value.trim(); setMsg("lg-emsg","");
   if(!ident){setMsg("lg-emsg","Digite seu e-mail.",true);return}
   const btn=$("#lg-ebtn");btn.disabled=true;
   try{
-    const j=await api("login",{ident,senha:$("#lg-epwd").value});
+    const j=await api("login",{ident,senha:$("#lg-epwd").value,manter:manterConectado()});
     if(!j||!j.ok){setMsg("lg-emsg","Não foi possível entrar. Tente de novo.",true);btn.disabled=false;return}
     state.token="1"; /* M2: marcador de sessão; o token real vive no cookie HttpOnly */
     await entrarApp();
@@ -419,7 +430,7 @@ async function onDefinirSenhaLink(){
   setMsg("lg-rmsg","");
   const btn=$("#lg-rbtn");btn.disabled=true;
   try{
-    const j=await api("recsenhalink",{slug:recLinkSlug,token:recLinkToken,senha:$("#lg-rs1").value,senha2:$("#lg-rs2").value});
+    const j=await api("recsenhalink",{slug:recLinkSlug,token:recLinkToken,senha:$("#lg-rs1").value,senha2:$("#lg-rs2").value,manter:manterConectado()});
     if(!j||!j.ok){setMsg("lg-rmsg","Não foi possível concluir. Peça um novo link.",true);btn.disabled=false;return}
     state.token="1";
     await entrarApp();
@@ -464,11 +475,11 @@ async function onEntrar(){
   try{
     let j;
     if(loginMode==="login"){
-      j=await api("login",{slug,senha:$("#lg-s1").value});
+      j=await api("login",{slug,senha:$("#lg-s1").value,manter:manterConectado()});
     }else if(loginMode==="novo"){
       j=await api("setpin",{slug,senha:$("#lg-s1").value,senha2:$("#lg-s2").value});
     }else if(loginMode==="rec"){
-      j=await api("recsenha",{slug,codigo:$("#lg-cod").value,senha:$("#lg-s1").value,senha2:$("#lg-s2").value});
+      j=await api("recsenha",{slug,codigo:$("#lg-cod").value,senha:$("#lg-s1").value,senha2:$("#lg-s2").value,manter:manterConectado()});
     }
     if(j&&j.pendente){
       $("#lg-senhas").innerHTML="";
