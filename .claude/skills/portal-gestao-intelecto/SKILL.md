@@ -181,6 +181,18 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
 - **Planilha "Calendário Engenharia"** (Google Sheets, alimentada por Forms): fonte = aba
   "Dados Estruturados"; o orçado da planilha é modelo por tipo de projeto em heq (horas ÷ 10,5).
 - O wrapper `sqlite.execute` devolve `rowsAffected` — **nunca** checar `r.meta` (é sempre undefined).
+- **Banco de horas** (aba Financeiro, ex-"Capacidade × apontado"): sem custo, só horas. Mês
+  corrente cobra dias úteis até hoje (`diasUteisAte`); lançamento futuro fica fora; `banco` = saldo
+  acumulado mês a mês.
+- **Gráficos da casca clássica**: biblioteca `_vzCard/_vzColunas/_vzBarras/_vzLinha` com tooltip,
+  legenda e "ver tabela"; cores só pelos tokens `--vz-1..6`, `--vz-pos/--vz-neg` (validados para
+  daltonismo; a paleta `--s1..6` da casa reprova). viewBox mínimo de 560 px; no máximo 2 gráficos
+  por linha (`.vz-grid2`). Fora do Financeiro, gráfico só com contagens/horas.
+- **Abas vivas**: toda aba com dados entra em `TAB_LOAD` (recarrega ao abrir). Aba nova com dados
+  → registrar lá.
+- **CRM**: metas mensais em `cfgGet/cfgSet("crm_metas", tenant)` (ação `crmMetasSet`); negócio
+  vincula projeto por `cc` validado na carteira. `crm_time` é livro legado só leitura.
+- `config` é por tenant: usar sempre `cfgGet/cfgSet/cfgDel(k, v, tenant)`, nunca SQL direto.
 
 ### Confidencialidade e privacidade (crítico)
 
