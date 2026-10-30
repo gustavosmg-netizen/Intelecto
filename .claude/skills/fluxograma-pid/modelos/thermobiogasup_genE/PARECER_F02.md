@@ -1,238 +1,265 @@
-# Parecer técnico — Configuração da F02 (cascata anaeróbia, neutralização e biofertilizante)
+# Parecer técnico — Configuração da F02 (cascata anaeróbia) · REV01
 
 | Campo | Registro |
 |---|---|
 | Projeto | ThermoBiogasUp · CSTR / FINEP 0786/23 · alternativa **Gen E** |
-| Objeto | P&ID TBU-GENE-PID-F02 Rev. A (exemplo da skill `fluxograma-pid`) e a interface com o lado de gás |
-| Base | `PROJETO_EXECUTIVO_OFICIAL`: CLAUDE.md Rev01-A (D1–D6), Bases e Critérios REV00, Matriz S0, Registro de Lacunas (40), RES-001 REV03, Ata ATA-DIR-CSTR-001 (minuta) |
-| Natureza | **Parecer de engenharia, não emitido pelo projeto.** Não substitui a S1/S3/S4 nem a decisão do RT. Sem valores monetários (regra §2.8): custos em quantitativos e custo relativo |
-| Data | 30/10/2026 |
+| Objeto | P&ID TBU-GENE-PID-F02 e a interface com o lado de gás |
+| Pergunta da REV01 | **É possível suprimir o TQ-201?** Um tanque externo ao acidogênico que recebe o efluente com H₂S exige linha de gás, vedação, seguranças e misturador próprios. Sem ele, o sistema ainda atende a todos os cenários de pressão e vácuo? |
+| Base | `PROJETO_EXECUTIVO_OFICIAL`: CLAUDE.md Rev01-A (D1–D6), Bases e Critérios REV00, Matriz S0, Registro de Lacunas (40), RES-001 REV03, minuta ATA-DIR-CSTR-001 |
+| Natureza | **Parecer de engenharia, não emitido pelo projeto.** Sem valores monetários: custos em quantitativos e custo relativo. Exige o Crivo A–F antes de qualquer uso (CLAUDE.md §2.9) |
+| Revisões | REV00 (30/10/2026): recomendava a C1 (TQ-201 fechado e equalizado). **REV01 (30/10/2026): passa a recomendar a C4 (sem TQ-201)**, pelos motivos da seção 1 |
 
 ## 1. Conclusão
 
-**A arquitetura da Gen E para a F02 é boa na essência e deve ser mantida:** dois estágios em
-cascata, transferência ácido → metanogênico por bomba, e descarga metanogênico → biofertilizante
-por gravidade. A gravidade, em particular, é a escolha mais segura para o envelope de vácuo dos
-reatores: líquido só sai quando entra líquido, então **não existe o cenário de vácuo por
-retirada** (VC-03/VC-09) nessa saída.
+**Sim. O TQ-201 pode ser suprimido e o sistema continua atendendo a todos os cenários da
+RES-001 REV03**, com as condições da seção 5. A supressão é, além disso, **a melhor configuração
+técnica** entre as estudadas. Chamo-a de **C4**.
 
-**A forma como a F02 Rev. A materializa a arquitetura, porém, tem cinco falhas de concepção**
-que convém corrigir antes da S3. A configuração recomendada (**C1**, seção 5) resolve as cinco.
-Ela não compra nada novo de porte e cabe nos 4 bocais N1 do tampo, já existentes:
+O motivo central é físico. Sem o TQ-201, a P-201 transfere líquido **de um vaso fechado (R-101)
+para outro vaso fechado (R-201 ou R-202) ligados ao mesmo coletor de gás**. O volume que sai de
+um é o mesmo que entra no outro, então o gás deslocado no metanogênico volta ao R-101 pelo
+coletor. A transferência é **neutra em gás**: não depende do gasômetro, não admite ar e não
+emite H₂S.
 
-| # | Falha da Rev. A | Disciplina | Gravidade |
-|---|---|---|---|
-| F1 | **Quebra-vácuo da alça de alimentação aberto para a atmosfera.** Ao parar a bomba, a perna descendente drena e admite **ar**; na partida seguinte, o ar é empurrado para dentro do reator (O₂ no espaço de gás, contra o OP-05 e o SP-08) | Segurança de processo | **Alta** |
-| F2 | **Entrada (N2-A) e saída (N2-B) na mesma cota (+0,30 m).** Abre caminho preferencial entre alimentação e descarga (curto-circuito). O risco é maior no R-101 (TRH 3,9 d) e com o misturador intermitente | Processo | **Alta** |
-| F3 | **TQ-201 aberto, com agitação, recebendo efluente ácido com H₂S e H₂ dissolvidos.** Faz stripping de H₂S (NR-15), odor e área classificada no entorno, e exige sifão U entre R-101 e TQ-201 | Segurança ocupacional / ambiental | **Alta** |
-| F4 | **Colunas de saída nivelada sem quebra-sifão desenhado.** Sem o respiro do topo da coluna ligado ao espaço de gás (RES-001 §5.6), a coluna pode sifonar e esvaziar o reator, o que gera vácuo | Hidráulica / segurança | Média–alta |
-| F5 | **Alimentação dos dois metanogênicos em paralelo por um único barrilete, sem controle por ramal.** A divisão de vazão entre R-201 e R-202 fica livre, e com ela a carga orgânica de cada um | Processo / automação | Média |
+O TQ-201 só existia para dar um pulmão atmosférico entre os estágios. Fechado (C1), ele virava
+um quarto vaso no envelope de pressão, com equalização, grupo IIC e misturador próprio, que é
+justamente o que se quer evitar.
 
-Há ainda dois achados que não são da F02 Rev. A em si, mas que ela precisa registrar:
-- **A4 (respiro 8" em PVC do as-built):** num reator selado ele é um caminho aberto para a atmosfera. Deve ser **tamponado** ou reaproveitado com função definida. Proponho registrar como nova LACUNA.
-- **Ocupação dos bocais do tampo:** a configuração recomendada usa exatamente os 4 N1 (quadro na F02 Rev. B). Se o transbordo dedicado (D-RES-09, LAC-038) for adotado, ele precisa de bocal próprio. Candidato: um dos N3 2×2", sujeito à confirmação da Fibrais.
+| O que sai com o TQ-201 | O que entra no lugar |
+|---|---|
+| Tanque de 2,5–3,6 m³ (PRFV, envelope de pressão, base, bacia) | Misturador estático MS-201 em linha |
+| Misturador AG-200 (motor Ex IIC) | Controle de nível LIC-111 no R-101 (a P-201 trabalha por nível) |
+| Linha de equalização TQ-201 ↔ R-101 e seu bocal | Permissivos e trips da RES-001 §5.6 aplicados à P-201 |
+| Coluna de saída do R-101 e quebra-sifão | Sucção reserva para a P-102 no R-101 (N2-C, LC) |
+| Exposição a H₂S no solo (NR-15) e respiro com carvão | — |
+| LIT-201 e a bolha do tanque | ZSO-115, LSLL-111 e PSL-201 (sensores dedicados às SIF) |
 
-## 2. Premissas e números usados
+**O que se perde, e como se compensa:**
+
+1. **O pulmão entre os estágios.** Com pulsos de 0,6 m³, o nível do R-101 oscila cerca de
+   7,5 cm por pulso, num volume útil de 28 m³. É desprezível para o TRH.
+2. **O tanque de neutralização** previsto no Formulário FINEP. A função passa a ser feita em
+   linha. A aderência formal precisa ir à consulta FINEP (LAC-008/010).
+3. **Uma camada de amortecimento contra pulso ácido no metanogênico.** Compensa-se assim:
+   - cada pulso é 0,7% do volume de um reator com alcalinidade própria;
+   - o pH do R-101 (AIT-111) entra em antecipação e o AIC-201 corrige a jusante;
+   - a DOS-201 só dosa se for preciso;
+   - acompanhamento de FOS/TAC por análise de bancada.
+
+## 2. Números usados
 
 | Grandeza | Valor | Origem |
 |---|---|---|
 | Alimentação | 7,22 m³/d (8% ST) | Bases §4 (referência, a recalcular na S1) |
-| Volume útil / TRH | R-101 28,15 m³ / **3,9 d**; R-201 e R-202 85,06 m³ cada / **23,6 d** | Matriz S05/S06; cálculo |
-| Pulso de transferência P-201 | 5 m³/h (referência). Com 6 pulsos/d por reator: 0,60 m³/pulso, 7,2 min, **0,7% do volume útil** | cálculo |
-| Envelope dos reatores | +15/−8 mbar (R-101 −6); operação +1,5 a +3,5 | RES-001 REV03 |
-| Sifão U de 500 mmCA | ≈ 51 mbar, **3,4×** o envelope | cálculo |
-| Altura estática da P-201 | entrada pelo fundo ≈ 6,5 m; entrada pelo tampo ≈ 8,3 m | cálculo (nível do TQ-201 ≈ +1,0) |
-| Energia extra da entrada pelo tampo | **≈ 0,1 kWh/d** (desprezível) | cálculo |
-| Velocidade nas linhas a 5 m³/h | 6" ≈ 0,09 m/s; DN80 ≈ 0,33; DN65 ≈ 0,47; DN50 ≈ 0,67 m/s | cálculo (PEAD SDR11/17) |
+| Volume útil / TRH | R-101 28,15 m³ / 3,9 d; R-201 e R-202 85,06 m³ cada / 23,6 d | Matriz S05/S06 |
+| Espaço de vapor | R-101 9,65 m³; R-201/202 20,41 m³ | RES-001 §4 |
+| Envelope / selo / emergência | R-201/202: +15/−8, selo +8/−3, emergência +12/−6. R-101: +15/−6, selo −2/−3, emergência −4/−5 (mbar) | RES-001 §3 |
+| Pulso da P-201 | 5 m³/h de referência (Q_máx proposto de 20 m³/h). Com 6 pulsos/d por reator: 0,6 m³ e 7,2 min | cálculo |
+| Altura estática da P-201 | ≈ 6,0 m (nível do R-101 ≈ +3,3 até o tampo do R-201 a +9,32) + misturador estático + atrito | cálculo |
+| Gás deslocado na transferência | 4,7 Nm³/h de ar equivalente a 5 m³/h; 18,6 a 20 m³/h. Perda no coletor ≈ 0,006 e 0,07 mbar/100 m | cálculo (RES-001 §5.6) |
 
-A velocidade de autolimpeza para lodo de 4–8% ST fica na faixa de **0,6–0,9 m/s**. Abaixo
-disso, a linha precisa de lavagem. Nenhuma linha de 6" atinge essa faixa nas vazões do processo.
+## 3. Verificação de pressão e vácuo na C4, cenário a cenário
 
-## 3. Análise por disciplina
+Os IDs são os da RES-001 REV03. "Igual" quer dizer que a supressão do TQ-201 não muda o
+cenário.
 
-### 3.1 Processo
-- **Dois estágios com neutralização intermediária:** coerente com o objeto FINEP e com o
-  Formulário, que fala em "tanques de neutralização de pH". Manter.
-- **Curto-circuito (F2):** com entrada e saída a +0,30 m, a fração de alimentação que sai sem
-  residência depende só da mistura. O pulso é pequeno (0,7% do volume) e o efeito é limitado
-  **se** o misturador estiver ligado durante o pulso. Recomendo duas medidas:
-  - **intertravar o pulso com o misturador em operação;**
-  - **alimentar pelo tampo**, com tubo de imersão até cerca de 1/3 da altura e saída pelo N2
-    (fundo). Isso cria um caminho topo → fundo e resolve F1 e F2 juntos (seção 5).
-- **Divisão entre R-201 e R-202 (F5):** alimentar em **pulsos alternados**, com uma válvula
-  on-off falha-fechada por ramal (XV-211/XV-221) e volume por pulso totalizado no FQIT-201.
-  Assim a carga de cada reator fica conhecida e ajustável, e o modo série (RL-04) passa a ser
-  só uma questão de lógica, sem válvula extra.
-- **Monitoramento térmico:** sem aquecimento (D5), a temperatura é a principal variável que o
-  operador não controla e precisa acompanhar. Acrescentar **TIT por reator** (TIT-111/211/221).
-- **Espuma (SP-06):** o misturador de topo ajuda. Deixar previsto um ponto de antiespumante.
-  O detector de espuma pode ser decidido no HAZOP.
+### 3.1 Sobrepressão
 
-### 3.2 Segurança de processo
-- **F1 (entrada de ar):** é a falha mais séria da Rev. A. A alça com quebra-vácuo atmosférico
-  contraria o princípio da RES-001 (os reatores só trocam gás com o gasômetro). Há duas saídas:
-  - **(a)** quebra-vácuo da alça ligado ao espaço de gás do próprio reator;
-  - **(b) preferida:** eliminar a alça e alimentar pelo tampo com tubo de imersão furado acima
-    do nível (quebra-sifão interno). Sem pressão hidrostática do reator na linha, não há
-    retorno possível. É uma barreira **inerente, passiva**, e dispensa retenção em lodo.
-- **F4 (sifonamento da coluna de saída):** desenhar a ligação do topo de cada coluna ao espaço
-  de gás. No R-101 essa ligação se integra à equalização com o TQ-201 fechado.
-- **Vácuo:** com a saída por gravidade, só a P-201 tira líquido de um vaso fechado, e ela
-  aspira do TQ-201. Na C1, o TQ-201 fechado e equalizado repõe o volume com gás do R-101 e do
-  gasômetro: ≈ 4,7 Nm³/h de ar equivalente a 5 m³/h, bem dentro do Q_máx de 20 m³/h. Os
-  permissivos e trips da RES-001 §5.6 continuam valendo para a P-201.
-- **Transbordo (LQ-01):** o tempo até o tampo a 5 m³/h é de cerca de 4 h no R-201/202 e 2 h no
-  R-101. Mantêm-se o LSHH (SIF) e a decisão D-RES-09.
-- **Grupo de explosão:** com o TQ-201 fechado e equalizado ao R-101, ele passa a ser IIC (gás
-  com H₂), coerente com D-RES-10. O dispositivo e o equipamento de topo do TQ-201 entram no
-  mesmo critério.
+| ID | O que muda na C4 | Verificação | Resultado |
+|---|---|---|---|
+| SP-01 | igual | Saída de gás do reator bloqueada → selo. Ramal LO | ✓ |
+| SP-02 | **Agrava se houver CO₂ da neutralização.** Com NaHCO₃ e AGV de 2–6 g/L, o pulso de 5 m³/h libera **3,7–11 Nm³/h** de CO₂ dentro do metanogênico. Somado ao pico de 25,5 Nm³/h, passa dos 27 Nm³/h do selo | **PAHH (+6) desliga a P-201 e a DOS-201** (acrescentado à SIF "PAHH → alimentação"). Com o pulso parado, volta o SP-02 original (≤ 27) | ✓ **com a condição** |
+| SP-03 | igual | Gasômetro | ✓ |
+| SP-04 | **Melhora.** A P-201 descarregando no R-201 com a saída obstruída sobe o nível. O gás deslocado volta ao R-101 pelo coletor (neutro) e não pressuriza o sistema | LSHH do destino desliga a P-201 | ✓ |
+| SP-05 a SP-08 | iguais | N₂, espuma, incêndio, deflagração: sem relação com o TQ-201 | ✓ |
+| SP-09, SP-10, SP-12, SP-13 | iguais | Lado de gás e cargas no tampo | ✓ |
+| SP-11 | igual | TSHH da alimentação (F01) | ✓ |
 
-### 3.3 Hidráulica
-- **Gravidade R-201/202 → TQ-301:** ΔH = 7,50 − 4,66 = 2,84 m, folga ampla. Não é a perda de
-  carga que limita, e sim o **entupimento**: a 5 m³/h, uma linha de 6" anda a 0,09 m/s.
-  Recomendações:
-  - descida e sifão U em **DN80**, com declividade mínima de 2% nos trechos horizontais;
-  - **tê de limpeza** com flange cego em cada mudança de direção;
-  - **dreno no ponto baixo do U**;
-  - **lavagem com água de serviço** depois de cada pulso, ou uma vez por dia.
+### 3.2 Vácuo
 
-  O volume morto da coluna de 7,2 m cai de 113 L (6") para 31 L (DN80).
-- **Coluna de saída a partir do fundo:** tira o lodo mais denso e a areia, o que é bom. Por
-  outro lado, não remove escuma. O misturador de topo resolve a escuma.
-- **Saída do R-101 para o TQ-201 fechado e equalizado:** dispensa o sifão U (os dois espaços de
-  gás estão à mesma pressão), e com isso some um ponto de entupimento.
+| ID | O que muda na C4 | Verificação | Resultado |
+|---|---|---|---|
+| VC-01, VC-02, VC-07 | iguais | Gasômetro e selo | ✓ |
+| VC-03 (retirada com gás ligado) | **Muda de natureza.** A P-201 retira do R-101, mas a mesma vazão entra no metanogênico. O R-101 recebe de volta o gás deslocado pelo coletor: 4,7 Nm³/h a 5 m³/h, com perda de ≈ 0,006 mbar/100 m. **Não depende do gasômetro** enquanto os dois ramais estiverem abertos | Permissivo ZSO-115 (gás do R-101 ligado) e XV do destino aberta. Uma retirada por vez | ✓ |
+| VC-04 | igual | Sopradores só a partir do gasômetro; PALL e LSLL hardwired | ✓ |
+| VC-05, VC-06 | iguais | Emergência na M2 | ✓ |
+| VC-08 | **Muda.** Com dosagem em linha, a absorção de CO₂ acontece no metanogênico. Com NaHCO₃ não há absorção (libera CO₂, ver SP-02). Com NaOH em excesso haveria leve tendência a vácuo | **Especificar NaHCO₃** (ou carbonato) e limitar a dose pelo AIC-201. Proibir NaOH sem limitador | ✓ com a condição |
+| **VC-09** (P-201 com o gás do R-101 isolado) | **Principal cenário da C4.** Sem reposição de gás, a 5 m³/h o R-101 vai de +2,5 a 0 mbar (PALL) em **≈ 17 s**, o selo abre em −2 mbar ≈ 14 s depois e admite ar. Sem selo, chegaria ao envelope de −6 em mais ≈ 41 s. A 20 m³/h, esses tempos caem para 4 s, 3 s e 10 s | **Três barreiras independentes:** (1) permissivo e trip pela **ZSO-115** (ramal de gás do R-101 aberto); (2) trip pelo **PALL do R-101**, hardwired, que atua em segundos; (3) selo com capacidade ≥ 2 × Q_máx. Recomendo **limitar a P-201 a 5 m³/h**, e não 20, para ganhar tempo de resposta | ✓ com as condições |
+| VC-10 | igual | PSV na descarga da bomba volumétrica | ✓ |
+| VC-11 (sucção entupida) | **Passa a existir no R-101.** O vácuo fica na linha de sucção, não no espaço de gás | **PSL-201** na sucção, com trip; sucção resistente a vácuo | ✓ |
 
-### 3.4 Manutenção e operabilidade
-- **R-101 é único:** o by-pass RL-03, via P-102 direto ao R-201/202, deve ser mantido. É a
-  única forma de seguir operando com o R-101 parado, incluindo o período em que ele não pode
-  operar por falta da garantia LAC-031.
-- **Misturador de topo (D1):** o eixo de cerca de 9 m exige espaço de içamento acima do tampo
-  (LAC-025). O pino de fundo proposto pela Fibrais fica na zona de areia, e trocá-lo exige
-  esvaziar o reator (LAC-030). Recomendo pedir **eixo em balanço sem mancal de fundo**, ou um
-  mancal substituível sem esvaziamento. Isso vira critério de aceitação da proposta.
-- **Retenções em lodo fibroso** travam e vazam. A C1 tira as três retenções das entradas dos
-  reatores, ficando só a da descarga da P-201, que é acessível no solo.
-- **Selos hidráulicos:** reposição automática com LSL, água com glicol e inspeção semanal
-  (LQ-02/LQ-03).
-- **Válvulas no solo:** todas as válvulas operadas com frequência ficam ao nível do solo. No
-  topo ficam só os isolamentos LO/LC, o selo e a emergência.
+### 3.3 Líquido e operações
 
-### 3.5 Instrumentação e automação
+| ID | O que muda na C4 | Verificação | Resultado |
+|---|---|---|---|
+| LQ-01 (transbordo) | **R-101:** sem saída por transbordo, o nível depende da P-201. Com a P-201 parada e a P-101 ligada, o tampo é alcançado em ≈ 2 h a 5 m³/h | **LSHH-111 dedicado desliga a P-101** (SIF). O N1-D do R-101 fica reservado para o transbordo dedicado (D-RES-09 / LAC-038) | ✓ |
+| LQ-01 (R-201/202) | igual (≈ 4 h a 5 m³/h) | LSHH do destino desliga a P-201 | ✓ |
+| LQ-02, LQ-03 | iguais | Selo com LSL e glicol | ✓ |
+| LQ-04 | **Melhora.** Some o sifão U do primeiro estágio; o U fica só na descida ao TQ-301 | — | ✓ |
+| Nível baixo no R-101 | Novo: a P-201 pode esvaziar o R-101 abaixo do mínimo do misturador | **LSLL-111 dedicado** desliga a P-201 e o misturador AG-R101 | ✓ |
+| OP-01 a OP-05 | iguais | — | ✓ |
 
-| Item | Rev. A | C1 |
+**Síntese.** Nenhum cenário passa a não ter atendimento. Quatro passam a exigir condições
+explícitas, todas de baixo custo:
+- **SP-02:** PAHH desliga a P-201 e a DOS-201.
+- **VC-08:** alcalinizante NaHCO₃ com limite de dose.
+- **VC-09:** ZSO-115, PALL do R-101 e P-201 limitada a 5 m³/h.
+- **VC-11 e LQ:** PSL-201, LSHH-111 e LSLL-111 dedicados.
+
+## 4. Demais disciplinas
+
+### 4.1 Processo
+- **Neutralização sob demanda.** Ela pode nem ser necessária no regime normal, porque o
+  metanogênico tamponado absorve um pulso de 0,7% do volume. Por isso a DOS-201 fica em espera,
+  comandada pelo AIC-201 (pH a jusante do MS-201), com o AIT-111 (pH do R-101) em antecipação.
+- **Recirculação de digestato (RL-05) como agente alcalino.** É possível e atende à finalidade
+  FINEP das bombas, mas **dilui o 2º estágio**: com 15% de recirculação o TRH dos metanogênicos
+  cai de 23,6 para 20,5 d; com 30%, para 18,1 d. Num reator sem aquecimento (15–35 °C), isso pede
+  cautela. Fica como opção limitada, sob decisão da S1.
+- **O R-101 passa a ter nível controlado (LIC-111)** em vez de transbordo. A banda de nível
+  (por exemplo, +3,30 a +3,50 m) é decisão da S1 (LAC-005).
+- **Mantidos da REV00:**
+  - alimentação dos três reatores **pelo tampo**, com tubo de imersão (topo → fundo, sem
+    curto-circuito, sem retorno, sem alça, sem retenção em lodo);
+  - pulsos alternados por XV-211 e XV-221 com FQIT-201;
+  - TIT por reator;
+  - pulso só com o misturador do destino em operação.
+
+### 4.2 Segurança e ocupacional
+- **H₂S:** some a única fonte difusa de H₂S no solo da ilha 2. Todo o gás do R-101 segue pelo
+  coletor ao tratamento. Com isso, o F-201 passa a receber esse H₂S, que o TQ-201 aberto
+  liberava; o balanço de enxofre (LAC-014) precisa considerar isso.
+- **Área classificada:** encolhe, porque somem o respiro e o misturador do TQ-201.
+- **Grupo de explosão:** inalterado (IIC no topo dos reatores, D-RES-10).
+- **Sensores dedicados por SIF** (RES-001 §5.6, LAC-035): ZSO-115, LSLL-111, LSHH-111, PSL-201,
+  separados do LIC-111 e do PIT-111 de controle.
+
+### 4.3 Hidráulica
+- **Altura manométrica da P-201** ≈ 6 m estáticos + misturador estático + atrito, da ordem de
+  1–1,5 bar. Trivial para bomba volumétrica.
+- **NPSH:** folgado, porque a sucção fica afogada por cerca de 3 m de lodo mais a pressão do
+  espaço de gás.
+- **Sucção pelo N2 (+0,30 m) aspira areia:** prever coletor de pedras ou caixa de areia na
+  sucção, com dreno, e bomba resistente a abrasão (S8).
+- **Mantidos:** descida R-201/202 → TQ-301 por gravidade com sifão U em DN80, dreno, tê de
+  limpeza e lavagem; colunas com quebra-sifão ligado ao espaço de gás.
+
+### 4.4 Manutenção e disponibilidade
+- **A P-201 vira ponto único do 2º estágio.** A C4 o resolve com a **P-102 como reserva
+  instalada**: ela aspira do R-101 pelo N2-C (LC) e descarrega no barrilete (RL-07). Não é
+  preciso comprar outra bomba.
+- **R-101 parado** (por exemplo, até fechar a LAC-031): o by-pass RL-03 (P-102 direto do TQ-101)
+  continua alimentando os metanogênicos.
+- **Misturador estático:** sem partes móveis, com flanges para retirada e lavagem.
+- **Pontos de manutenção a menos:** somem um tanque, um misturador, um respiro com filtro, um
+  sifão U e uma coluna.
+
+### 4.5 Automação
+
+| Item | C1 (REV00) | **C4** |
 |---|---|---|
-| Válvulas on-off atuadas | 0 | **2** (XV-211, XV-221, falha-fechada) |
-| Transmissores (PIT, LIT, AIT, AIC, FIT, TIT) | 11 | **15** (+TIT ×3, +FQIT) |
-| I/O estimado da F02 | ≈ 14 | ≈ 24 |
-| Intertravamentos | LSLL e PALL (RES-001) | + pulso × misturador em operação; + XV × PALL e LSHH do reator de destino |
+| Transmissores e analisadores | 15 | 14 (−LIT-201; LIT-111 vira LIC-111) |
+| Chaves dedicadas às SIF | — | +3 (LSLL-111, PSL-201, ZSO-115) |
+| Válvulas atuadas | 2 | 2 |
+| I/O estimado da F02 | ≈ 24 | ≈ 24 |
 
-O acréscimo de cerca de 10 I/O é pequeno frente ao total da planta (≈ 65 na Gen E), mas
-precisa entrar na contagem da S7 e na LAC-026.
+A lógica fica mais exigente (controle de nível do R-101 por pulsos), mas é padrão.
 
-### 3.6 Estrutural e mecânico
-- **Entrada pelo tampo** acrescenta um tubo de imersão interno, PRFV ou PP em DN80 com cerca de
-  6 m no R-201/202, preso no bocal N1. A carga no tampo é pequena (ordem de 30–40 kg de tubo
-  cheio, apoiado no flange), mas **entra na verificação SP-12 da Fibrais**. Pedir também a
-  folga em relação às pás e às chicanas do misturador.
-- **Colunas externas e linhas de subida** ficam em estrutura metálica independente, **sem
-  carga horizontal no PRFV** (condição já posta para a ponte leve, D6).
-- **TQ-201 fechado** precisa de envelope compatível com a Cascata B. O vaso de 3,6 m³ da
-  Fibrais (Q10) deve ser verificado nas mesmas condições: +15/−6 mbar, como o R-101 ao qual
-  fica ligado.
+### 4.6 Estrutural e civil
+- **Saem:** a base do TQ-201, sua parte da bacia, a coluna de saída do R-101 e o suporte da
+  linha de equalização.
+- **Ficam:** as subidas externas ao tampo, apoiadas em estrutura independente, sem carga
+  horizontal no PRFV.
+- **Tubo de imersão:** a carga no tampo continua na verificação SP-12 da Fibrais.
 
-### 3.7 Ambiental, ocupacional e licenciamento
-- **TQ-201 fechado** elimina a principal fonte difusa de H₂S da ilha 2 (NR-15, LAC-009) e reduz
-  a área classificada no solo.
-- **TQ-301 aberto** ainda emite o biogás residual do digestato (pós-digestão) e H₂S. Fica como
-  **opção a avaliar**, fora da C1:
-  - fechar o TQ-301 e ligá-lo ao coletor, recuperando gás e reduzindo emissão;
-  - em contrapartida, ele entra no envelope de pressão, e hoje o desenho dele é "atmosférico".
-  - Se ficar aberto: filtro de carvão no respiro de 12" e zona Ex definida na S4.
+### 4.7 Contratual (FINEP)
+- **"Tanques (3)":** o TQ-201 era um dos três. Sem ele, ficam o TQ-101 e o TQ-301, e este com a
+  rubrica em conciliação (LAC-012). **É preciso conferir com a FINEP** se a rubrica comporta a
+  troca do tanque de neutralização por neutralização em linha (Formulário: "tanques de
+  neutralização de pH").
+- **Alternativa para manter a aderência:** um **tanque de preparo da solução alcalina**,
+  atmosférico e sem H₂S, alimentando a DOS-201. Atenção: o "tanque de produto químico" foi
+  **excluído formalmente** (D8), então esse tanque seria contrapartida. Deixo para decisão da
+  Diretoria (LAC-008/010).
+- **Bombas (4):** P-101, P-102 (reserva e recirculação), P-201 e P-301, sem bomba nova. A
+  bomba dosadora segue coberta.
 
-### 3.8 Contratual (FINEP)
-- **4 bombas** (finalidade aprovada: recirculação de digestato e purga de lodo):
-  - P-301 cumpre a recirculação (RL-05);
-  - P-102 cumpre o by-pass e a recirculação do R-101 (RL-03/RL-07);
-  - P-101 e P-201 são transferência.
+### 4.8 Ambiental
+- Some a emissão difusa de H₂S e de CO₂ do TQ-201.
+- O TQ-301 aberto continua como fonte residual. A opção de fechá-lo, mantida da REV00, fica para
+  a S1/S4.
 
-  A C1 **não acrescenta bomba**: mantém a gravidade na descarga, sem P-202. A consulta sobre o
-  enquadramento (LAC-008) continua necessária.
-- **TQ-201:** a classificação como item "Tanques (3)" não muda com o fechamento.
+## 5. Condições para adotar a C4
 
-## 4. Alternativas comparadas
+1. **SIF e intertravamentos**, a levar ao HAZOP/LOPA:
+   - PAHH do reator desliga P-201 e DOS-201;
+   - PALL do R-101 desliga a P-201;
+   - ZSO-115 é permissivo e trip da P-201;
+   - LSLL-111 desliga P-201 e AG-R101;
+   - LSHH-111 desliga a P-101;
+   - LSHH do destino desliga a P-201;
+   - PSL-201 desliga a P-201.
 
-- **C0 — Rev. A (Gen E como desenhada):** alimentação pelo N2 com alça e quebra-vácuo
-  atmosférico; saída por coluna a partir do N2 e sifão U; TQ-201 aberto.
-- **C1 — recomendada:**
-  - alimentação pelo tampo (N1) com tubo de imersão;
-  - saída por coluna a partir do N2, com quebra-sifão ligado ao espaço de gás;
-  - TQ-201 fechado e equalizado com o R-101;
-  - pulsos alternados por XV;
-  - descida ao TQ-301 em DN80 com sifão U, limpeza e lavagem.
-- **C2 — bombeada (estilo Rev10):** P-201 aspirando do R-101 e P-202 retirando dos
-  metanogênicos sob controle de nível, com Q_máx e todas as barreiras da RES-001 §5.6.
-- **C3 — neutralização em linha:** sem TQ-201; dosagem no barrilete da P-201 com misturador
-  estático, e a P-201 aspirando do R-101.
+   Cada uma com sensor dedicado.
+2. **P-201 limitada a 5 m³/h** (bomba volumétrica dimensionada para isso, inversor travado).
+   Fica abaixo do Q_máx de 20 m³/h, para dar tempo de resposta no VC-09.
+3. **Alcalinizante NaHCO₃** (ou carbonato), com dose limitada pelo AIC-201. NaOH, só com limitador.
+4. **Coletor de pedras na sucção** da P-201 e da P-102.
+5. **Consulta FINEP** sobre o tanque de neutralização (LAC-008/010).
+6. **Balanço de enxofre** (LAC-014) incluindo o H₂S que antes saía no TQ-201.
 
-| Critério | C0 | **C1** | C2 | C3 |
+## 6. Alternativas comparadas
+
+- **C0:** Rev. A (alça com quebra-vácuo atmosférico, TQ-201 aberto).
+- **C1:** REV00 (TQ-201 fechado e equalizado).
+- **C2:** tudo bombeado (P-201 do R-101 e P-202 dos metanogênicos, sem gravidade).
+- **C4:** recomendada (sem TQ-201, transferência direta neutra em gás, neutralização em linha).
+
+| Critério | C0 | C1 | C2 | **C4** |
 |---|---|---|---|---|
-| Entrada de ar / O₂ | ✗ quebra-vácuo atmosférico | ✓ passivo | ✓ | ✓ |
-| Vácuo por retirada (VC-03/09) | baixo | **baixo** | **alto** (retirada de dois reatores fechados; barreiras ativas) | médio (aspira do R-101) |
-| Curto-circuito | ✗ entrada e saída a +0,30 | ✓ topo → fundo | depende do bocal | depende |
-| H₂S no solo (NR-15) | ✗ TQ-201 aberto | ✓ | ✓ / ✗ (TQ-201 aberto?) | ✓ |
-| Controle de carga R-201 / R-202 | ✗ livre | ✓ pulsos alternados | ✓ | ✓ |
-| Flexibilidade de nível / TRH | fixo (coluna) | fixo (coluna) | **variável** | fixo / variável |
-| Pontos de entupimento (sifões, retenções em lodo) | 3 U + 3 retenções | **2 U + 1 retenção** | 0 U + 3 retenções | 0 U + 2 retenções |
-| Pulmão entre estágios | ✓ | ✓ | ✓ | ✗ (perde o tampão de pH) |
-| Bombas | 2 + dosadora | 2 + dosadora | **3–4** + dosadora | 2 + dosadora |
-| Válvulas atuadas | 0 | 2 | 3–5 | 2 |
-| I/O (F02) | ≈ 14 | ≈ 24 | ≈ 35–40 | ≈ 22 |
-| Tubulação externa vertical | alças (≈ 3 × 10–20 m) + colunas | colunas + subidas ao tampo | mínima | mínima |
-| Intervenção nos vasos Fibrais | nenhuma | tubo de imersão em N1 (tampo existente) | bocais DN50/65/80 novos (LAC-039) | idem C2 no R-101 |
-| Aderência FINEP | ✓ | ✓ | ✓ (5ª bomba vira contrapartida) | ✗ "tanques de neutralização" |
-| CAPEX relativo | base | **≈ base** (+2 XV e instrumentos; −alças e retenções) | **++** | − |
-| OPEX relativo (energia, manutenção) | médio (limpeza de U e alças) | **médio-baixo** | médio-alto | baixo |
+| Entrada de ar | ✗ | ✓ | ✓ | ✓ |
+| H₂S no solo | ✗ | ✓ | ✓ | ✓ |
+| Vasos no envelope de pressão | 3 | **4** | 3 | **3** |
+| Vácuo por retirada | baixo | médio (TQ-201 equalizado) | alto (2 reatores retirados) | médio (só R-101, transferência neutra) |
+| Pulmão entre estágios | ✓ | ✓ | ✗ | ✗ (oscilação de 7,5 cm/pulso) |
+| Misturadores | 4 | 4 | 3 | **3** |
+| Tanques novos | 1 | 1 | 0 | **0** |
+| Bombas | 2 + dos. | 2 + dos. | 3–4 + dos. | **2 + dos.** (P-102 reserva) |
+| Linhas de gás adicionais | 0 | 1 (equalização) | 0 | **0** |
+| I/O da F02 | ≈ 14 | ≈ 24 | ≈ 35–40 | ≈ 24 |
+| Aderência ao "tanque de neutralização" | ✓ | ✓ | ✓ | **a consultar** |
+| CAPEX relativo | base | base | ++ | **−** (sem tanque, misturador, base) |
+| OPEX relativo | médio | médio-baixo | médio-alto | **baixo** |
 
-**Ranking:** **C1** > C2 > C0 > C3.
-- **C2** só ganha se o processo exigir nível e TRH variáveis nos metanogênicos. Hoje nada
-  indica isso (TRH de 23,6 d com folga), e ela carrega o maior risco de vácuo e a maior
-  dependência de barreiras ativas.
-- **C3** perde o tampão de pH entre os estágios e a aderência ao Formulário FINEP.
+**Ranking: C4 > C1 > C2 > C0.**
+- **C1** só volta a ser preferível se a FINEP exigir um tanque físico de neutralização. Mesmo
+  assim, a alternativa do tanque de solução alcalina (seção 4.7) mantém a C4.
 
-## 5. Configuração recomendada (C1): o que muda na F02
+## 7. O que muda na F02 (Rev. C)
 
-1. **Alimentação pelo tampo.** Cada reator recebe pelo N1-A com tubo de imersão interno até
-   cerca de 1/3 da altura. O furo quebra-sifão fica no espaço de gás. Alça, quebra-vácuo
-   atmosférico e retenções da entrada saem.
-2. **Saída por coluna externa a partir do N2-A**, com o topo ligado ao espaço de gás pelo
-   N1-D (quebra-sifão):
-   - R-101 → TQ-201 sem sifão U;
-   - R-201/202 → TQ-301 com sifão U de 500 mmCA em DN80, dreno, tê de limpeza e lavagem.
-3. **TQ-201 fechado**, com linha de **equalização** ao R-101 travada aberta (LO), em grupo IIC.
-   O FCA-201 e o respiro atmosférico saem.
-4. **P-201 com pulsos alternados:** XV-211 e XV-221 falha-fechada, FQIT-201 por pulso e
-   intertravamento com o misturador do reator de destino em operação.
-5. **TIT-111/211/221.**
-6. **Quadro de alocação de bocais** na folha, incluindo **A4 tamponado**.
+1. **TQ-201 eliminado,** com AG-200, FCA-201, linha de equalização e coluna de saída do R-101.
+2. **P-201 aspira do R-101 pelo N2-A** e descarrega no barrilete por VR-201 e MS-201, com
+   pulsos alternados por XV-211 e XV-221.
+3. **DOS-201 injeta a montante do MS-201,** com AIC-201 a jusante e AIT-111 em antecipação.
+   RL-05 opcional na mesma tomada.
+4. **R-101 com LIC-111,** e com ZSO-115, LSLL-111, PSL-201 e TIT-111.
+5. **P-102 como reserva instalada** pelo N2-C do R-101 (LC), com o mesmo barrilete pela RL-07.
+6. **Quadro de bocais refeito por reator:** no R-101, o N1-D fica reservado ao transbordo
+   dedicado.
 
-Ficam como estão: coletor de gás e RG-01, selos, emergência na M2, N₂ só para partida e purga,
-expurgos N2-D com LC/KL, P-301 com expedição e RL-05, RL-07 e RL-03.
-
-## 6. O que fica pendente
+## 8. Pendências
 
 | Pendência | Quem fecha | Lacuna |
 |---|---|---|
-| Aceitar a C1 (substitui a D2 na forma de alimentação e o TQ-201 aberto) | RT / Diretoria | Ata D2 |
-| Tubo de imersão no N1: carga no tampo (SP-12), folga para o misturador, material | Fibrais | LAC-031 / LAC-006 |
-| Envelope do TQ-201 fechado (vaso Q10) | Fibrais | LAC-010 / LAC-031 |
-| Diâmetros, perdas e lavagem das colunas e sifões | CSTR S1 | LAC-011 |
-| A4 8" PVC: tamponar ou dar função | CSTR / Fibrais | **nova lacuna (propor)** |
-| Bocal do transbordo dedicado, se adotado | CSTR / Fibrais | LAC-038 |
-| Eixo do misturador em balanço ou mancal substituível sem esvaziar | Fibrais | LAC-030 |
-| TQ-301 fechado com recuperação de gás (opção) | CSTR S1/S4 | LAC-012 + nova |
-| I/O adicional (≈ +10) na contagem da S7 | CSTR S4/S7 | LAC-026 |
+| Aceitar a C4 (altera a D2: sem TQ-201) | RT / Diretoria | Ata D2 |
+| Enquadramento FINEP sem tanque de neutralização | Diretoria / FINEP | LAC-008 / LAC-010 |
+| Banda de nível do R-101 (LIC-111) e níveis dos metanogênicos | CSTR S1 | LAC-005 |
+| Balanço ácido-base (AGV, alcalinidade) e de enxofre com o H₂S retido | CSTR S1 | LAC-009 / LAC-014 |
+| SIF da seção 5 no HAZOP/LOPA, com sensores dedicados | CSTR S4 | LAC-026 / LAC-035 |
+| Tubo de imersão no tampo (SP-12) e garantia do envelope | Fibrais | LAC-031 |
+| Bocais N2 do R-101: sucção da P-201 e reserva da P-102 | CSTR / Fibrais | LAC-006 / LAC-039 |
+| A4 8" PVC: tamponar | CSTR / Fibrais | **nova lacuna (propor)** |
 
 ---
 *Parecer de apoio à decisão, preparado com a skill `fluxograma-pid`. Os valores de processo são
-de referência (Bases §4) e serão recalculados na S1. A revisão independente pelo Crivo A–F é
-obrigatória antes de qualquer uso no projeto (CLAUDE.md §2.9).*
+de referência (Bases §4) e serão recalculados na S1.*

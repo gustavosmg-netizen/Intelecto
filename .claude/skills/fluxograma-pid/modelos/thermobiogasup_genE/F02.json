@@ -1,8 +1,8 @@
 {
  "folha": {
-  "titulo": "FLUXOGRAMA DE ENGENHARIA - CASCATA ANAERÓBIA, NEUTRALIZAÇÃO E BIOFERTILIZANTE",
+  "titulo": "FLUXOGRAMA DE ENGENHARIA - CASCATA ANAERÓBIA COM NEUTRALIZAÇÃO EM LINHA E BIOFERTILIZANTE",
   "numero": "TBU-GENE-PID-F02",
-  "revisao": "B",
+  "revisao": "C",
   "folha": "3/3",
   "projeto": "THERMOBIOGASUP - CSTR / FINEP 0786/23 - GEN E",
   "unidade": "ILHA 2 - DIGESTÃO",
@@ -31,6 +31,15 @@
     "-",
     "-",
     "30/10/26"
+   ],
+   [
+    "C",
+    "A",
+    "CONFIGURAÇÃO C4 - SEM TQ-201 (PARECER REV01)",
+    "IA",
+    "-",
+    "-",
+    "30/10/26"
    ]
   ],
   "documentos": [
@@ -42,7 +51,7 @@
    "Fibrais 315C/315E/315D/315A/315B-25 Rev. A (as-built tanques)",
    "Engecontrol 0618/2026 - relatório da caldeira CL-101",
    "TBU-GENE-PID-F00 - Legenda, simbologia e notas gerais",
-   "PARECER_F02 (30/10/2026) - configuração C1"
+   "PARECER_F02 REV01 (30/10/2026) - configuração C4"
   ],
   "rodape": "Exemplo da skill fluxograma-pid - não emitido pelo projeto"
  },
@@ -96,11 +105,6 @@
       "fraction": 0.66
      },
      {
-      "name": "NQ",
-      "side": "top",
-      "fraction": 0.95
-     },
-     {
       "name": "NB",
       "side": "right",
       "fraction": 0.03
@@ -114,6 +118,11 @@
       "name": "ND",
       "side": "bottom",
       "fraction": 0.8
+     },
+     {
+      "name": "NE",
+      "side": "bottom",
+      "fraction": 0.5
      }
     ]
    },
@@ -163,99 +172,52 @@
    "rotation": 180
   },
   {
-   "id": "TQ-201",
-   "symbol": "tank",
-   "x": 235,
-   "y": 168,
-   "desc": "TANQUE DE NEUTRALIZAÇÃO",
+   "id": "P-201",
+   "symbol": "pd_pump",
+   "x": 225,
+   "y": 108,
+   "desc": "TRANSFERÊNCIA DIRETA",
    "dados": [
-    "Fechado, equalizado c/ R-101 (IIC)",
-    "2,5-3,6 m3 (LAC-010)"
+    "Q <= 20 m3/h (proposta)",
+    "Reserva: P-102 (RL-07)"
    ],
    "rotulo": {
-    "x": 229,
-    "y": 143,
-    "alinh": "R"
+    "x": 225,
+    "y": 131,
+    "alinh": "C"
    },
-   "params": {
-    "width": 24,
-    "height": 18,
-    "roof": "flat",
-    "nozzles": [
-     {
-      "name": "N1",
-      "side": "top",
-      "fraction": 0.3
-     },
-     {
-      "name": "N3",
-      "side": "top",
-      "fraction": 0.65
-     },
-     {
-      "name": "N2",
-      "side": "top",
-      "fraction": 0.88
-     },
-     {
-      "name": "N4",
-      "side": "right",
-      "fraction": 0.75
-     },
-     {
-      "name": "N5",
-      "side": "bottom",
-      "fraction": 0.5
-     }
-    ]
-   },
-   "tag": "TQ-201"
+   "tag": "P-201"
   },
   {
-   "id": "AG-200",
-   "symbol": "agitator",
-   "x": 235,
-   "y": 186,
-   "desc": null,
+   "id": "MS-201",
+   "symbol": "filter",
+   "x": 302,
+   "y": 108,
+   "desc": "MISTURADOR ESTÁTICO",
+   "aparencia": "misturador_estatico",
    "rotulo": {
-    "x": 229,
-    "y": 202,
-    "alinh": "R"
+    "x": 302,
+    "y": 100,
+    "alinh": "C"
    },
-   "tag": "AG-200"
+   "tag": "MS-201"
   },
   {
    "id": "DOS-201",
    "symbol": "pd_pump",
-   "x": 290,
-   "y": 242,
+   "x": 258,
+   "y": 145,
    "desc": "ALCALINIZANTE",
    "dados": [
+    "NaHCO3 sob demanda",
     "Rubrica FINEP: dosadora (4)"
    ],
-   "rotation": 180,
    "rotulo": {
-    "x": 290,
-    "y": 268,
+    "x": 258,
+    "y": 175,
     "alinh": "C"
    },
    "tag": "DOS-201"
-  },
-  {
-   "id": "P-201",
-   "symbol": "pd_pump",
-   "x": 320,
-   "y": 108,
-   "desc": "TRANSFERÊNCIA",
-   "dados": [
-    "Q <= 20 m3/h (proposta)"
-   ],
-   "rotulo": {
-    "x": 320,
-    "y": 140,
-    "alinh": "C"
-   },
-   "tag": "P-201"
   },
   {
    "id": "R-201",
@@ -300,11 +262,6 @@
       "fraction": 0.66
      },
      {
-      "name": "NQ",
-      "side": "top",
-      "fraction": 0.95
-     },
-     {
       "name": "NB",
       "side": "right",
       "fraction": 0.03
@@ -318,6 +275,11 @@
       "name": "ND",
       "side": "bottom",
       "fraction": 0.8
+     },
+     {
+      "name": "NQ",
+      "side": "top",
+      "fraction": 0.95
      }
     ]
    },
@@ -409,11 +371,6 @@
       "fraction": 0.66
      },
      {
-      "name": "NQ",
-      "side": "top",
-      "fraction": 0.95
-     },
-     {
       "name": "NB",
       "side": "right",
       "fraction": 0.03
@@ -427,6 +384,11 @@
       "name": "ND",
       "side": "bottom",
       "fraction": 0.8
+     },
+     {
+      "name": "NQ",
+      "side": "top",
+      "fraction": 0.95
      }
     ]
    },
@@ -604,9 +566,25 @@
   {
    "id": "VR-201",
    "symbol": "check",
-   "x": 350,
+   "x": 255,
    "y": 108,
    "tag": "VR-201"
+  },
+  {
+   "id": "HV-118",
+   "symbol": "gate",
+   "x": 120,
+   "y": 132,
+   "tag": "HV-118",
+   "desc": "LC",
+   "actuator": "hand",
+   "rotation": 270,
+   "scale": 0.6,
+   "rotulo": {
+    "x": 124,
+    "y": 126,
+    "alinh": "L"
+   }
   },
   {
    "id": "HV-215",
@@ -728,7 +706,7 @@
    "id": "HV-202",
    "symbol": "gate",
    "x": 332,
-   "y": 143,
+   "y": 158,
    "tag": "HV-202",
    "desc": "RL-07",
    "actuator": "hand"
@@ -746,7 +724,7 @@
   {
    "id": "HV-304",
    "symbol": "gate",
-   "x": 230,
+   "x": 250,
    "y": 94,
    "tag": "HV-304",
    "desc": "RL-05",
@@ -773,44 +751,68 @@
    "tag": "PIT-111"
   },
   {
-   "id": "LIT-111",
+   "id": "LIC-111",
    "type": "plc",
    "location": "field",
    "x": 178,
    "y": 286,
-   "tag": "LIT-111"
+   "tag": "LIC-111"
   },
   {
    "id": "AIT-111",
    "type": "plc",
    "location": "field",
-   "x": 120,
-   "y": 126,
+   "x": 40,
+   "y": 178,
    "tag": "AIT-111"
   },
   {
    "id": "TIT-111",
    "type": "plc",
    "location": "field",
-   "x": 150,
-   "y": 112,
+   "x": 40,
+   "y": 234,
    "tag": "TIT-111"
+  },
+  {
+   "id": "LSLL-111",
+   "type": "plc",
+   "location": "field",
+   "x": 40,
+   "y": 206,
+   "tag": "LSLL-111"
+  },
+  {
+   "id": "LSHH-111",
+   "type": "plc",
+   "location": "field",
+   "x": 40,
+   "y": 150,
+   "tag": "LSHH-111"
+  },
+  {
+   "id": "ZSO-115",
+   "type": "plc",
+   "location": "field",
+   "x": 40,
+   "y": 264,
+   "tag": "ZSO-115"
+  },
+  {
+   "id": "PSL-201",
+   "type": "plc",
+   "location": "field",
+   "x": 190,
+   "y": 124,
+   "tag": "PSL-201"
   },
   {
    "id": "AIC-201",
    "type": "plc",
    "location": "field",
-   "x": 300,
-   "y": 194,
+   "x": 322,
+   "y": 132,
    "tag": "AIC-201"
-  },
-  {
-   "id": "LIT-201",
-   "type": "plc",
-   "location": "field",
-   "x": 300,
-   "y": 168,
-   "tag": "LIT-201"
   },
   {
    "id": "FQIT-201",
@@ -938,44 +940,16 @@
   },
   {
    "from": "R-101.NB",
-   "to": "TQ-201.N1",
-   "class": "process_major",
-   "number": "LODO-2102",
-   "route": [
-    [
-     164,
-     152.3
-    ],
-    [
-     164,
-     206.6
-    ],
-    [
-     225.4,
-     206.6
-    ]
-   ]
-  },
-  {
-   "from": "DOS-201.out",
-   "to": "TQ-201.N2",
-   "class": "utility",
-   "number": "QUIM-2104",
-   "route": [
-    [
-     253.24,
-     242
-    ]
-   ]
-  },
-  {
-   "from": "TQ-201.N5",
    "to": "P-201.in",
    "class": "process_major",
    "number": "LODO-2105",
    "route": [
     [
-     235,
+     176,
+     152.3
+    ],
+    [
+     176,
      108
     ]
    ]
@@ -985,6 +959,19 @@
    "to": "VR-201.in",
    "class": "process_major",
    "number": "LODO-2106"
+  },
+  {
+   "from": "VR-201.out",
+   "to": "MS-201.in",
+   "class": "process_major",
+   "number": "LODO-2106"
+  },
+  {
+   "from": "R-101.NE",
+   "to": "HV-118.in",
+   "class": "process_major",
+   "number": "LODO-2110",
+   "label": false
   },
   {
    "from": "R-201.NG",
@@ -1071,7 +1058,7 @@
    "label": false
   },
   {
-   "from": "VR-201.out",
+   "from": "MS-201.out",
    "to": "XV-221.in",
    "class": "process_major",
    "number": "LODO-2106",
@@ -1219,30 +1206,6 @@
    "class": "process_major",
    "number": "LODO-2405",
    "label": false
-  },
-  {
-   "from": "HV-303.out",
-   "to": "TQ-201.N4",
-   "class": "process_major",
-   "number": "LODO-2406",
-   "route": [
-    [
-     645,
-     108
-    ],
-    [
-     645,
-     94
-    ],
-    [
-     272,
-     94
-    ],
-    [
-     272,
-     177
-    ]
-   ]
   }
  ],
  "connectors": [
@@ -1284,14 +1247,25 @@
   {
    "id": "BL-04",
    "direction": "in",
-   "x": 330,
-   "y": 242,
+   "x": 218,
+   "y": 145,
    "tag": "BL-04",
    "link": "ALCALINIZANTE",
    "to": "DOS-201.in",
    "class": "utility",
-   "number": "QUIM-2104",
-   "rotation": 180
+   "number": "QUIM-2104"
+  },
+  {
+   "id": "F01D",
+   "direction": "out",
+   "x": 120,
+   "y": 118,
+   "tag": "F01",
+   "rotation": 270,
+   "scale": 0.5,
+   "from": "HV-118.out",
+   "class": "process_major",
+   "number": "LODO-2110"
   },
   {
    "id": "N2201",
@@ -1345,7 +1319,7 @@
    "id": "F01B",
    "direction": "in",
    "x": 292,
-   "y": 143,
+   "y": 158,
    "tag": "F01",
    "link": "DE P-102",
    "to": "HV-202.in",
@@ -1366,7 +1340,7 @@
   {
    "id": "F01C",
    "direction": "out",
-   "x": 180,
+   "x": 205,
    "y": 94,
    "tag": "F01",
    "link": "P/ TQ-101",
@@ -1400,38 +1374,19 @@
  ],
  "derivacoes": [
   {
-   "from": "R-101.NQ",
+   "from": "DOS-201.out",
    "to": [
-    164,
-    206.6
+    275,
+    108
    ],
    "route": [
     [
-     147.0,
-     240
-    ],
-    [
-     164,
-     240
+     275,
+     145
     ]
    ],
    "class": "utility",
-   "number": "ACID-2111"
-  },
-  {
-   "from": "TQ-201.N3",
-   "to": [
-    164,
-    225
-   ],
-   "route": [
-    [
-     242.2,
-     225
-    ]
-   ],
-   "class": "utility",
-   "number": "ACID-2112"
+   "number": "QUIM-2104"
   },
   {
    "from": [
@@ -1445,13 +1400,13 @@
   {
    "from": "HV-202.out",
    "to": [
-    384,
+    344,
     108
    ],
    "route": [
     [
-     384,
-     143
+     344,
+     158
     ]
    ],
    "class": "process_major",
@@ -1496,8 +1451,31 @@
    "number": "BRUTO-2242"
   },
   {
+   "from": "HV-303.out",
+   "to": [
+    285,
+    108
+   ],
+   "route": [
+    [
+     645,
+     108
+    ],
+    [
+     645,
+     94
+    ],
+    [
+     285,
+     94
+    ]
+   ],
+   "class": "process_major",
+   "number": "LODO-2406"
+  },
+  {
    "from": [
-    272,
+    285,
     94
    ],
    "to": "HV-304.in",
@@ -1535,7 +1513,7 @@
  "casa": {
   "areas": [
    {
-    "titulo": "ESTÁGIO ÁCIDO (R-101) E NEUTRALIZAÇÃO (TQ-201) - S05/S09",
+    "titulo": "ESTÁGIO ÁCIDO (R-101) E TRANSFERÊNCIA COM NEUTRALIZAÇÃO EM LINHA - S05/S09",
     "x0": 25,
     "y0": 84,
     "x1": 340,
@@ -1629,15 +1607,15 @@
     "altura": 1.8
    },
    {
-    "texto": "EQUALIZAÇÃO DE GÁS TQ-201 / R-101 (LO)",
-    "x": 168,
-    "y": 228,
+    "texto": "TRANSFERÊNCIA NEUTRA EM GÁS: R-101 <> R-201/202 PELO COLETOR",
+    "x": 201,
+    "y": 215,
     "altura": 1.9
    },
    {
-    "texto": "SAÍDA NIVELADA",
-    "x": 167,
-    "y": 190,
+    "texto": "(sem TQ-201; trips da RES-001 §5.6 na P-201)",
+    "x": 201,
+    "y": 211,
     "altura": 1.9
    },
    {
@@ -1714,7 +1692,7 @@
     ]
    },
    {
-    "de": "LIT-111",
+    "de": "LIC-111",
     "ate": [
      150,
      226
@@ -1723,22 +1701,36 @@
    {
     "de": "AIT-111",
     "ate": [
-     120,
-     144
+     84,
+     178
+    ]
+   },
+   {
+    "de": "LSLL-111",
+    "ate": [
+     84,
+     206
+    ]
+   },
+   {
+    "de": "LSHH-111",
+    "ate": [
+     84,
+     162
+    ]
+   },
+   {
+    "de": "PSL-201",
+    "ate": [
+     176,
+     124
     ]
    },
    {
     "de": "AIC-201",
     "ate": [
-     259,
-     180
-    ]
-   },
-   {
-    "de": "LIT-201",
-    "ate": [
-     259,
-     168
+     322,
+     108
     ]
    },
    {
@@ -1751,8 +1743,8 @@
    {
     "de": "TIT-111",
     "ate": [
-     150,
-     144
+     84,
+     218
     ]
    },
    {
@@ -1809,17 +1801,24 @@
    {
     "de": "AIC-201",
     "ate": [
-     298,
-     236
+     266,
+     141
+    ]
+   },
+   {
+    "de": "LIC-111",
+    "ate": [
+     225,
+     116
     ],
     "via": [
      [
-      312,
-      194
+      196,
+      286
      ],
      [
-      312,
-      236
+      196,
+      116
      ]
     ]
    }
@@ -1829,7 +1828,7 @@
     "x0": 93.0,
     "x1": 147.0,
     "y": 206.59574468085106,
-    "texto": "N.A. +3,50 m"
+    "texto": "N.A. +3,50 (LIC) m"
    },
    {
     "x0": 391.0,
@@ -1846,7 +1845,7 @@
   ],
   "sem_rotulo": [
    "LODO-216",
-   "ACID-2112",
+   "LODO-2110",
    "LODO-226",
    "LODO-236",
    "BRUTO-2241",
@@ -1905,56 +1904,74 @@
     "fonte": "Fonte: RES-001 REV03 §8; Bases REV00 critério 10. LAC-031/032/033."
    },
    {
-    "titulo": "ALOCAÇÃO DE BOCAIS POR REATOR (C1)",
+    "titulo": "ALOCAÇÃO DE BOCAIS (C4)",
     "x": 698,
     "y": 568,
-    "altura": 1.8,
+    "altura": 1.6,
     "colunas": [
      [
       "BOCAL",
-      17
+      13
      ],
      [
-      "USO",
-      111
+      "R-101",
+      55
+     ],
+     [
+      "R-201 / R-202",
+      60
      ]
     ],
     "linhas": [
      [
       "N1-A",
-      "Alimentação c/ tubo de imersão (furo quebra-sifão no gás)"
+      "Alimentação, tubo de imersão",
+      "Alimentação, tubo de imersão"
      ],
      [
       "N1-B",
-      "Selo hidráulico SH (+8/-3)"
+      "Selo SH-101",
+      "Selo SH-201/202"
      ],
      [
       "N1-C",
-      "N2 de partida/purga (LC)"
+      "N2 partida/purga (LC)",
+      "N2 partida/purga (LC)"
      ],
      [
       "N1-D",
-      "Quebra-sifão da coluna de saída / equalização"
+      "Reserva: transbordo (LAC-038)",
+      "Quebra-sifão da coluna"
      ],
      [
       "N2-A",
-      "Saída nivelada (coluna externa)"
+      "Sucção P-201 (Qmáx, trips)",
+      "Saída nivelada (coluna)"
      ],
      [
-      "N2-B / D",
-      "Amostragem / expurgo LC + chave presa"
+      "N2-B",
+      "Amostragem",
+      "Amostragem"
      ],
      [
       "N2-C",
-      "Reserva: retirada por bomba (LAC-039)"
+      "Sucção reserva P-102 (LC)",
+      "Reserva (LAC-039)"
+     ],
+     [
+      "N2-D",
+      "Expurgo LC + chave presa",
+      "Expurgo LC + chave presa"
      ],
      [
       "N3 2x2\"",
-      "Gás ao coletor / transbordo (LAC-038)"
+      "Gás ao coletor",
+      "Gás ao coletor"
      ],
      [
       "M2 / A4",
-      "Emergência bidirecional / A4 TAMPONAR"
+      "Emergência / A4 TAMPONAR",
+      "Emergência / A4 TAMPONAR"
      ]
     ]
    }
@@ -1964,9 +1981,9 @@
   "1. EMISSÃO PRELIMINAR (T.E. A): a S3 (P&ID executivo) da Gen E não foi iniciada e a S1 está bloqueada no Gate 0; premissas D1-D6 [A VERIFICAR] (CLAUDE.md §4). Diâmetros das linhas pela S1. Não usar para construção.",
   "2. Cascata B (RES-001 REV03, aguarda RT - LAC-033), em mbar: operação +1,5 a +3,5; PIT-x11 com PAH/PAHH +5/+6, PAL +1 e PALL 0 hardwired (desliga sopradores e retirada); selo SH +8/-3; emergência bidirecional na M2 +12/-6 (R-101 -4/-5); envelope requerido à Fibrais +15/-8 (R-101 -6). Sem PVRV.",
   "3. Topo de todos os reatores em grupo IIC (coletor comum, LAC-037). Isolamentos do gás travados abertos (LO), sem bloqueio automático entre reator e alívio. RG-01: desvio do gás ácido do R-101 (LC).",
-  "4. Configuração C1 (PARECER_F02): alimentação pelo tampo (N1-A) com tubo de imersão e furo quebra-sifão no espaço de gás, sem alça nem retenção na entrada; saída nivelada por coluna externa a partir do N2 (+0,30 m) com quebra-sifão ao espaço de gás (N1-D); N.A. +3,50 / +7,50 m (LAC-005/006). 2ª cascata por gravidade ao TQ-301 com sifão U 500 mmCA, dreno e lavagem (LAC-011).",
+  "4. Configuração C4 (PARECER_F02 REV01): SEM TQ-201. P-201 aspira do R-101 (N2-A) e alimenta R-201/202 pelo tampo (tubo de imersão). A transferência é neutra em gás: o volume deslocado no metanogênico volta ao R-101 pelo coletor comum. R-101 com nível controlado (LIC-111) em vez de transbordo; R-201/202 com saída nivelada e quebra-sifão ao espaço de gás.",
   "5. Retirada por bomba admitida com Q máx. 20 m3/h por reator (proposta), permissivos, trips hardwired e chave presa (KL) nos expurgos N2-D (RES-001 REV03 §5.6). N2 só na partida e na purga pós-evento (LC). N2-C/N2-D ficam no costado (+0,30 m).",
-  "6. TQ-201 de neutralização FECHADO e equalizado com o R-101 (LO, grupo IIC): sem stripping de H2S no solo (LAC-009). AIC-201 (pHIC-201) comanda a DOS-201. P-201 em pulsos alternados (XV-211/XV-221 falha-fechada, FQIT-201), só com o misturador do reator de destino em operação. RL-05: retorno alcalino TQ-301 > TQ-201/TQ-101 pela P-301.",
+  "6. Neutralização em linha, sob demanda: DOS-201 (NaHCO3) a montante do misturador estático MS-201, AIC-201 a jusante; RL-05 (digestato) opcional. P-201: permissivos ZSO-115 (gás do R-101 ligado), LSLL-111, LSHH do destino; trips PALL do R-101, PSL-201 na sucção e PAHH (para também a DOS-201). P-102 é reserva instalada da P-201 pelo N2-C (RL-07).",
   "7. Misturadores verticais de topo (D1) com VFD, selo duplo e motor Ex db IIC T3: potência e flambagem do tampo a verificar (LAC-007/008/028); a Fibrais mantém 15/10 CV (reunião de 29/10/2026)."
  ]
 }

@@ -237,16 +237,23 @@
     "scale": 1.0
    },
    {
-    "simbolo": "amostragem",
+    "simbolo": "misturador_estatico",
     "x": 40,
     "y": 368.0,
     "tag": "",
     "scale": 1.0
    },
    {
-    "simbolo": "triturador",
+    "simbolo": "amostragem",
     "x": 40,
     "y": 355.0,
+    "tag": "",
+    "scale": 1.0
+   },
+   {
+    "simbolo": "triturador",
+    "x": 40,
+    "y": 342.0,
     "tag": "",
     "scale": 1.0
    }
@@ -603,15 +610,21 @@
     "altura": 2.5
    },
    {
-    "texto": "Ponto de amostragem",
+    "texto": "Misturador estático em linha",
     "x": 60,
     "y": 367.0,
     "altura": 2.5
    },
    {
-    "texto": "Triturador de dois eixos com moega",
+    "texto": "Ponto de amostragem",
     "x": 60,
     "y": 354.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Triturador de dois eixos com moega",
+    "x": 60,
+    "y": 341.0,
     "altura": 2.5
    },
    {
@@ -1112,32 +1125,25 @@
       "Contrapartida"
      ],
      [
-      "TQ-201",
-      "Tanque de neutralização",
+      "P-201",
+      "Transferência direta",
       "F02",
-      "Fechado, equalizado c/ R-101 (IIC); 2,5-3,6 m3 (LAC-010)",
-      "Tanques (3) - neutralização (Formulário)"
+      "Q <= 20 m3/h (proposta); Reserva: P-102 (RL-07)",
+      "Bombas (4)"
      ],
      [
-      "AG-200",
-      "",
+      "MS-201",
+      "Misturador estático",
       "F02",
       "",
-      "Sem item próprio"
+      "Contrapartida"
      ],
      [
       "DOS-201",
       "Alcalinizante",
       "F02",
-      "Rubrica FINEP: dosadora (4)",
+      "NaHCO3 sob demanda; Rubrica FINEP: dosadora (4)",
       "Bomba dosadora (4)"
-     ],
-     [
-      "P-201",
-      "Transferência",
-      "F02",
-      "Q <= 20 m3/h (proposta)",
-      "Bombas (4)"
      ],
      [
       "R-201",
@@ -1186,7 +1192,7 @@
       "Tanque de biofertilizante",
       "F02",
       "Fibrais 315A-25; Øint 3,00 x Hcil 2,40 + cone 1,50 m; N1 4x6\" +4,66 | N2 4x6\" +2,48; Rubrica: LAC-012",
-      "Tanque de digestato excluído (LAC-012)"
+      "-"
      ],
      [
       "P-301",

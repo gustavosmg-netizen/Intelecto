@@ -477,6 +477,17 @@ def _emergencia(b, hw, hh):
     b.add_lwpolyline([(-hw * 0.35, hh * 0.05), (0, -hh * 0.35), (hw * 0.35, hh * 0.05)])
 
 
+def _misturador_estatico(b, hw, hh):
+    # trecho de tubo com elementos helicoidais (padrão de referência: retângulo com X)
+    b.add_lwpolyline([(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)], close=True)
+    n = 3
+    for k in range(n):
+        x0 = -hw + k * 2 * hw / n
+        x1 = x0 + 2 * hw / n
+        b.add_line((x0, -hh), (x1, hh))
+        b.add_line((x0, hh), (x1, -hh))
+
+
 def _respiro(b, hw, hh):
     b.add_line((0, -hh), (0, hh * 0.3))
     b.add_lwpolyline([(-hw, hh * 0.3), (hw, hh * 0.3), (0, hh)], close=True)
@@ -494,6 +505,7 @@ SIMBOLOS_CASA = {
     "macerador": (_macerador, 6, 6, {"in": (-1, 0), "out": (1, 0)}, "Macerador / triturador úmido em linha"),
     "caldeira": (_caldeira, 18, 12, {}, "Caldeira flamotubular (gerador de vapor)"),
     "gasometro": (_gasometro, 20, 12, {}, "Gasômetro de membrana dupla"),
+    "misturador_estatico": (_misturador_estatico, 9, 3, {"in": (-1, 0), "out": (1, 0)}, "Misturador estático em linha"),
     "emergencia": (_emergencia, 5, 6, {"in": (0, -1)}, "Alívio de emergência bidirecional (pressão/vácuo)"),
     "respiro": (_respiro, 3, 5, {"in": (0, -1)}, "Respiro / descarga para local seguro"),
     "amostragem": (_amostragem, 2.5, 2.5, {"in": (0, -1)}, "Ponto de amostragem"),
