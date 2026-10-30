@@ -305,7 +305,10 @@ def saida(m, tq, L, tag, dest_porta, pote_xy, z_rail=None, s_desc=S_DESC):
               "suportes": False, "fechada": True,
               "origem": {"te": f"{tag}-SAI", "ponto": xyz(Pt), "direcao": [0, 0, 1]},
               "pontos": _sobre_tampo(m, tq, tag, Pt, n1), "destino": f"{tag}.{n1.tag}",
-              "componentes": [{"tipo": "reducao", "tag": f"A-{tag[2:]}RS", "de2": 160,
+              "componentes": [{"tipo": "gaveta", "tag": f"V-{tag[2:]}RS", "distancia": "fim",
+                               "rotulo": "Válvula guilhotina (faca) flangeada",
+                               "nota": "LO; mesma chave presa da V-xSAI e do dreno do pote"},
+                              {"tipo": "reducao", "tag": f"A-{tag[2:]}RS", "de2": 160,
                                "distancia": "fim"}]})
     G, ng = P(m, f"{pote}.N-SAI")
     G1 = G + ng * 300
@@ -506,7 +509,7 @@ def linhas(m, tq):
                               {"tipo": "ventosa", "tag": "VQ-301", "dn_ramal": 50,
                                "distancia": {"trecho": 2, "pos": "inicio", "offset": 150},
                                "rotulo": "Tê + ventosa de esgoto (corpo longo), quebra-vácuo a ar"},
-                              {"tipo": "reducao", "tag": "R-301RS", "de2": 160, "distancia": "fim"}]})
+                              {"tipo": "reducao", "tag": "R-301RD", "de2": 160, "distancia": "fim"}]})
     Rl, _ = P(m, "TQ-201.N-RL05")
     L.append({**PEAD, "tag": "L-RL05", "servico": "lodo", "regime": "pressao", "de": 90,                 # DN80: mínimo prático p/ polpa (entupimento)
               "suportes": False, "ponto_alto": "descarga livre no TQ-201",
@@ -588,7 +591,7 @@ def seguranca(m):
     m.item("Intertravamento por chave presa (V-201PG/V-202PG × V-301S)", "purgas R-201/202",
            "cj", 1)
     for t in ("R-101", "R-201", "R-202"):
-        m.item("Intertravamento por chave presa (V-xSAI × dreno do pote PS)", t, "cj", 1)
+        m.item("Intertravamento por chave presa (V-xSAI + V-xRS × dreno do pote PS)", t, "cj", 1)
         m.item("Chave de posição ZSC na V-xSAI (permissivo da alimentação)", t, "un", 1)
     m.item("Intertravamento V-201AL × V-202BQ (nunca as duas abertas)", "alimentação R-201/202",
            "cj", 1)

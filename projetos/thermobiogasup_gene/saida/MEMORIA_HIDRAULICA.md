@@ -1,6 +1,6 @@
 # Memória hidráulica — cascata Gen E com polpa de 8% ST (documento de trabalho)
 
-Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 2, depois do Crivo A–F independente (rodada 1 com 3 bloqueantes, tratados aqui). Falta a rodada 2 do Crivo. Cotas na base comum z = 0 (premissa de S5). Sem valores monetários.
+Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 3, depois de três rodadas do Crivo A–F independente (bloqueantes das rodadas 1 e 2 tratados aqui); liberada para circular em discussão, não para emissão. Cotas na base comum z = 0 (premissa de S5). Sem valores monetários.
 
 ## 1. Premissas e método
 
@@ -20,7 +20,7 @@ Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 2, depois do Crivo
 | pessimista | 100 | 0,20 | 1030 |
 
 - **Espaço de gás:** opera de +1,5 a +3,5 mbar. As verificações de nível usam 0 mbar (partida, conservador), e o gráfico usa a operação.
-- **NPSH:** P_atm 91.3 kPa no sítio de referência (Congonhas/MG, ≈ 870 m; RES-001 §5.5, a confirmar na LAC-027) e P_vapor 5.6 kPa (35 °C).
+- **NPSH:** P_atm 91,3 kPa no sítio de referência (Congonhas/MG, ≈ 870 m; RES-001 §5.5, a confirmar na LAC-027) e P_vapor 5,6 kPa (35 °C).
 - **Pote de selagem, virada de 180° no fundo:** modelada como 0.30 m de caminho equivalente no ânulo. É estimativa de engenharia, a confirmar na reometria ou em ensaio de bancada (LAC-041).
 
 ## 2. Saídas por gravidade (N-SAI no nível → descida livre → pote de selagem → destino)
@@ -29,7 +29,7 @@ Arranjo de cada saída:
 - **N-SAI:** bocal novo DN150 com a soleira interna no N.A. de projeto (a mesma cota da tabela de níveis).
 - **Descida:** registro LO (faca), depois descida com lâmina livre, com sen θ de 0,31 a 0,50 (mínimo exigido no caso pessimista: 0,23).
 - **Pote de selagem:** ao chegar, a descida vira tubo mergulhado DE160 até 330 mm abaixo da soleira do vertedor do pote. O pote transborda por lâmina livre ao destino.
-- **Quebra-sifão: respiro de equalização R-xxx-RS (DE90).** Ele sai da geratriz superior da descida, logo depois do registro LO, e vai a um N1 do tampo. O bocal no nível sozinho não basta. Com τy alto, o nível sobe acima do topo do N-SAI (0,2 a 0,5 m na soleira), em operação e também em repouso, e o bocal fica afogado.
+- **Quebra-sifão: respiro de equalização R-xxx-RS (DE90).** Ele sai da geratriz superior da descida, logo depois do registro LO, e vai a um N1 do tampo, com faca DN80 LO presa à mesma chave da V-xSAI e do dreno do pote (na manutenção, as duas fecham antes de drenar o pote). O bocal no nível sozinho não basta. Com τy alto, o nível sobe acima do topo do N-SAI (0,2 a 0,5 m na soleira), em operação e também em repouso, e o bocal fica afogado.
   - Sem respiro, o bolsão de gás da descida se dissolve ou é arrastado pela polpa, a descida enche e sifona o reator até o topo do bocal. Isso retira 2,6 a 3,8 m³ de um reator fechado e cria vácuo.
   - Com o respiro, a descida fica sempre à pressão do gás e nada abaixo da soleira escoa por gravidade. O fecho hídrico é a superfície interna do pote.
 

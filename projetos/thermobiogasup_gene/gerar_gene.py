@@ -70,8 +70,8 @@ def escrever_bocais(linhas, pasta: Path):
         w.writeheader()
         w.writerows(linhas)
     L = ["# Lista de bocais De→Para — reatores e tanques PRFV (Gen E)\n",
-         "Situação: **DOCUMENTO DE TRABALHO — não liberado.** Revisão 2, depois do Crivo A–F "
-         "independente; falta a rodada 2. **Não furar antes de fechar a LAC-006** (arranjo "
+         "Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 3, depois "
+         "de três rodadas do Crivo A–F independente, liberada para circular em discussão. **Não furar antes de fechar a LAC-006** (arranjo "
          "de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). "
          "Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.\n",
          "Convenções:",
@@ -168,8 +168,9 @@ LACUNAS_PROPOSTAS = [
      "PSLL/PAHH (N1 de reserva), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC "
      "no V-xGAS, LSLL do TQ-201 como SIF dedicada", "Barreiras contra vácuo e entrada de ar",
      "CSTR – S4", "Gate 4"),
-    ("LAC-049", "Biogás arrastado pelos potes de selagem aos tanques atmosféricos: vazão "
-     "estimada, tratamento dos respiros (A7 do TQ-301 sem tratamento; FCA-201) e "
+    ("LAC-049", "Biogás arrastado pelos potes de selagem aos tanques atmosféricos e descarga "
+     "da ventosa VQ-301 (crista da L-301R a +8,65, junto ao topo dos R-201/202) na purga: "
+     "vazão estimada, tratamento dos respiros (A7 do TQ-301 sem tratamento; FCA-201) e "
      "classificação de área (ver LAC-009)", "Odor, H₂S e área classificada", "CSTR – S4",
      "Gate 4"),
 ]
@@ -182,8 +183,8 @@ def escrever_lacunas(pasta: Path):
          "| ID | lacuna | efeito | dono | gate |", "|---|---|---|---|---|"]
     L += [f"| {a} | {b} | {c} | {d} | {e} |" for a, b, c, d, e in LACUNAS_PROPOSTAS]
     L.append("\nLacunas existentes que este trabalho afeta: LAC-006 (bloqueante para S3; "
-             "arranjo adotado é o bocal novo no nível), LAC-029, LAC-031 e LAC-038 (o N1 de "
-             "reserva é o candidato ao transbordo dedicado).")
+             "arranjo adotado é o bocal novo no nível), LAC-029, LAC-031 e LAC-038 (o A4 8\" "
+             "multitomada é o candidato ao transbordo dedicado).")
     (pasta / "LACUNAS_PROPOSTAS.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 

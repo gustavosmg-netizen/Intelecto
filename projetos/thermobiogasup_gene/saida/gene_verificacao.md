@@ -7,13 +7,13 @@
 | Linha | Material | Regime | Comprimento (m) | Destaques |
 |---|---|---|---|---|
 | R-101-SAI | PEAD DE160 SDR17 | selada | 1.27 | V-101SAI |
-| R-101-RS | PEAD DE90 SDR17 | ventilacao | 4.90 | A-101RS |
+| R-101-RS | PEAD DE90 SDR17 | ventilacao | 4.90 | V-101RS, A-101RS |
 | R-101-TRB | PEAD DE160 SDR17 | selada | 1.06 |  |
 | R-201-SAI | PEAD DE160 SDR17 | selada | 2.07 | V-201SAI |
-| R-201-RS | PEAD DE90 SDR17 | ventilacao | 5.10 | A-201RS |
+| R-201-RS | PEAD DE90 SDR17 | ventilacao | 5.10 | V-201RS, A-201RS |
 | R-201-TRB | PEAD DE160 SDR17 | selada | 2.92 |  |
 | R-202-SAI | PEAD DE160 SDR17 | selada | 2.62 | V-202SAI |
-| R-202-RS | PEAD DE90 SDR17 | ventilacao | 5.31 | A-202RS |
+| R-202-RS | PEAD DE90 SDR17 | ventilacao | 5.31 | V-202RS, A-202RS |
 | R-202-TRB | PEAD DE160 SDR17 | selada | 2.89 |  |
 | R-101-AL | PEAD DE90 SDR17 | pressao | 14.78 | Q 1.67 L/s, v 0.34 m/s; V-101RT, V-101BQ, JD-101, VQ-101, A-101DL, V-101ENT |
 | R-101-VQ | PEAD DE63 SDR17 | ventilacao | 3.40 | A-101VQ |
@@ -26,7 +26,7 @@
 | L-301S | PEAD DE160 SDR17 | pressao | 4.22 | V-301S |
 | R-201-PG | PEAD DE160 SDR17 | pressao | 7.68 | V-201PG, XV-201PG |
 | R-202-PG | PEAD DE160 SDR17 | pressao | 6.29 | V-202PG, XV-202PG |
-| L-301R | PEAD DE110 SDR17 | pressao | 20.38 | V-301RT, V-301BQ, JD-301, VQ-301, R-301RS |
+| L-301R | PEAD DE110 SDR17 | pressao | 20.38 | V-301RT, V-301BQ, JD-301, VQ-301, R-301RD |
 | L-RL05 | PEAD DE90 SDR17 | pressao | 22.24 | V-RL05 |
 | L-EXP | PEAD DE110 SDR17 | pressao | 1.36 | V-EXP |
 | L-201EX | PEAD DE160 SDR17 | selada | 2.12 |  |

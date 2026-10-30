@@ -493,8 +493,9 @@ def memoria(m, nv, res, arquivo_md, figura):
     L = []
     w = L.append
     w("# Memória hidráulica — cascata Gen E com polpa de 8% ST (documento de trabalho)\n")
-    w("Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 2, depois do Crivo A–F "
-      "independente (rodada 1 com 3 bloqueantes, tratados aqui). Falta a rodada 2 do Crivo. "
+    w("Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 3, depois de três rodadas "
+      "do Crivo A–F independente (bloqueantes das rodadas 1 e 2 tratados aqui); liberada para "
+      "circular em discussão, não para emissão. "
       "Cotas na base comum z = 0 (premissa de S5). Sem valores monetários.\n")
     w("## 1. Premissas e método\n")
     w(f"- **Vazão de projeto das saídas: {Q_PROJ:.0f} m³/h.** É a vazão máxima das PCP de "
@@ -516,8 +517,8 @@ def memoria(m, nv, res, arquivo_md, figura):
         w(f"| {f.nome} | {f.tau_y:.0f} | {_f(f.mu_p)} | {f.rho:.0f} |")
     w(f"\n- **Espaço de gás:** opera de +1,5 a +{_f(P_GAS_OP, 1)} mbar. As verificações de "
       "nível usam 0 mbar (partida, conservador), e o gráfico usa a operação.")
-    w(f"- **NPSH:** P_atm {P_ATM_KPA} kPa no sítio de referência (Congonhas/MG, ≈ 870 m; "
-      f"RES-001 §5.5, a confirmar na LAC-027) e P_vapor {P_VAP_KPA} kPa (35 °C).")
+    w(f"- **NPSH:** P_atm {_f(P_ATM_KPA, 1)} kPa no sítio de referência (Congonhas/MG, ≈ 870 m; "
+      f"RES-001 §5.5, a confirmar na LAC-027) e P_vapor {_f(P_VAP_KPA, 1)} kPa (35 °C).")
     w(f"- **Pote de selagem, virada de 180° no fundo:** modelada como {TURNO_POTE:.2f} m de "
       "caminho equivalente no ânulo. É estimativa de engenharia, a confirmar na reometria "
       "ou em ensaio de bancada (LAC-041).\n")
@@ -530,7 +531,9 @@ def memoria(m, nv, res, arquivo_md, figura):
     w("- **Pote de selagem:** ao chegar, a descida vira tubo mergulhado DE160 até 330 mm "
       "abaixo da soleira do vertedor do pote. O pote transborda por lâmina livre ao destino.")
     w("- **Quebra-sifão: respiro de equalização R-xxx-RS (DE90).** Ele sai da geratriz superior "
-      "da descida, logo depois do registro LO, e vai a um N1 do tampo. O bocal no nível sozinho "
+      "da descida, logo depois do registro LO, e vai a um N1 do tampo, com faca DN80 LO "
+      "presa à mesma chave da V-xSAI e do dreno do pote (na manutenção, as duas fecham "
+      "antes de drenar o pote). O bocal no nível sozinho "
       "não basta. Com τy alto, o nível sobe acima do topo do N-SAI (0,2 a 0,5 m na soleira), em "
       "operação e também em repouso, e o bocal fica afogado.")
     w("  - Sem respiro, o bolsão de gás da descida se dissolve ou é arrastado pela polpa, a "

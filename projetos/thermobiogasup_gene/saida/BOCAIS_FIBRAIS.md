@@ -1,6 +1,6 @@
 # Lista de bocais De→Para — reatores e tanques PRFV (Gen E)
 
-Situação: **DOCUMENTO DE TRABALHO — não liberado.** Revisão 2, depois do Crivo A–F independente; falta a rodada 2. **Não furar antes de fechar a LAC-006** (arranjo de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.
+Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 3, depois de três rodadas do Crivo A–F independente, liberada para circular em discussão. **Não furar antes de fechar a LAC-006** (arranjo de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.
 
 Convenções:
 - Flanges com furação ASME B16.5 Classe 150, face plana (FF) no PRFV. Válvulas FF e junta full-face.

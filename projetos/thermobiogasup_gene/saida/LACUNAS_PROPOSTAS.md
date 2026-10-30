@@ -12,6 +12,6 @@ Os IDs seguem o último do registro (LAC-040). Status: **PROPOSTA**: o dono do r
 | LAC-046 | Selo das saídas: 330 mm de polpa (≈ 33 mbar) em vez dos 500 mmCA da proposta | Decisão do responsável de processo | CSTR – processo | Gate 1 |
 | LAC-047 | Estruturas de apoio dos potes e das descidas; cargas admissíveis nos bocais novos; plataformas de acesso às válvulas e aos potes elevados | Integridade dos bocais PRFV e operação segura | CSTR (S5) + Fibrais (cargas) | Gate 3 |
 | LAC-048 | Instrumentação complementar da RES-001 §5.6: tomadas independentes de PSLL/PAHH (N1 de reserva), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC no V-xGAS, LSLL do TQ-201 como SIF dedicada | Barreiras contra vácuo e entrada de ar | CSTR – S4 | Gate 4 |
-| LAC-049 | Biogás arrastado pelos potes de selagem aos tanques atmosféricos: vazão estimada, tratamento dos respiros (A7 do TQ-301 sem tratamento; FCA-201) e classificação de área (ver LAC-009) | Odor, H₂S e área classificada | CSTR – S4 | Gate 4 |
+| LAC-049 | Biogás arrastado pelos potes de selagem aos tanques atmosféricos e descarga da ventosa VQ-301 (crista da L-301R a +8,65, junto ao topo dos R-201/202) na purga: vazão estimada, tratamento dos respiros (A7 do TQ-301 sem tratamento; FCA-201) e classificação de área (ver LAC-009) | Odor, H₂S e área classificada | CSTR – S4 | Gate 4 |
 
-Lacunas existentes que este trabalho afeta: LAC-006 (bloqueante para S3; arranjo adotado é o bocal novo no nível), LAC-029, LAC-031 e LAC-038 (o N1 de reserva é o candidato ao transbordo dedicado).
+Lacunas existentes que este trabalho afeta: LAC-006 (bloqueante para S3; arranjo adotado é o bocal novo no nível), LAC-029, LAC-031 e LAC-038 (o A4 8" multitomada é o candidato ao transbordo dedicado).
