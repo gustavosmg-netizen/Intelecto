@@ -577,6 +577,7 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                       "retencao": "Válvula de retenção portinhola flangeada",
                       "esfera": "Válvula esfera flangeada",
                       "junta_desmontagem": "Junta de desmontagem travada"}[c.tipo]
+            rotulo = c.extra.get("rotulo", rotulo)
             m.item(rotulo, f"DN{c.dn} {normas.classe_txt(int(linha.spec.get('pn', 10)))} F-F {L:.0f} mm", "un", 1)
             # vizinhos: componente flangeado colado -> só parafusos; senão adaptador no tubo
             ant = linha.componentes[i - 1] if i else None
@@ -615,7 +616,7 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
             fl_r = normas.flange(dn_r)
             peca += g.posicionar(g.ventosa(fl_r, 2.2 * fl_r.D), (0, h, L / 2), (0, 1, 0))
             m.add(f"{c.tag}-DN{dn_r}", g.posicionar(peca, P, d, cima), CORES["valvula"])
-            m.item("Tê com derivação flangeada + ventosa duplo efeito",
+            m.item(c.extra.get("rotulo", "Tê com derivação flangeada + ventosa duplo efeito"),
                    f"{tb.descricao} × DN{dn_r}", "cj", 1)
         ocupados.append((c.s0, c.s1, c.tipo))
     # tês de ramais que chegam/saem desta linha
@@ -692,10 +693,6 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
             continue
         m.item("Tubo", f"{desc} ({math.ceil(L / barra)} barra(s) de {barra / 1000:g} m)", "m",
                round(L / 1000, 2))
-    if linha.spec.get("curvas_sob_medida"):
-        n_c = sum(1 for a in linha.angulos if a)
-        m.item("Curva gomada PEAD sob medida (ângulo do traçado)", f"{linha.tubo.descricao}",
-               "un", n_c)
     if linha.spec.get("ponto_alto"):
         m.item("Respiro manual no ponto alto (DN25, válvula esfera)", linha.tag, "un", 1)
     if linha.regime == "ventilacao" and not linha.spec.get("fechada"):

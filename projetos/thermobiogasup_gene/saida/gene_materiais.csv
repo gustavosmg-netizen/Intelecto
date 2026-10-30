@@ -3,79 +3,87 @@ Agitador vertical de topo (Fibrais T211026-45);AG-R101 em R-101, 10 CV;un;1
 Agitador vertical de topo (Fibrais T211026-45);AG-R201 em R-201, 15 CV;un;1
 Agitador vertical de topo (Fibrais T211026-45);AG-R202 em R-202, 15 CV;un;1
 Ampliação concêntrica;PEAD DE110 SDR17 × PEAD DE160 SDR17;un;1
-Ampliação concêntrica;PEAD DE90 SDR17 × PEAD DE160 SDR17;un;3
+Ampliação concêntrica;PEAD DE63 SDR17 × PEAD DE160 SDR17;un;3
+Ampliação concêntrica;PEAD DE90 SDR17 × PEAD DE160 SDR17;un;6
 Apoio de concreto c/ sela e abraçadeira;R-101-AL;un;4
-Apoio de concreto c/ sela e abraçadeira;R-201-AL;un;5
+Apoio de concreto c/ sela e abraçadeira;R-201-AL;un;3
 Apoio de concreto c/ sela e abraçadeira;R-202-AL;un;14
-Atuador falha-fecha para XV de purga (faca DN150);XV-101PG;un;1
-Atuador falha-fecha para XV de purga (faca DN150);XV-201PG;un;1
-Atuador falha-fecha para XV de purga (faca DN150);XV-202PG;un;1
 Bomba de cavidade progressiva (PCP);"P-201 sucção 4"" recalque 3""";un;1
 Bomba de cavidade progressiva (PCP);"P-301 sucção 6"" recalque 4""";un;1
+Chave de posição ZSC na V-xSAI (permissivo da alimentação);R-101;un;1
+Chave de posição ZSC na V-xSAI (permissivo da alimentação);R-201;un;1
+Chave de posição ZSC na V-xSAI (permissivo da alimentação);R-202;un;1
 Colarinho PEAD + flange solto;DE110 / DN100 ASME B16.5 Classe 150;cj;9
-Colarinho PEAD + flange solto;DE160 / DN150 ASME B16.5 Classe 150;cj;45
-Colarinho PEAD + flange solto;DE63 / DN150 ASME B16.5 Classe 150;cj;3
+Colarinho PEAD + flange solto;DE160 / DN150 ASME B16.5 Classe 150;cj;51
 Colarinho PEAD + flange solto;DE63 / DN50 ASME B16.5 Classe 150;cj;12
 Colarinho PEAD + flange solto;DE90 / DN80 ASME B16.5 Classe 150;cj;12
-Curva 22.5°;PEAD DE160 SDR17;un;2
-Curva 45°;PEAD DE160 SDR17;un;3
-Curva 90°;PEAD DE110 SDR17;un;6
+Curva 22.5°;PEAD DE160 SDR17;un;1
+Curva 45°;PEAD DE160 SDR17;un;1
+Curva 90°;PEAD DE110 SDR17;un;4
 Curva 90°;PEAD DE160 SDR17;un;24
 Curva 90°;PEAD DE63 SDR17;un;9
-Curva 90°;PEAD DE90 SDR17;un;19
+Curva 90°;PEAD DE90 SDR17;un;25
 Curva especial 18.3°;PEAD DE160 SDR17;un;1
-Curva especial 18.7°;PEAD DE160 SDR17;un;1
+Curva especial 19.8°;PEAD DE160 SDR17;un;1
+Curva especial 24.6°;PEAD DE160 SDR17;un;1
 Curva especial 29.7°;PEAD DE160 SDR17;un;2
-Curva especial 67.6°;PEAD DE160 SDR17;un;1
+Curva especial 37.9°;PEAD DE160 SDR17;un;1
+Curva especial 52.1°;PEAD DE160 SDR17;un;1
+Curva especial 65.5°;PEAD DE160 SDR17;un;1
 Curva especial 68.2°;PEAD DE160 SDR17;un;1
-Curva especial 71.3°;PEAD DE160 SDR17;un;1
+Curva especial 70.2°;PEAD DE160 SDR17;un;1
 Curva especial 71.7°;PEAD DE160 SDR17;un;1
-Curva gomada PEAD sob medida (ângulo do traçado);PEAD DE160 SDR17;un;12
 Dispositivo de alívio de emergência bidirecional (pressão e vácuo) na M2;R-101: dimensionado e garantido pela Fibrais (RES-001 §7);un;1
 Dispositivo de alívio de emergência bidirecional (pressão e vácuo) na M2;R-201: dimensionado e garantido pela Fibrais (RES-001 §7);un;1
 Dispositivo de alívio de emergência bidirecional (pressão e vácuo) na M2;R-202: dimensionado e garantido pela Fibrais (RES-001 §7);un;1
 Filtro de carvão ativado do respiro (FCA-201);"envelope; especificar (LAC-042)";un;1
+Intertravamento V-201AL × V-202BQ (nunca as duas abertas);alimentação R-201/202;cj;1
 Intertravamento por chave presa (V-101PG × V-201S);purga do R-101;cj;1
 Intertravamento por chave presa (V-201PG/V-202PG × V-301S);purgas R-201/202;cj;1
+Intertravamento por chave presa (V-xSAI × dreno do pote PS);R-101;cj;1
+Intertravamento por chave presa (V-xSAI × dreno do pote PS);R-201;cj;1
+Intertravamento por chave presa (V-xSAI × dreno do pote PS);R-202;cj;1
 Jogo de parafusos, porcas e junta;4×M16 DN50;jg;12
 Jogo de parafusos, porcas e junta;4×M16 DN80;jg;16
 Jogo de parafusos, porcas e junta;8×M16 DN100;jg;11
-Jogo de parafusos, porcas e junta;8×M20 DN150;jg;51
+Jogo de parafusos, porcas e junta;8×M20 DN150;jg;54
 Junta de desmontagem travada;DN100 ASME B16.5 Classe 150 F-F 200 mm;un;1
 Junta de desmontagem travada;DN80 ASME B16.5 Classe 150 F-F 200 mm;un;2
 PSHH com trip da bomba + PSL na sucção (marcha a seco);P-201;cj;1
 PSHH com trip da bomba + PSL na sucção (marcha a seco);P-301;cj;1
-PSV (ou disco de ruptura) com retorno à sucção, antes de qualquer válvula;"descarga da P-201 (PCP); ajuste abaixo da classe do PEAD SDR17";un;1
-PSV (ou disco de ruptura) com retorno à sucção, antes de qualquer válvula;"descarga da P-301 (PCP); ajuste abaixo da classe do PEAD SDR17";un;1
-Pescoço de ganso c/ tela (topo do respiro);PEAD DE160 SDR17;un;1
+PSV (ou disco de ruptura) com retorno ao tanque de origem, antes de qualquer válvula;"descarga da P-201 (PCP); ajuste abaixo da classe do PEAD SDR17";un;1
+PSV (ou disco de ruptura) com retorno ao tanque de origem, antes de qualquer válvula;"descarga da P-301 (PCP); ajuste abaixo da classe do PEAD SDR17";un;1
 Pote de selagem (fecho hídrico) com tubo mergulhado e vertedor DN150;PS-101: Ø400 × 880 mm, selo 330 mm, apoio metálico até o piso;un;1
 Pote de selagem (fecho hídrico) com tubo mergulhado e vertedor DN150;PS-201: Ø400 × 880 mm, selo 330 mm, apoio metálico até o piso;un;1
 Pote de selagem (fecho hídrico) com tubo mergulhado e vertedor DN150;PS-202: Ø400 × 880 mm, selo 330 mm, apoio metálico até o piso;un;1
 Redução concêntrica;PEAD DE160 SDR17 × PEAD DE110 SDR17;un;1
-Respiro manual no ponto alto (DN25, válvula esfera);L-301R;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);L-301S;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);L-RL05;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);R-101-PG;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);R-201-PG;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);R-202-PG;un;1
 Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-101 sobre N1-135 6""";un;1
-Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-201 sobre N1-135 6""";un;1
-Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-202 sobre N1-135 6""";un;1
-Tubo;PEAD DE110 SDR17 (1 barra(s) de 12 m);m;2,93
-Tubo;PEAD DE110 SDR17 (2 barra(s) de 12 m);m;12,92
-Tubo;PEAD DE160 SDR17 (1 barra(s) de 12 m);m;60,27
-Tubo;PEAD DE63 SDR17 (1 barra(s) de 12 m);m;23,34
-Tubo;PEAD DE90 SDR17 (1 barra(s) de 12 m);m;17,89
+Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-201 sobre N1-45 6""";un;1
+Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-202 sobre N1-45 6""";un;1
+Tubo;PEAD DE110 SDR17 (1 barra(s) de 12 m);m;2,09
+Tubo;PEAD DE110 SDR17 (2 barra(s) de 12 m);m;17,8
+Tubo;PEAD DE160 SDR17 (1 barra(s) de 12 m);m;60,64
+Tubo;PEAD DE63 SDR17 (1 barra(s) de 12 m);m;22,47
+Tubo;PEAD DE90 SDR17 (1 barra(s) de 12 m);m;29,75
 Tubo;PEAD DE90 SDR17 (2 barra(s) de 12 m);m;43
+Tê + ventosa de esgoto (corpo longo) com descarga conduzida ao gás;PEAD DE90 SDR17 × DN50;cj;3
+Tê + ventosa de esgoto (corpo longo), quebra-vácuo a ar;PEAD DE110 SDR17 × DN50;cj;1
 Tê / junção;PEAD DE110 SDR17 × PEAD DE110 SDR17;un;1
 Tê / junção;PEAD DE110 SDR17 × PEAD DE160 SDR17;un;1
 Tê / junção;PEAD DE110 SDR17 × PEAD DE90 SDR17;un;1
 Tê / junção;PEAD DE160 SDR17 × PEAD DE160 SDR17;un;2
+Tê / junção;PEAD DE160 SDR17 × PEAD DE90 SDR17;un;3
 Tê / junção;PEAD DE90 SDR17 × PEAD DE90 SDR17;un;1
-Tê com derivação flangeada + ventosa duplo efeito;PEAD DE90 SDR17 × DN50;cj;3
 Válvula de retenção portinhola flangeada;DN100 ASME B16.5 Classe 150 F-F 300 mm;un;1
 Válvula de retenção portinhola flangeada;DN80 ASME B16.5 Classe 150 F-F 260 mm;un;2
 Válvula gaveta (registro) flangeada;DN100 ASME B16.5 Classe 150 F-F 190 mm;un;3
-Válvula gaveta (registro) flangeada;DN150 ASME B16.5 Classe 150 F-F 210 mm;un;13
+Válvula gaveta (registro) flangeada;DN150 ASME B16.5 Classe 150 F-F 210 mm;un;1
 Válvula gaveta (registro) flangeada;DN50 ASME B16.5 Classe 150 F-F 150 mm;un;4
 Válvula gaveta (registro) flangeada;DN80 ASME B16.5 Classe 150 F-F 180 mm;un;5
+Válvula guilhotina (faca) flangeada;DN150 ASME B16.5 Classe 150 F-F 210 mm;un;9
+Válvula guilhotina (faca) flangeada, atuada falha-fecha;DN150 ASME B16.5 Classe 150 F-F 210 mm;un;3

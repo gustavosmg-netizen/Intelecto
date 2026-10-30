@@ -392,11 +392,12 @@ def pote_selagem(m, tag: str, centro, z_vertedor: float, selo: float, az_saida: 
                raio=0, elev=z0 + H + 150, origem=desenho),
          Bocal("N-SAI", 150, "costado", "novo", "vertedor de saída (lâmina livre) ao destino",
                az=az_saida, elev=z_vertedor + 76, origem=desenho, soleira=z_vertedor),
-         Bocal("N-DRE", 50, "costado", "tamponar", "dreno/limpeza do fundo do pote: cego com "
-               "registro DN50 (só com a saída do reator fechada)", az=(az_saida + 180) % 360,
+         Bocal("N-DRE", 50, "costado", "tamponar", "dreno/limpeza do fundo: flange cego removível "
+               "(abrir só com V-xSAI fechada: chave presa)", az=(az_saida + 180) % 360,
                elev=z0 + 90, origem=desenho),
-         Bocal("N-LAV", 50, "costado", "tamponar", "engate de água de lavagem (flushing)",
-               az=(az_saida + 90) % 360, elev=z_vertedor + 200, origem=desenho)]
+         Bocal("N-LAV", 50, "costado", "tamponar", "água de lavagem do fundo e da boca do tubo "
+               "mergulhado: flange cego com engate rápido", az=(az_saida + 90) % 360,
+               elev=z0 + 120, origem=desenho)]
     tq = TanquePRFV(tag, desenho, centro, Di, z0, H, t=10, tampo="fechado", bocais=b,
                     escada_az=None, guarda_corpo=False, gas=False)
     construir(m, tq)

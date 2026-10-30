@@ -27,7 +27,7 @@ G = 9.81
 Q_PROJ = 6.0          # m³/h: vazão máxima das PCP 2–6 m³/h (alimentação = descarga por gravidade)
 Q_MAX = 20.0          # m³/h: Q_máx de retirada da RES-001 §5.6 (só verificação de folga)
 P_GAS_OP = 3.5        # mbar: operação máxima do espaço de gás (RES-001, cascata B)
-P_ATM_KPA = 101.3     # nível do mar (premissa; altitude do sítio é lacuna de S5)
+P_ATM_KPA = 91.3      # sítio de referência Congonhas/MG (RES-001 §5.5, LAC-027), ≈ 870 m
 P_VAP_KPA = 5.6       # água a 35 °C (mesofílico)
 TURNO_POTE = 0.30     # m: caminho equivalente da virada de 180° no fundo do pote (estimativa)
 # Hooper (1981): (K1, K∞). Tê: flangeado usado como curva (ramal) e passagem direta.
@@ -311,7 +311,7 @@ def residuo_pos_trip(m, nv, res, tq) -> dict:
     out = {}
     for tag, dest in (("R-101", "TQ-201"), ("R-201", "TQ-301"), ("R-202", "TQ-301")):
         A = math.pi * (tq[tag].Di / 1000) ** 2 / 4
-        r = res["saida"][(tag, "otimista", Q_PROJ)]
+        r = res["saida"][(tag, "otimista", Q_PROJ)]   # pior caso: τy alto retém volume em repouso
         out[tag] = {"dest": dest, "vol_m3": (r["nivel_max"] - r["crista"]) * A}
     t3 = tq["TQ-301"]
     A3 = math.pi * (t3.Di / 1000) ** 2 / 4
@@ -516,8 +516,8 @@ def memoria(m, nv, res, arquivo_md, figura):
         w(f"| {f.nome} | {f.tau_y:.0f} | {_f(f.mu_p)} | {f.rho:.0f} |")
     w(f"\n- **Espaço de gás:** opera de +1,5 a +{_f(P_GAS_OP, 1)} mbar. As verificações de "
       "nível usam 0 mbar (partida, conservador), e o gráfico usa a operação.")
-    w(f"- **NPSH:** P_atm {P_ATM_KPA} kPa (nível do mar; altitude do sítio a definir em S5, "
-      f"lacuna proposta) e P_vapor {P_VAP_KPA} kPa (35 °C).")
+    w(f"- **NPSH:** P_atm {P_ATM_KPA} kPa no sítio de referência (Congonhas/MG, ≈ 870 m; "
+      f"RES-001 §5.5, a confirmar na LAC-027) e P_vapor {P_VAP_KPA} kPa (35 °C).")
     w(f"- **Pote de selagem, virada de 180° no fundo:** modelada como {TURNO_POTE:.2f} m de "
       "caminho equivalente no ânulo. É estimativa de engenharia, a confirmar na reometria "
       "ou em ensaio de bancada (LAC-041).\n")
@@ -529,9 +529,15 @@ def memoria(m, nv, res, arquivo_md, figura):
       "0,31 a 0,50 (mínimo exigido no caso pessimista: 0,23).")
     w("- **Pote de selagem:** ao chegar, a descida vira tubo mergulhado DE160 até 330 mm "
       "abaixo da soleira do vertedor do pote. O pote transborda por lâmina livre ao destino.")
-    w("- **Quebra-sifão:** é o próprio bocal no nível. Abaixo da soleira nada escoa por "
-      "gravidade, e o gás do reator chega pela descida até a superfície interna do pote, que "
-      "é o fecho hídrico.\n")
+    w("- **Quebra-sifão: respiro de equalização R-xxx-RS (DE90).** Ele sai da geratriz superior "
+      "da descida, logo depois do registro LO, e vai a um N1 do tampo. O bocal no nível sozinho "
+      "não basta. Com τy alto, o nível sobe acima do topo do N-SAI (0,2 a 0,5 m na soleira), em "
+      "operação e também em repouso, e o bocal fica afogado.")
+    w("  - Sem respiro, o bolsão de gás da descida se dissolve ou é arrastado pela polpa, a "
+      "descida enche e sifona o reator até o topo do bocal. Isso retira 2,6 a 3,8 m³ de um "
+      "reator fechado e cria vácuo.")
+    w("  - Com o respiro, a descida fica sempre à pressão do gás e nada abaixo da soleira escoa "
+      "por gravidade. O fecho hídrico é a superfície interna do pote.\n")
     w("Colunas da tabela:")
     w("- **Subida na soleira:** lâmina crítica + partida no trecho horizontal + entrada + "
       "registro.")
@@ -566,7 +572,14 @@ def memoria(m, nv, res, arquivo_md, figura):
     w("   - A proposta citava 500 mmCA: **divergência a validar pelo responsável de "
       "processo.**")
     w("3. Q = 20 m³/h por gravidade não ocorre, porque as PCP não entregam essa vazão. A "
-      "linha aparece só como folga.\n")
+      "linha aparece só como folga.")
+    w("4. **Arraste de biogás pelo selo.** Bolhas retidas na polpa (τy de 30–100 Pa) podem "
+      "passar pelo tubo mergulhado ao ânulo do pote e seguir pela linha de transbordo aos "
+      "tanques atmosféricos.")
+    w("   - Os respiros do TQ-201 (FCA-201) e do TQ-301 (A7, sem tratamento) passam a receber "
+      "CH₄/H₂S.")
+    w("   - Estimar a vazão arrastada e tratá-la na classificação de área e no tratamento dos "
+      "respiros (LAC-049).\n")
     w("## 3. Alças de entrada e demais trens bombeados (Q = 6 m³/h)\n")
     w("Funcionamento das alças:")
     w("- As alças são pressurizadas, com crista em LSHH + 1,0 m.")
@@ -577,8 +590,14 @@ def memoria(m, nv, res, arquivo_md, figura):
     w("- **Com τy alto:** a PCP pressuriza a descida em DE160 até o N2.")
     w("- Em qualquer caso a crista acima do nível impede o sifonamento do reator de volta pela "
       "alça.")
-    w("- A alimentação dos R-201/R-202 é **alternada** pelas V-201AL e V-202BQ atuadas: não "
-      "há rateio em paralelo.\n")
+    w("- A alimentação dos R-201/R-202 é **alternada** pelas V-201AL e V-202BQ atuadas, "
+      "intertravadas para nunca ficarem abertas juntas: não há rateio em paralelo.")
+    w("  - O ramal parado (até ≈ 34 m no R-202-AL) envelhece e ganha τy. Alternar com "
+      "frequência e lavar com água antes de longas paradas. A AMT pessimista já cobre a "
+      "partida com τy = 100 Pa.")
+    w("- **Ventosa com τy baixo:** a ventosa da crista cicla (descida livre). Especificar "
+      "ventosa de esgoto de corpo longo, com manutenção programada, e ZSC/inspeção no plano "
+      "de manutenção.\n")
     w("| trem | caso | perda sucção (m) | perda recalque (m) | AMT (m) | AMT (bar) | "
       "pressão na crista (m) | p. sucção no flange (m) | NPSHd (m) |")
     w("|---|---|---|---|---|---|---|---|---|")
@@ -595,12 +614,24 @@ def memoria(m, nv, res, arquivo_md, figura):
       "classe do PEAD SDR17.")
     w("- **Pressão na crista:** igual à do gás nos casos de τy baixo, quando a ventosa abre; "
       "positiva quando a descida é pressurizada.")
-    w("- **Pressão na sucção:** fica negativa (vácuo de até ≈ 1,4 m) com τy alto, em "
-      "P-201 e P-301. O NPSH disponível continua ≥ 8 m, o que é adequado para PCP.")
+    neg = [(k, r) for k, r in res["bomb"].items() if r["p_succao_m"] is not None]
+    pmin = min(neg, key=lambda kv: kv[1]["p_succao_m"])
+    nmin = min(neg, key=lambda kv: kv[1]["NPSHd"])
+    w(f"- **Pressão na sucção:** fica negativa com τy alto. O pior caso é {pmin[0][0]}, "
+      f"{pmin[0][1]}, com {_f(pmin[1]['p_succao_m'])} m. O menor NPSH disponível é "
+      f"{_f(nmin[1]['NPSHd'])} m ({nmin[0][0]}, {nmin[0][1]}).")
+    w("  - Especificar PCP com NPSHr ≤ 3 m.")
+    w("  - Sucção toda em PEAD soldado e selo mecânico com flush, porque a sucção em vácuo "
+      "admite ar por juntas e selo, e a ventosa leva esse ar ao espaço de gás.")
+    w("  - A sucção da P-201 é reta, sem curvas, com a bomba alinhada ao N-SUC.")
     w("  - Nas purgas, a sucção depende do nível do reator: PSL na sucção.")
     w("- **Purgas:** registro LC + XV falha-fecha no N2, e chave presa entre V-xPG e a sucção "
-      "do tanque (V-201S / V-301S). Assim o reator nunca drena por gravidade para o "
-      "TQ-201/TQ-301.")
+      "do tanque (V-201S / V-301S).")
+    w("  - A chave é única para V-201PG/V-202PG: um reator por vez, sem interligar os dois "
+      "pelo fundo.")
+    w("  - Na purga dos R-201/202 pela P-301, a crista da L-301R fica acima do LSHH dos "
+      "reatores e tem ventosa (quebra-vácuo a ar, lado atmosférico). Com a PCP parada ou "
+      "gasta, o reator não sifona pela bomba: a AMT da purga é positiva.")
     w("  - A XV abre só com os permissivos da RES-001 §5.6: PALL, ZSC do gás, LSL do reator, "
       "LSHH do destino e PSL da sucção. Ela fecha no trip da bomba.")
     t = res["tq201"]
@@ -617,11 +648,13 @@ def memoria(m, nv, res, arquivo_md, figura):
         w("- **Volume que ainda chega depois do trip** (o reator escoa até a soleira, caso "
           "otimista), contra o volume LSHH→extravasor:")
         w(f"  - R-101 → TQ-201: {_f(rr['R-101']['vol_m3'])} m³ contra {_f(rr['TQ-201'])} m³;")
-        w(f"  - R-201 + R-202 → TQ-301: "
-          f"{_f(rr['R-201']['vol_m3'] + rr['R-202']['vol_m3'])} m³ contra "
+        w(f"  - R-201 ou R-202 → TQ-301 (alimentação alternada: um reator por vez): "
+          f"{_f(max(rr['R-201']['vol_m3'], rr['R-202']['vol_m3']))} m³ contra "
           f"{_f(rr['TQ-301'])} m³.")
-        w("  - **O extravasor pode operar depois de um trip.** Ele é livre e vai à caixa de "
-          "contenção (LAC-044), que deve receber esse volume.")
+        w("  - O caso otimista é o pior, porque com τy alto parte do volume fica retida no "
+          "reator em repouso.")
+        w("  - Com o extravasor do TQ-201 a +1,85 m, os dois volumes cabem e o extravasor não "
+          "opera num trip normal.")
         w("  - O LSHH do TQ-201 também corta a P-301 (RL-05).")
     w("\n## 5. Linhas de energia e piezométricas\n")
     w(f"![LE e LP]({figura})\n")
@@ -631,12 +664,13 @@ def memoria(m, nv, res, arquivo_md, figura):
     w("- **Bombas:** a LP sobe na bomba (AMT) e cai com o atrito.")
     w("- **Alças:** a LP fica no mínimo na crista mais o gás, porque a ventosa admite gás "
       "quando cai abaixo disso.\n")
-    w("## 6. Lacunas propostas por este cálculo (IDs a confirmar no registro)\n")
-    w("- **LAC-041:** reometria da polpa real (τy, μp a 35 °C, 6–9% ST) e ensaio do pote de "
-      "selagem.")
-    w("- **LAC-045:** altitude do sítio (NPSH) e confirmação da base comum z = 0 (S5).")
-    w("- **LAC-046:** selo de 330 mm em vez dos 500 mmCA citados na proposta (decisão do "
-      "responsável de processo).")
+    w("## 6. Lacunas\n")
+    w("As lacunas propostas (LAC-041 a LAC-049) estão em `LACUNAS_PROPOSTAS.md`. As que "
+      "decidem este cálculo:")
+    w("- **LAC-041:** reometria da polpa e ensaio do pote.")
+    w("- **LAC-027/045:** sítio e base z = 0.")
+    w("- **LAC-046:** selo de 330 mm.")
+    w("- **LAC-049:** biogás arrastado aos respiros dos tanques atmosféricos.")
     open(arquivo_md, "w").write("\n".join(L) + "\n")
 
 

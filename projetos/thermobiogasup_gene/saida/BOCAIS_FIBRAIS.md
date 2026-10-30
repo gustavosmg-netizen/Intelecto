@@ -13,25 +13,26 @@ Legenda: **NOVO** = furar, laminar o pescoço com reforço (repad) e flangear. *
 
 | equipamento | bocais novos (qtd × DN) | flanges cegos (qtd × DN) |
 |---|---|---|
-| R-101 | 1× DN50 + 1× DN150 | 3× DN150 + 1× DN200 + 1× DN600 |
-| R-201 | 1× DN50 + 1× DN150 | 3× DN150 + 1× DN200 + 1× DN600 |
-| R-202 | 1× DN50 + 1× DN150 | 3× DN150 + 1× DN200 + 1× DN600 |
+| R-101 | 1× DN50 + 1× DN150 | 2× DN150 + 1× DN200 + 1× DN600 |
+| R-201 | 1× DN50 + 1× DN150 | 2× DN150 + 1× DN200 + 1× DN600 |
+| R-202 | 1× DN50 + 1× DN150 | 2× DN150 + 1× DN200 + 1× DN600 |
 | TQ-201 | 1× DN25 + 4× DN50 + 4× DN80 + 1× DN100 + 3× DN150 + 1× DN200 | — |
 | TQ-301 | 1× DN50 + 1× DN150 | 4× DN150 + 1× DN600 |
 | PS-101 | 2× DN150 | 2× DN50 |
 | PS-201 | 2× DN150 | 2× DN50 |
 | PS-202 | 2× DN150 | 2× DN50 |
-| **total Fibrais (sem os potes)** | **1× DN25 + 8× DN50 + 4× DN80 + 1× DN100 + 7× DN150 + 1× DN200** | **13× DN150 + 3× DN200 + 4× DN600** |
+| **total Fibrais (sem os potes)** | **1× DN25 + 8× DN50 + 4× DN80 + 1× DN100 + 7× DN150 + 1× DN200** | **10× DN150 + 3× DN200 + 4× DN600** |
 
 Leitura do resumo:
 - **Reatores e TQ-301 (já fabricados):** os bocais novos são só a saída N-SAI DN150, com a soleira interna no N.A. (+3,50 / +7,50), e o LSHH DN50.
-- **Reatores, flanges cegos:** dois N2, o M1 e o A4 convertido. Cada reator tem ainda um N1 cego de reserva, para o transbordo dedicado da LAC-038 ou para uma tomada independente de PSLL/PAHH.
+- **Reatores, flanges cegos:** dois N2, o M1 e o A4. Os quatro N1 ficam em uso: respiro de equalização da saída, descarga da ventosa da alça, selo hidráulico e radar.
+- **A4 (8"):** é convertido em flange com cego multitomada. É o candidato ao transbordo dedicado (LAC-038) e às tomadas independentes de PSLL/PAHH (LAC-048).
 - **TQ-201:** todos os bocais são novos, porque o tanque é especificado pela CSTR (LAC-010).
 - **Potes PS-101/201/202:** são itens novos da CSTR (PRFV ou PEAD), não da Fibrais.
 
 ## O que a Fibrais precisa confirmar ou fornecer antes de furar
 
-- **Cargas nos bocais novos.** A N-SAI recebe o registro e a descida. O pote e as descidas têm apoio próprio (estrutura metálica até o piso): o bocal não carrega o pote cheio. A Fibrais informa as cargas admissíveis (forças e momentos) e o reforço (repad) de cada abertura nova, com a FEA da LAC-006.
+- **Cargas nos bocais novos.** A N-SAI recebe só o registro e o tê do respiro. O pote tem estrutura própria até o piso, e a descida e o transbordo se apoiam numa estrutura metálica a projetar (LAC-047), não no bocal. A Fibrais informa as cargas admissíveis (forças e momentos) e o reforço (repad) de cada abertura nova, com a FEA da LAC-006.
 - **Distância mínima de bocal à junta fundo-costado** (N-SUC a 250 mm e N-DRE a 200 mm do fundo do TQ-201).
 - **Detalhes internos:** quebra-vórtice no N-SUC; tubos de imersão no N-DOS e no N-RL05.
 - **Dilatação do PEAD** entre o piso e os bocais altos (até ≈ 60 mm a ΔT 30 K). Prever liras ou mangote flexível junto ao bocal, sem carregar o PRFV.
@@ -42,7 +43,7 @@ Leitura do resumo:
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N1-45 | 150 (6") | tampo az 45°, r = 1000 mm; face a 150 mm do tampo | 4850 | TAMPONAR (flange cego) | reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6) | — |  |
+| N1-45 | 150 (6") | tampo az 45°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | respiro de equalização da descida da saída (quebra-sifão, gás) | R-101-RS |  |
 | N1-135 | 150 (6") | tampo az 135°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
 | N1-225 | 150 (6") | tampo az 225°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | descarga da ventosa da crista da alça de entrada (gás, quebra-sifão) | R-101-VQ |  |
 | N1-315 | 150 (6") | tampo az 315°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | transmissor de nível (radar) | LT |  |
@@ -54,7 +55,7 @@ Leitura do resumo:
 | N3-180 | 50 (2") | tampo az 180°, r = 450 mm; face a 150 mm do tampo | 4850 | USAR (existente) | PT/PSLL/PAHH do espaço de gás | PT | idem LAC-043 |
 | M1 | 600 (24") | costado az 90°; eixo a 700 mm do fundo interno | 700 | TAMPONAR (flange cego) | boca de visita inferior: tampa cega estanque a gás (LAC-029) | — |  |
 | M2 | 800 (Ø800 mm) | tampo az 0°, r = 1000 mm; face a 170 mm do tampo | 4870 | USAR (existente) | dispositivo de emergência bidirecional | EMG |  |
-| A4 | 200 (8") | tampo az 180°, r = 1000 mm; face a 150 mm do tampo | 4850 | CONVERTER: flange 8" + cego | respiro 8" PVC chapéu chinês → flange 8" ANSI 150# + flange cego (abrir só na purga OP-02) | — |  |
+| A4 | 200 (8") | tampo az 180°, r = 1000 mm; face a 150 mm do tampo | 4850 | CONVERTER: flange 8" + cego | respiro 8" PVC chapéu chinês → flange 8" Classe 150 + flange cego multitomada (abrir só na purga OP-02); candidato ao transbordo dedicado (LAC-038) e às tomadas independentes PSLL/PAHH (LAC-048) | — |  |
 | N-SAI | 150 (6") | costado az 90°; eixo a 3576 mm do fundo interno | 3576 | NOVO (furar, laminar e flangear) | saída por gravidade no nível: soleira interna do bocal = N.A. (+3.50); segue ao pote de selagem | R-101-SAI |  |
 | N-LSHH | 50 (2") | costado az 65°; eixo a 4350 mm do fundo interno | 4350 | NOVO (furar, laminar e flangear) | chave de nível muito alto (garfo vibratório, sensor dedicado à SIF) | LSHH |  |
 
@@ -62,8 +63,8 @@ Leitura do resumo:
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N1-45 | 150 (6") | tampo az 45°, r = 1300 mm; face a 150 mm do tampo | 9450 | TAMPONAR (flange cego) | reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6) | — |  |
-| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
+| N1-45 | 150 (6") | tampo az 45°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
+| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | respiro de equalização da descida da saída (quebra-sifão, gás) | R-201-RS |  |
 | N1-225 | 150 (6") | tampo az 225°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | descarga da ventosa da crista da alça de entrada (gás, quebra-sifão) | R-201-VQ |  |
 | N1-315 | 150 (6") | tampo az 315°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | transmissor de nível (radar) | LT |  |
 | N2-45 | 150 (6") | costado az 45°; eixo a 300 mm do fundo interno | 300 | TAMPONAR (flange cego) | sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05) | — |  |
@@ -74,7 +75,7 @@ Leitura do resumo:
 | N3-180 | 50 (2") | tampo az 180°, r = 450 mm; face a 150 mm do tampo | 9450 | USAR (existente) | PT/PSLL/PAHH do espaço de gás | PT | idem LAC-043 |
 | M1 | 600 (24") | costado az 90°; eixo a 700 mm do fundo interno | 700 | TAMPONAR (flange cego) | boca de visita inferior: tampa cega estanque a gás (LAC-029) | — |  |
 | M2 | 800 (Ø800 mm) | tampo az 0°, r = 1300 mm; face a 170 mm do tampo | 9470 | USAR (existente) | dispositivo de emergência bidirecional | EMG |  |
-| A4 | 200 (8") | tampo az 180°, r = 1300 mm; face a 150 mm do tampo | 9450 | CONVERTER: flange 8" + cego | respiro 8" PVC chapéu chinês → flange 8" ANSI 150# + flange cego (abrir só na purga OP-02) | — |  |
+| A4 | 200 (8") | tampo az 180°, r = 1300 mm; face a 150 mm do tampo | 9450 | CONVERTER: flange 8" + cego | respiro 8" PVC chapéu chinês → flange 8" Classe 150 + flange cego multitomada (abrir só na purga OP-02); candidato ao transbordo dedicado (LAC-038) e às tomadas independentes PSLL/PAHH (LAC-048) | — |  |
 | N-SAI | 150 (6") | costado az 146°; eixo a 7576 mm do fundo interno | 7576 | NOVO (furar, laminar e flangear) | saída por gravidade no nível: soleira interna do bocal = N.A. (+7.50); segue ao pote de selagem | R-201-SAI |  |
 | N-LSHH | 50 (2") | costado az 110°; eixo a 8350 mm do fundo interno | 8350 | NOVO (furar, laminar e flangear) | chave de nível muito alto (garfo vibratório, sensor dedicado à SIF) | LSHH |  |
 
@@ -82,9 +83,9 @@ Leitura do resumo:
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N1-45 | 150 (6") | tampo az 45°, r = 1300 mm; face a 150 mm do tampo | 9450 | TAMPONAR (flange cego) | reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6) | — |  |
-| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
-| N1-225 | 150 (6") | tampo az 225°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | transmissor de nível (radar) | LT |  |
+| N1-45 | 150 (6") | tampo az 45°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
+| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | transmissor de nível (radar) | LT |  |
+| N1-225 | 150 (6") | tampo az 225°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | respiro de equalização da descida da saída (quebra-sifão, gás) | R-202-RS |  |
 | N1-315 | 150 (6") | tampo az 315°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | descarga da ventosa da crista da alça de entrada (gás, quebra-sifão) | R-202-VQ |  |
 | N2-45 | 150 (6") | costado az 45°; eixo a 300 mm do fundo interno | 300 | TAMPONAR (flange cego) | sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05) | — |  |
 | N2-135 | 150 (6") | costado az 135°; eixo a 300 mm do fundo interno | 300 | USAR (existente) | purga de lodo/esgotamento por bomba (LC + XV falha-fecha, intertravamento por chave com a sucção do tanque; Q ≤ Q_máx RES-001 §5.6) | R-202-PG |  |
@@ -94,7 +95,7 @@ Leitura do resumo:
 | N3-180 | 50 (2") | tampo az 180°, r = 450 mm; face a 150 mm do tampo | 9450 | USAR (existente) | PT/PSLL/PAHH do espaço de gás | PT | idem LAC-043 |
 | M1 | 600 (24") | costado az 90°; eixo a 700 mm do fundo interno | 700 | TAMPONAR (flange cego) | boca de visita inferior: tampa cega estanque a gás (LAC-029) | — |  |
 | M2 | 800 (Ø800 mm) | tampo az 0°, r = 1300 mm; face a 170 mm do tampo | 9470 | USAR (existente) | dispositivo de emergência bidirecional | EMG |  |
-| A4 | 200 (8") | tampo az 180°, r = 1300 mm; face a 150 mm do tampo | 9450 | CONVERTER: flange 8" + cego | respiro 8" PVC chapéu chinês → flange 8" ANSI 150# + flange cego (abrir só na purga OP-02) | — |  |
+| A4 | 200 (8") | tampo az 180°, r = 1300 mm; face a 150 mm do tampo | 9450 | CONVERTER: flange 8" + cego | respiro 8" PVC chapéu chinês → flange 8" Classe 150 + flange cego multitomada (abrir só na purga OP-02); candidato ao transbordo dedicado (LAC-038) e às tomadas independentes PSLL/PAHH (LAC-048) | — |  |
 | N-SAI | 150 (6") | costado az 198°; eixo a 7576 mm do fundo interno | 7576 | NOVO (furar, laminar e flangear) | saída por gravidade no nível: soleira interna do bocal = N.A. (+7.50); segue ao pote de selagem | R-202-SAI |  |
 | N-LSHH | 50 (2") | costado az 250°; eixo a 8350 mm do fundo interno | 8350 | NOVO (furar, laminar e flangear) | chave de nível muito alto (garfo vibratório, sensor dedicado à SIF) | LSHH |  |
 
@@ -102,9 +103,9 @@ Leitura do resumo:
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N-ENT | 150 (6") | costado az 270°; eixo a 1836 mm do fundo interno | 2286 | NOVO (furar, laminar e flangear) | entrada do R-101 (descarga livre acima do extravasor) | R-101-TRB |  |
+| N-ENT | 150 (6") | costado az 270°; eixo a 1936 mm do fundo interno | 2386 | NOVO (furar, laminar e flangear) | entrada do R-101 (descarga livre acima do extravasor) | R-101-TRB |  |
 | N-SUC | 100 (4") | costado az 180°; eixo a 250 mm do fundo interno | 700 | NOVO (furar, laminar e flangear) | sucção da P-201 com quebra-vórtice | L-201S | eixo a 250 mm do fundo: Fibrais confirma a distância mínima à junta fundo-costado |
-| N-EXT | 150 (6") | costado az 30°; eixo a 1376 mm do fundo interno | 1826 | NOVO (furar, laminar e flangear) | extravasor livre (sem válvula) | L-201EX |  |
+| N-EXT | 150 (6") | costado az 30°; eixo a 1476 mm do fundo interno | 1926 | NOVO (furar, laminar e flangear) | extravasor livre (sem válvula) | L-201EX |  |
 | N-DRE | 50 (2") | costado az 135°; eixo a 200 mm do fundo interno | 650 | NOVO (furar, laminar e flangear) | dreno de fundo com registro | L-201DR | idem N-SUC |
 | N-LSLL | 50 (2") | costado az 225°; eixo a 470 mm do fundo interno | 920 | NOVO (furar, laminar e flangear) | LSLL garfo (trip P-201) | LSLL |  |
 | N-LSHH | 50 (2") | costado az 315°; eixo a 1150 mm do fundo interno | 1600 | NOVO (furar, laminar e flangear) | LSHH garfo (trip P-101) | LSHH |  |
@@ -138,25 +139,25 @@ Leitura do resumo:
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N-ENT | 150 (6") | tampo az 0°, r = 0 mm; face a 150 mm do tampo | 2890 | NOVO (furar, laminar e flangear) | chegada do reator; continua como tubo mergulhado | R-101-SAI |  |
-| N-SAI | 150 (6") | costado az 90°; eixo a 606 mm do fundo interno | 2466 | NOVO (furar, laminar e flangear) | vertedor de saída (lâmina livre) ao destino | R-101-TRB |  |
-| N-DRE | 50 (2") | costado az 270°; eixo a 90 mm do fundo interno | 1950 | TAMPONAR (flange cego) | dreno/limpeza do fundo do pote: cego com registro DN50 (só com a saída do reator fechada) | — |  |
-| N-LAV | 50 (2") | costado az 180°; eixo a 730 mm do fundo interno | 2590 | TAMPONAR (flange cego) | engate de água de lavagem (flushing) | — |  |
+| N-ENT | 150 (6") | tampo az 0°, r = 0 mm; face a 150 mm do tampo | 2990 | NOVO (furar, laminar e flangear) | chegada do reator; continua como tubo mergulhado | R-101-SAI |  |
+| N-SAI | 150 (6") | costado az 90°; eixo a 606 mm do fundo interno | 2566 | NOVO (furar, laminar e flangear) | vertedor de saída (lâmina livre) ao destino | R-101-TRB |  |
+| N-DRE | 50 (2") | costado az 270°; eixo a 90 mm do fundo interno | 2050 | TAMPONAR (flange cego) | dreno/limpeza do fundo: flange cego removível (abrir só com V-xSAI fechada: chave presa) | — |  |
+| N-LAV | 50 (2") | costado az 180°; eixo a 120 mm do fundo interno | 2080 | TAMPONAR (flange cego) | água de lavagem do fundo e da boca do tubo mergulhado: flange cego com engate rápido | — |  |
 
 ## PS-201 — desenho novo (CSTR)
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N-ENT | 150 (6") | tampo az 0°, r = 0 mm; face a 150 mm do tampo | 6810 | NOVO (furar, laminar e flangear) | chegada do reator; continua como tubo mergulhado | R-201-SAI |  |
-| N-SAI | 150 (6") | costado az 146°; eixo a 606 mm do fundo interno | 6386 | NOVO (furar, laminar e flangear) | vertedor de saída (lâmina livre) ao destino | R-201-TRB |  |
-| N-DRE | 50 (2") | costado az 326°; eixo a 90 mm do fundo interno | 5870 | TAMPONAR (flange cego) | dreno/limpeza do fundo do pote: cego com registro DN50 (só com a saída do reator fechada) | — |  |
-| N-LAV | 50 (2") | costado az 236°; eixo a 730 mm do fundo interno | 6510 | TAMPONAR (flange cego) | engate de água de lavagem (flushing) | — |  |
+| N-ENT | 150 (6") | tampo az 0°, r = 0 mm; face a 150 mm do tampo | 6840 | NOVO (furar, laminar e flangear) | chegada do reator; continua como tubo mergulhado | R-201-SAI |  |
+| N-SAI | 150 (6") | costado az 146°; eixo a 606 mm do fundo interno | 6416 | NOVO (furar, laminar e flangear) | vertedor de saída (lâmina livre) ao destino | R-201-TRB |  |
+| N-DRE | 50 (2") | costado az 326°; eixo a 90 mm do fundo interno | 5900 | TAMPONAR (flange cego) | dreno/limpeza do fundo: flange cego removível (abrir só com V-xSAI fechada: chave presa) | — |  |
+| N-LAV | 50 (2") | costado az 236°; eixo a 120 mm do fundo interno | 5930 | TAMPONAR (flange cego) | água de lavagem do fundo e da boca do tubo mergulhado: flange cego com engate rápido | — |  |
 
 ## PS-202 — desenho novo (CSTR)
 
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
-| N-ENT | 150 (6") | tampo az 0°, r = 0 mm; face a 150 mm do tampo | 6720 | NOVO (furar, laminar e flangear) | chegada do reator; continua como tubo mergulhado | R-202-SAI |  |
-| N-SAI | 150 (6") | costado az 198°; eixo a 606 mm do fundo interno | 6296 | NOVO (furar, laminar e flangear) | vertedor de saída (lâmina livre) ao destino | R-202-TRB |  |
-| N-DRE | 50 (2") | costado az 18°; eixo a 90 mm do fundo interno | 5780 | TAMPONAR (flange cego) | dreno/limpeza do fundo do pote: cego com registro DN50 (só com a saída do reator fechada) | — |  |
-| N-LAV | 50 (2") | costado az 288°; eixo a 730 mm do fundo interno | 6420 | TAMPONAR (flange cego) | engate de água de lavagem (flushing) | — |  |
+| N-ENT | 150 (6") | tampo az 0°, r = 0 mm; face a 150 mm do tampo | 6750 | NOVO (furar, laminar e flangear) | chegada do reator; continua como tubo mergulhado | R-202-SAI |  |
+| N-SAI | 150 (6") | costado az 198°; eixo a 606 mm do fundo interno | 6326 | NOVO (furar, laminar e flangear) | vertedor de saída (lâmina livre) ao destino | R-202-TRB |  |
+| N-DRE | 50 (2") | costado az 18°; eixo a 90 mm do fundo interno | 5810 | TAMPONAR (flange cego) | dreno/limpeza do fundo: flange cego removível (abrir só com V-xSAI fechada: chave presa) | — |  |
+| N-LAV | 50 (2") | costado az 288°; eixo a 120 mm do fundo interno | 5840 | TAMPONAR (flange cego) | água de lavagem do fundo e da boca do tubo mergulhado: flange cego com engate rápido | — |  |

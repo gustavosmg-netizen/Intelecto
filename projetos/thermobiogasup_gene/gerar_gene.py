@@ -21,7 +21,8 @@ ESTADO = {"usar": "USAR (existente)", "tamponar": "TAMPONAR (flange cego)",
           "converter": "CONVERTER: flange 8\" + cego", "novo": "NOVO (furar, laminar e flangear)"}
 
 
-SERVICO = {"-VQ": "descarga da ventosa da crista da alça de entrada (gás, quebra-sifão)",
+SERVICO = {"-RS": "respiro de equalização da descida da saída (quebra-sifão, gás)",
+           "-VQ": "descarga da ventosa da crista da alça de entrada (gás, quebra-sifão)",
            "SH": "selo hidráulico de sobre/subpressão (+8/−3 mbar)",
            "LT": "transmissor de nível (radar)"}
 
@@ -101,19 +102,22 @@ def escrever_bocais(linhas, pasta: Path):
     L.append("Leitura do resumo:")
     L.append("- **Reatores e TQ-301 (já fabricados):** os bocais novos são só a saída N-SAI "
              "DN150, com a soleira interna no N.A. (+3,50 / +7,50), e o LSHH DN50.")
-    L.append("- **Reatores, flanges cegos:** dois N2, o M1 e o A4 convertido. Cada reator tem "
-             "ainda um N1 cego de reserva, para o transbordo dedicado da LAC-038 ou para uma "
-             "tomada independente de PSLL/PAHH.")
+    L.append("- **Reatores, flanges cegos:** dois N2, o M1 e o A4. Os quatro N1 ficam em uso: "
+             "respiro de equalização da saída, descarga da ventosa da alça, selo hidráulico e "
+             "radar.")
+    L.append("- **A4 (8\"):** é convertido em flange com cego multitomada. É o candidato ao "
+             "transbordo dedicado (LAC-038) e às tomadas independentes de PSLL/PAHH (LAC-048).")
     L.append("- **TQ-201:** todos os bocais são novos, porque o tanque é especificado pela "
              "CSTR (LAC-010).")
     L.append("- **Potes PS-101/201/202:** são itens novos da CSTR (PRFV ou PEAD), não da "
              "Fibrais.\n")
     L.append("## O que a Fibrais precisa confirmar ou fornecer antes de furar\n")
     for t in (
-            "**Cargas nos bocais novos.** A N-SAI recebe o registro e a descida. O pote e "
-            "as descidas têm apoio próprio (estrutura metálica até o piso): o bocal não "
-            "carrega o pote cheio. A Fibrais informa as cargas admissíveis (forças e "
-            "momentos) e o reforço (repad) de cada abertura nova, com a FEA da LAC-006.",
+            "**Cargas nos bocais novos.** A N-SAI recebe só o registro e o tê do respiro. O pote "
+            "tem estrutura própria até o piso, e a descida e o transbordo se apoiam numa "
+            "estrutura metálica a projetar (LAC-047), não no bocal. A Fibrais informa as "
+            "cargas admissíveis (forças e momentos) e o reforço (repad) de cada abertura nova, "
+            "com a FEA da LAC-006.",
             "**Distância mínima de bocal à junta fundo-costado** (N-SUC a 250 mm e N-DRE a "
             "200 mm do fundo do TQ-201).",
             "**Detalhes internos:** quebra-vórtice no N-SUC; tubos de imersão no N-DOS e no "
@@ -149,11 +153,12 @@ LACUNAS_PROPOSTAS = [
      "A perda de carga do FCA define o vácuo no TQ-201 atmosférico", "CSTR – S4", "Gate 4"),
     ("LAC-043", "Posição radial real do N3 (2\") no tampo dos reatores", "Locação das linhas "
      "de gás e do PT", "Fibrais (as-built)", "Gate 1"),
-    ("LAC-044", "Caixa de contenção dos extravasores: destino e volume (≥ o volume que chega "
-     "depois do trip: ≈ 0,5 m³ no TQ-201 e ≈ 1,4 m³ no TQ-301)", "Transbordo seguro",
+    ("LAC-044", "Caixa de contenção dos extravasores: destino e volume (falha da P-201/P-301 "
+     "ou bloqueio a jusante)", "Transbordo seguro",
      "CSTR – S5", "Gate 3"),
-    ("LAC-045", "Locação, base comum z = 0 e altitude do sítio (NPSH)", "Todas as cotas e o "
-     "NPSH são premissas", "CSTR – S5", "Gate 1"),
+    ("LAC-045", "Locação e base comum z = 0; altitude do sítio (NPSH com Congonhas/MG ≈ 870 m, "
+     "sítio de referência da LAC-027)", "Todas as cotas e o NPSH são premissas", "CSTR – S5",
+     "Gate 1"),
     ("LAC-046", "Selo das saídas: 330 mm de polpa (≈ 33 mbar) em vez dos 500 mmCA da proposta",
      "Decisão do responsável de processo", "CSTR – processo", "Gate 1"),
     ("LAC-047", "Estruturas de apoio dos potes e das descidas; cargas admissíveis nos bocais "
@@ -163,8 +168,10 @@ LACUNAS_PROPOSTAS = [
      "PSLL/PAHH (N1 de reserva), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC "
      "no V-xGAS, LSLL do TQ-201 como SIF dedicada", "Barreiras contra vácuo e entrada de ar",
      "CSTR – S4", "Gate 4"),
-    ("LAC-049", "Respiro A7 do TQ-301 sem tratamento (H₂S/CH₄; ver LAC-009)", "Odor e área "
-     "classificada", "CSTR – S4", "Gate 4"),
+    ("LAC-049", "Biogás arrastado pelos potes de selagem aos tanques atmosféricos: vazão "
+     "estimada, tratamento dos respiros (A7 do TQ-301 sem tratamento; FCA-201) e "
+     "classificação de área (ver LAC-009)", "Odor, H₂S e área classificada", "CSTR – S4",
+     "Gate 4"),
 ]
 
 
