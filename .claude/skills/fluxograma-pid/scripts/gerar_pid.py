@@ -22,6 +22,8 @@ import shutil
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 #: Rótulos do carimbo ISO 7200 do servidor -> rótulos da casa.
 ROTULOS_PT = {
     "DWG NO": "Nº DO DESENHO",
@@ -65,14 +67,16 @@ async def desenhar(spec: dict, saida: Path, nome: str) -> dict:
 
     folha = spec.get("folha", {})
     derivacoes = spec.get("derivacoes", [])
-    pid = {k: v for k, v in spec.items() if k not in ("folha", "derivacoes", "notas")}
+    pid = {k: v for k, v in spec.items() if k not in CHAVES_CASA}
     # Escala dos símbolos na folha (A1 = 2, A0 = 2,8): multiplica a escala de cada item;
     # as dimensões de vasos em `params` também escalam, então são dadas no tamanho base.
     escala = float(folha.get("escala_simbolos", 1.0))
-    if escala != 1.0:
-        pid = json.loads(json.dumps(pid))
-        for secao in ("equipment", "valves", "instruments", "connectors"):
-            for item in pid.get(secao, []):
+    pid = json.loads(json.dumps(pid))
+    for secao in ("equipment", "valves", "instruments", "connectors"):
+        for item in pid.get(secao, []):
+            for chave in CHAVES_ITEM_CASA:  # tratadas no pós-processamento
+                item.pop(chave, None)
+            if escala != 1.0:
                 item["scale"] = item.get("scale", 1.0) * escala
     tamanho = pid.get("sheet", {}).get("sheet_size", "A3")
     env = {
@@ -130,25 +134,28 @@ async def desenhar(spec: dict, saida: Path, nome: str) -> dict:
             rc = await chamar("drawing_critique", {"focus": focos})
             resultado["critica"] = rc if isinstance(rc, list) else rc.get("issues", resultado["critica"])
         titulo = folha.get("titulo", pid.get("sheet", {}).get("intent", "FLUXOGRAMA DE ENGENHARIA"))
-        await chamar(
-            "titleblock_apply",
-            {
-                "size": tamanho,
-                "title": titulo,
-                "drawing_no": folha.get("numero", "PID-000"),
-                "revision": str(folha.get("revisao", "0")),
-                "sheet": folha.get("folha", "1/1"),
-                "part_no": folha.get("projeto", ""),
-                "material": folha.get("unidade", ""),
-                "scale": folha.get("escala", "S/E"),
-                "drawn_by": folha.get("desenho", ""),
-                "checked_by": folha.get("verificacao", ""),
-                "date": folha.get("data", ""),
-                "company": folha.get("empresa", "INTELECTO & CSTR"),
-                "projection": "",
-                "zones": True,
-            },
-        )
+        if tamanho in ("A1", "A0"):
+            await chamar("sheet_frame", {"size": tamanho})
+        else:
+            await chamar(
+              "titleblock_apply",
+              {
+                  "size": tamanho,
+                  "title": titulo,
+                  "drawing_no": folha.get("numero", "PID-000"),
+                  "revision": str(folha.get("revisao", "0")),
+                  "sheet": folha.get("folha", "1/1"),
+                  "part_no": folha.get("projeto", ""),
+                  "material": folha.get("unidade", ""),
+                  "scale": folha.get("escala", "S/E"),
+                  "drawn_by": folha.get("desenho", ""),
+                  "checked_by": folha.get("verificacao", ""),
+                  "date": folha.get("data", ""),
+                  "company": folha.get("empresa", "INTELECTO & CSTR"),
+                  "projection": "",
+                  "zones": True,
+              },
+            )
         for lista in ("line_list", "equipment_list", "instrument_index"):
             await chamar(f"pid_{lista}", {"csv_path": str(saida / f"{nome}_{lista}.csv")})
         await chamar("drawing_save_as", {"path": str(dxf)})
@@ -158,7 +165,10 @@ async def desenhar(spec: dict, saida: Path, nome: str) -> dict:
     return resultado
 
 
-CAMADAS_LINHA = ("PROCESS-PIPING", "UTILITY-LINE", "INSTRUMENT-LINE")
+CHAVES_CASA = {"folha", "derivacoes", "notas", "casa"}
+CHAVES_ITEM_CASA = ("aparencia", "dados", "rotulo")
+
+CAMADAS_LINHA = ("PROCESS-PIPING", "UTILITY-LINE", "INSTRUMENT-LINE", "LIN-")
 
 
 def _segmentos(msp) -> list[tuple[str, tuple, tuple]]:
@@ -183,7 +193,7 @@ def _colide(texto, segs) -> str | None:
     """Handle da primeira linha que cruza a caixa do texto (com folga de 0,5 mm)."""
     from ezdxf import bbox
 
-    caixa = bbox.extents([texto], fast=True)
+    caixa = bbox.extents([texto], fast=False)
     if not caixa.has_data:
         return None
     x0, y0, x1, y1 = caixa.extmin.x - 0.5, caixa.extmin.y - 0.5, caixa.extmax.x + 0.5, caixa.extmax.y + 0.5
@@ -198,7 +208,7 @@ def _colide(texto, segs) -> str | None:
 def _caixa(ent, folga: float = 0.5):
     from ezdxf import bbox
 
-    c = bbox.extents([ent], fast=True)
+    c = bbox.extents([ent], fast=False)
     if not c.has_data:
         return None
     return (c.extmin.x - folga, c.extmin.y - folga, c.extmax.x + folga, c.extmax.y + folga)
@@ -300,14 +310,42 @@ def corrigir_numeros_linha(msp) -> None:
                 alvo.dxf.align_point = original[3]
 
 
-def corrigir_rotulos(msp) -> None:
+def posicionar_rotulos(msp, rotulos_spec: dict[str, dict]) -> set[str]:
+    """Rótulo em posição dada pela spec ({x, y, alinh: L|C|R}): TAG, DESC e dados empilhados para baixo.
+    Devolve os handles dos símbolos fixados (a correção automática não mexe neles)."""
+    from ezdxf.enums import TextEntityAlignment
+
+    fixos = set()
+    al = {"L": TextEntityAlignment.LEFT, "C": TextEntityAlignment.CENTER, "R": TextEntityAlignment.RIGHT}
+    for ins in msp.query("INSERT"):
+        attrs = {a.dxf.tag: a for a in ins.attribs}
+        tag = attrs.get("TAG")
+        if not tag or tag.dxf.text not in rotulos_spec:
+            continue
+        r = rotulos_spec[tag.dxf.text]
+        y = r["y"]
+        ordem = [a for a in ins.attribs if a.dxf.text.strip() and a.dxf.tag not in ("FUNC", "LOOP")]
+        ordem.sort(key=lambda a: (a.dxf.tag != "TAG", a.dxf.tag != "DESC", a.dxf.tag))
+        for a in ordem:
+            a.dxf.rotation = 0.0
+            a.set_placement((r["x"], y - a.dxf.height), align=al[r.get("alinh", "C")])
+            y -= a.dxf.height * 1.4
+        fixos.add(ins.dxf.handle)
+    return fixos
+
+
+def corrigir_rotulos(msp, fixos: set[str] | None = None) -> None:
     """Rótulos TAG/DESC de bloco que caem sobre uma linha: tenta abaixo do símbolo,
     depois à direita. O que não tiver posição livre fica e vira aviso na verificação."""
     from ezdxf import bbox
 
     segs = _segmentos(msp)
     for ins in msp.query("INSERT"):
-        rotulos = [a for a in ins.attribs if a.dxf.text.strip()]
+        if fixos and ins.dxf.handle in fixos:
+            continue
+        # texto interno da bolha ISA (FUNC/LOOP) e TAG dentro do conector não saem do lugar
+        fixos = {"FUNC", "LOOP"} | ({"TAG"} if "CONNECTOR" in ins.dxf.name else set())
+        rotulos = [a for a in ins.attribs if a.dxf.text.strip() and a.dxf.tag not in fixos]
         if not rotulos:
             continue
         # Símbolo girado (válvula em linha vertical, misturador lateral): rótulo volta à horizontal.
@@ -324,16 +362,23 @@ def corrigir_rotulos(msp) -> None:
         originais = [(a, a.dxf.insert, a.dxf.halign, a.dxf.get("align_point")) for a in rotulos]
         # TAG primeiro e DESC embaixo dele, centralizados; ou empilhados à direita, alinhados à esquerda.
         xmin, ymax = geo.extmin.x, geo.extmax.y
-        n = len(rotulos)
+        ordem = sorted(rotulos, key=lambda a: a.dxf.tag != "TAG")
+        n = len(ordem)
+        # deslocamento acumulado de cada linha pela altura real (TAG maior que DESC e dados)
+        passo = [a.dxf.height * 1.35 for a in ordem]
+        abaixo = [sum(passo[: k + 1]) for k in range(n)]
+        acima = [sum(passo[k + 1:]) for k in range(n)]
+        meio = [sum(passo) / 2 - sum(passo[:k]) - passo[k] * 0.8 for k in range(n)]
         tentativas = [
-            [(cx, ymin - 1.5 - 3.2 * (k + 1), 1) for k in range(n)],  # abaixo
-            [(xmax + 2.0, ymid + 1.6 - 3.2 * k, 0) for k in range(n)],  # à direita
-            [(xmax + 2.0, ymax + 1.5 + 3.2 * (n - 1 - k), 0) for k in range(n)],  # acima, à direita
-            [(xmin - 2.0, ymid + 1.6 - 3.2 * k, 2) for k in range(n)],  # à esquerda
-            [(xmin - 2.0, ymax + 1.5 + 3.2 * (n - 1 - k), 2) for k in range(n)],  # acima, à esquerda
-            [(xmax + 2.0, ymin - 1.5 - 3.2 * (k + 1), 0) for k in range(n)],  # abaixo, à direita
-            [(xmin - 2.0, ymin - 1.5 - 3.2 * (k + 1), 2) for k in range(n)],  # abaixo, à esquerda
-            [(cx, ymax + 6.0 + 3.2 * (n - 1 - k), 1) for k in range(n)],  # mais acima
+            [(cx, ymin - 1.5 - abaixo[k], 1) for k in range(n)],  # abaixo
+            [(xmax + 2.0, ymid + meio[k], 0) for k in range(n)],  # à direita
+            [(xmax + 2.0, ymax + 1.5 + acima[k], 0) for k in range(n)],  # acima, à direita
+            [(xmin - 2.0, ymid + meio[k], 2) for k in range(n)],  # à esquerda
+            [(xmin - 2.0, ymax + 1.5 + acima[k], 2) for k in range(n)],  # acima, à esquerda
+            [(xmax + 2.0, ymin - 1.5 - abaixo[k], 0) for k in range(n)],  # abaixo, à direita
+            [(xmin - 2.0, ymin - 1.5 - abaixo[k], 2) for k in range(n)],  # abaixo, à esquerda
+            [(cx, ymax + 1.5 + acima[k], 1) for k in range(n)],  # acima
+            [(cx, ymin - 8.0 - abaixo[k], 1) for k in range(n)],  # mais abaixo
         ]
         ordem = sorted(rotulos, key=lambda a: a.dxf.tag != "TAG")
         for posicoes in tentativas:
@@ -395,25 +440,39 @@ def verificar_desenho(dxf: Path) -> list[dict]:
             if d1 == d2 or n1.startswith("símbolo") and n2.startswith("símbolo"):
                 continue
             if _cruza(c1, c2) and (n1, n2) not in vistos:
+                # texto inteiramente dentro de um vaso (TAG/nível escritos no corpo) é intencional
+                if any(n.startswith("símbolo PID_VESSEL") and not m.startswith("símbolo") and
+                       a[0] <= b[0] and a[1] <= b[1] and a[2] >= b[2] and a[3] >= b[3]
+                       for n, m, a, b in ((n1, n2, c1, c2), (n2, n1, c2, c1))):
+                    continue
                 vistos.add((n1, n2))
                 achados.append({"severity": "warning", "focus": "texto_sobreposto",
                                 "message": f"{n1} sobrepõe {n2}; afaste um dos dois"})
     return achados
 
 
-def pos_processar(dxf: Path, tamanho: str, titulo: str, notas: dict | None = None, escala: float = 1.0) -> None:
-    """Carimbo em PT-BR, título ajustado ao campo, PDF monocromático e PNG."""
+def pos_processar(dxf: Path, res: dict, spec: dict) -> None:
+    """Formato da casa (A1/A0) ou carimbo ISO em PT-BR (A4-A2), cores por serviço, símbolos e
+    linhas da casa, correção de rótulos, PDF colorido + PDF P&B e PNG de conferência."""
     import ezdxf
     import matplotlib
 
     matplotlib.use("Agg")
+    from ezdxf import bbox
     from ezdxf.addons.drawing import matplotlib as mpl
     from ezdxf.addons.drawing.config import ColorPolicy, Configuration
 
-    from ezdxf import bbox
+    import formato_casa as fc
+
+    tamanho, titulo = res["folha"], res["titulo"]
+    folha = spec.get("folha", {})
+    casa = spec.get("casa", {})
+    escala = float(folha.get("escala_simbolos", 1.0))
+    servicos = {**fc.SERVICOS_PADRAO, **{k: tuple(v) for k, v in casa.get("servicos", {}).items()}}
 
     doc = ezdxf.readfile(dxf)
     msp = doc.modelspace()
+    fc.preparar_estilos(doc)
     for t in msp.query("TEXT"):
         if t.dxf.text in ROTULOS_PT:
             t.dxf.text = ROTULOS_PT[t.dxf.text]
@@ -430,32 +489,86 @@ def pos_processar(dxf: Path, tamanho: str, titulo: str, notas: dict | None = Non
         if {"FUNC", "LOOP"} <= attrs.keys() and not attrs["LOOP"].dxf.text and "-" in attrs["FUNC"].dxf.text:
             func, _, loop = attrs["FUNC"].dxf.text.partition("-")
             attrs["FUNC"].dxf.text, attrs["LOOP"].dxf.text = func, loop
+        if {"FUNC", "LOOP"} <= attrs.keys():
+            # função e malha cabem em ~70% do diâmetro da bolha (raio 5 x escala)
+            livre = 0.7 * 10.0 * abs(ins.dxf.xscale)
+            for a in (attrs["FUNC"], attrs["LOOP"]):
+                larg = fc.largura_texto(a.dxf.text, a.dxf.height)
+                if larg > livre:
+                    a.dxf.height = round(a.dxf.height * livre / larg, 2)
     if escala > 1.0:
+        # Alturas de texto do padrão de referência (A1): TAG 3,5 / descrição 2,5 / conector 3,0 mm.
+        alturas = {"TAG": 3.5, "DESC": 2.5, "LINK": 2.5}
+        for ins in msp.query("INSERT"):
+            conector = "CONNECTOR" in ins.dxf.name
+            for a in ins.attribs:
+                h = 3.0 if (conector and a.dxf.tag == "TAG") else alturas.get(a.dxf.tag)
+                if h and a.dxf.height > h:
+                    a.dxf.height = h
         # Número de linha acompanha a folha maior (2,5 mm no A3 -> 3,5 mm no A1).
         for t in msp.query("TEXT"):
             if t.dxf.layer == "PROCESS-LINE-TEXT":
                 t.dxf.height = round(t.dxf.height * (1 + 0.4 * (escala - 1)), 2)
-    if notas:
-        # Bloco de notas da folha (camada própria), escrito antes das correções para
-        # que rótulos e números de linha desviem dele.
-        if "NOTAS" not in doc.layers:
-            doc.layers.add("NOTAS", color=7)
-        x, y, alt = notas["x"], notas["y"], notas.get("altura", 2.5)
-        for k, linha in enumerate(notas["linhas"]):
-            msp.add_text(linha, height=alt if k else alt * 1.3,
-                         dxfattribs={"layer": "NOTAS", "insert": (x, y - k * alt * 1.7)})
+    from ezdxf.enums import TextEntityAlignment
+
+    for ins in msp.query("INSERT"):
+        # conector girado (180°/90°): TAG interno volta à horizontal, centrado no corpo do conector
+        if "CONNECTOR" in ins.dxf.name and abs(ins.dxf.rotation % 360) > 0.01:
+            for a in ins.attribs:
+                if a.dxf.tag == "TAG":
+                    a.dxf.rotation = 0.0
+                    a.set_placement((ins.dxf.insert.x, ins.dxf.insert.y), align=TextEntityAlignment.MIDDLE_CENTER)
+    sem_rotulo = set(spec.get("casa", {}).get("sem_rotulo", []))
     for t in list(msp.query("TEXT")):
         # Linha sem número na spec recebe do servidor só um sequencial ("30"): sem valor de projeto, sai.
-        if t.dxf.layer == "PROCESS-LINE-TEXT" and t.dxf.text.strip().isdigit():
+        # Números listados em casa.sem_rotulo ficam só na lista de linhas (trechos curtos, engates).
+        if t.dxf.layer == "PROCESS-LINE-TEXT" and (t.dxf.text.strip().isdigit() or t.dxf.text in sem_rotulo):
             msp.delete_entity(t)
+
+    fc.aplicar_aparencias(doc, {it["tag"]: it["aparencia"] for sec in ("equipment", "valves")
+                                for it in spec.get(sec, []) if it.get("aparencia")})
+    usados = fc.aplicar_servicos(doc, servicos)
+    fc.adicionar_dados(doc, {it["tag"]: it["dados"] for sec in ("equipment", "valves")
+                             for it in spec.get(sec, []) if it.get("dados")})
+    fc.desenhar_simbolos_casa(doc, casa.get("simbolos", []), escala)
+    usados |= fc.desenhar_linhas_casa(doc, casa.get("linhas", []), servicos)
+    fc.desenhar_areas(doc, casa.get("areas", []))
+    fc.desenhar_cotas(doc, casa.get("cotas", []))
+    bolhas = {i["tag"]: (i["x"], i["y"], 5.0 * escala * i.get("scale", 1.0)) for i in spec.get("instruments", [])}
+    fc.desenhar_conexoes(doc, casa.get("conexoes", []), bolhas)
+    fc.desenhar_sinais(doc, casa.get("sinais", []), bolhas)
+    res["quebras"] = fc.quebrar_cruzamentos(doc)
+    for q in casa.get("quadros", []):
+        fc.desenhar_quadro(msp, q)
+    for tx in casa.get("textos", []):
+        fc.texto(msp, tx["texto"], tx["x"], tx["y"], tx.get("altura", 2.5), tx.get("alinh", "L"))
+    notas = spec.get("notas")
+    if tamanho in ("A1", "A0"):
+        linhas_notas = notas.get("linhas", []) if isinstance(notas, dict) else (notas or [])
+        linhas_notas = [n for n in linhas_notas if n.strip().upper() != "NOTAS"]
+        fc.desenhar_formato(msp, folha, linhas_notas, tamanho)
+    elif notas:
+        # Bloco de notas solto (A4-A2), escrito antes das correções para que rótulos desviem dele.
+        x, y, alt = notas["x"], notas["y"], notas.get("altura", 2.5)
+        for k, ln in enumerate(notas["linhas"]):
+            msp.add_text(ln, height=alt if k else alt * 1.3,
+                         dxfattribs={"layer": "NOTAS", "insert": (x, y - k * alt * 1.7)})
+
+    rotulos_spec = {it["tag"]: it["rotulo"] for sec in ("equipment", "valves") for it in spec.get(sec, [])
+                    if it.get("rotulo")}
+    rotulos_spec.update({it["tag"]: it["rotulo"] for it in casa.get("simbolos", []) if it.get("rotulo")})
+    fixos = posicionar_rotulos(msp, rotulos_spec)
     corrigir_numeros_linha(msp)
     for _ in range(3):  # um rótulo movido pode liberar o lugar de outro
-        corrigir_rotulos(msp)
+        corrigir_rotulos(msp, fixos)
     doc.saveas(dxf)
+    res["servicos_usados"] = sorted(usados)
 
     w, h = FOLHAS_MM.get(tamanho, FOLHAS_MM["A3"])
-    pol = Configuration(color_policy=ColorPolicy.BLACK)
-    mpl.qsave(msp, str(dxf.with_suffix(".pdf")), bg="#FFFFFF", config=pol, size_inches=(w / 25.4, h / 25.4))
+    tam = (w / 25.4, h / 25.4)
+    mpl.qsave(msp, str(dxf.with_suffix(".pdf")), bg="#FFFFFF", size_inches=tam)
+    mpl.qsave(msp, str(dxf.with_name(dxf.stem + "_PB.pdf")), bg="#FFFFFF",
+              config=Configuration(color_policy=ColorPolicy.BLACK), size_inches=tam)
     mpl.qsave(msp, str(dxf.with_suffix(".png")), bg="#FFFFFF", dpi=200)
 
 
@@ -472,8 +585,7 @@ def main() -> None:
     nome = a.nome or spec.get("folha", {}).get("numero", a.spec.stem)
 
     res = asyncio.run(desenhar(spec, saida, nome))
-    pos_processar(Path(res["dxf"]), res["folha"], res["titulo"], spec.get("notas"),
-                  float(spec.get("folha", {}).get("escala_simbolos", 1.0)))
+    pos_processar(Path(res["dxf"]), res, spec)
 
     for i in res["critica"]:
         # Malha alfanumérica é padrão de projeto (separada na bolha no pós-processamento), não falta de TAG.
@@ -483,7 +595,7 @@ def main() -> None:
     problemas = [i for i in res["critica"] if i.get("severity") == "error"]
     for i in res["critica"]:
         print(f"  [{i.get('severity')}] {i.get('focus')}: {i.get('message')}")
-    print(f"Cruzamentos de linha: {res['cruzamentos']}")
+    print(f"Cruzamentos de linha: {res['cruzamentos']} (desenhados com quebra: {res.get('quebras', 0)})")
     print(f"Arquivos em {saida}:")
     for f in sorted(saida.glob(f"{nome}*")):
         print("  ", f.name)

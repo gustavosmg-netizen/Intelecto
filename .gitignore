@@ -20,3 +20,4 @@ public/app/
 
 # saídas do gerador de P&ID (skill fluxograma-pid)
 saida_pid/
+__pycache__/

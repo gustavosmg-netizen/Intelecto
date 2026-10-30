@@ -1,0 +1,1161 @@
+{
+ "folha": {
+  "titulo": "FLUXOGRAMA DE ENGENHARIA - RECEPÇÃO, PRÉ-TRATAMENTO TÉRMICO E DILUIÇÃO",
+  "numero": "TBU-GENE-PID-F01",
+  "revisao": "A",
+  "folha": "2/3",
+  "projeto": "THERMOBIOGASUP - CSTR / FINEP 0786/23 - GEN E",
+  "unidade": "ILHA 1 - TERMOQUÍMICA",
+  "escala": "S/ESCALA",
+  "data": "30/10/2026",
+  "contrato": "FINEP 03.24.0194.00",
+  "classificacao": "USO INTERNO",
+  "tipo_emissao": "A",
+  "empresa": "INTELECTO & CSTR",
+  "escala_simbolos": 2.0,
+  "revisoes": [
+   [
+    "A",
+    "A",
+    "EMISSÃO INICIAL - PRELIMINAR (S3 NÃO INICIADA)",
+    "IA",
+    "-",
+    "-",
+    "30/10/26"
+   ]
+  ],
+  "documentos": [
+   "CLAUDE.md Rev01-A - Constituição do Projeto Executivo (alternativa Gen E)",
+   "00_BASES_E_CRITERIOS_DE_PROJETO_REV00 (S0)",
+   "MATRIZ_RASTREABILIDADE_TOTAL REV00 - subsistemas S01 a S31",
+   "REGISTRO_LACUNAS (40 lacunas; 15 bloqueantes)",
+   "RES-001 REV03 - Envelope de pressões e vazões de alívio (aguarda RT)",
+   "Fibrais 315C/315E/315D/315A/315B-25 Rev. A (as-built tanques)",
+   "Engecontrol 0618/2026 - relatório da caldeira CL-101",
+   "TBU-GENE-PID-F00 - Legenda, simbologia e notas gerais"
+  ],
+  "rodape": "Exemplo da skill fluxograma-pid - não emitido pelo projeto"
+ },
+ "sheet": {
+  "layer_set": "pid",
+  "sheet_size": "A1",
+  "scale": 1.0,
+  "intent": "ThermoBiogasUp Gen E F01"
+ },
+ "equipment": [
+  {
+   "id": "BAL-101",
+   "symbol": "horizontal_vessel",
+   "x": 112,
+   "y": 505,
+   "desc": "BALANÇA DE RECEPÇÃO",
+   "aparencia": "balanca",
+   "params": {
+    "width": 14,
+    "height": 6,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.5
+     }
+    ]
+   },
+   "tag": "BAL-101"
+  },
+  {
+   "id": "SIL-101",
+   "symbol": "hopper",
+   "x": 165,
+   "y": 515,
+   "desc": "SILO / MOEGA DE RECEPÇÃO",
+   "params": {
+    "width": 12,
+    "height": 15
+   },
+   "tag": "SIL-101"
+  },
+  {
+   "id": "ES-101",
+   "symbol": "horizontal_vessel",
+   "x": 240,
+   "y": 470,
+   "desc": "ESTEIRA DE ALIMENTAÇÃO",
+   "aparencia": "esteira",
+   "params": {
+    "width": 22,
+    "height": 6,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.5
+     }
+    ]
+   },
+   "tag": "ES-101"
+  },
+  {
+   "id": "TRI-101",
+   "symbol": "horizontal_vessel",
+   "x": 330,
+   "y": 482,
+   "desc": "TRITURADOR DE DOIS EIXOS",
+   "dados": [
+    "Rubrica FINEP: Triturador (1)"
+   ],
+   "aparencia": "triturador",
+   "params": {
+    "width": 15,
+    "height": 14,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "bottom",
+      "fraction": 0.5
+     }
+    ]
+   },
+   "tag": "TRI-101"
+  },
+  {
+   "id": "TA-101",
+   "symbol": "filter",
+   "x": 98,
+   "y": 150,
+   "desc": "TRATAMENTO DE ÁGUA DA CALDEIRA",
+   "dados": [
+    "Rubrica FINEP (1)"
+   ],
+   "tag": "TA-101"
+  },
+  {
+   "id": "CL-101",
+   "symbol": "fired_heater",
+   "x": 162,
+   "y": 158,
+   "desc": "CALDEIRA",
+   "dados": [
+    "Caldemax flamotubular, 800 kgv/h",
+    "PMTA 8,0 / trab. 7,0 kgf/cm2 - GLP",
+    "Usada (2002); NR-13 (LAC-004)"
+   ],
+   "aparencia": "caldeira",
+   "tag": "CL-101"
+  },
+  {
+   "id": "AC-101",
+   "symbol": "horizontal_vessel",
+   "x": 110,
+   "y": 270,
+   "desc": "ACUMULADOR DE VAPOR",
+   "dados": [
+    "Vaso NR-13"
+   ],
+   "params": {
+    "width": 26,
+    "height": 10,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N2",
+      "side": "right",
+      "fraction": 0.5
+     },
+     {
+      "name": "N3",
+      "side": "top",
+      "fraction": 0.5
+     }
+    ]
+   },
+   "tag": "AC-101"
+  },
+  {
+   "id": "EV-101",
+   "symbol": "vertical_vessel",
+   "x": 255,
+   "y": 300,
+   "desc": "REATOR DE EXPLOSÃO A VAPOR",
+   "dados": [
+    "6,5 bar(g) / 168 °C (proposta)",
+    "Batelada, 30% da carga (LAC-003)",
+    "Vaso NR-13"
+   ],
+   "params": {
+    "width": 14,
+    "height": 24,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.3
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.75
+     },
+     {
+      "name": "N3",
+      "side": "left",
+      "fraction": 0.7
+     },
+     {
+      "name": "N4",
+      "side": "bottom",
+      "fraction": 0.5
+     }
+    ]
+   },
+   "tag": "EV-101"
+  },
+  {
+   "id": "TQ-103",
+   "symbol": "vertical_vessel",
+   "x": 335,
+   "y": 165,
+   "desc": "VASO FLASH",
+   "dados": [
+    "Descompressão pós-explosão"
+   ],
+   "params": {
+    "width": 14,
+    "height": 24,
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.3
+     },
+     {
+      "name": "N2",
+      "side": "top",
+      "fraction": 0.8
+     },
+     {
+      "name": "N3",
+      "side": "right",
+      "fraction": 0.25
+     }
+    ]
+   },
+   "tag": "TQ-103"
+  },
+  {
+   "id": "CD-101",
+   "symbol": "shell_tube_hx",
+   "x": 405,
+   "y": 250,
+   "desc": "CONDENSADOR DO FLASH",
+   "rotulo": {
+    "x": 392,
+    "y": 268,
+    "alinh": "R"
+   },
+   "tag": "CD-101"
+  },
+  {
+   "id": "CH-101",
+   "symbol": "drain_vent",
+   "x": 162,
+   "y": 192,
+   "desc": "CHAMINÉ",
+   "rotation": 180,
+   "tag": "CH-101"
+  },
+  {
+   "id": "RS-151",
+   "symbol": "drain_vent",
+   "x": 130,
+   "y": 318,
+   "desc": null,
+   "rotation": 180
+  },
+  {
+   "id": "RS-152",
+   "symbol": "drain_vent",
+   "x": 282,
+   "y": 364,
+   "desc": null,
+   "rotation": 180
+  },
+  {
+   "id": "TQ-101",
+   "symbol": "tank",
+   "x": 600,
+   "y": 330,
+   "desc": "TANQUE DE DILUIÇÃO E HOMOGENEIZAÇÃO",
+   "dados": [
+    "Fibrais 315C-25: Øint 3,00 x Hcil 2,60 m + cone 0,80 m",
+    "N1 4x6\" +3,82 | N2 4x6\" +1,61 | dreno 6\" +0,50",
+    "70% frio + 30% pós-flash: T <= 35-38 °C"
+   ],
+   "params": {
+    "width": 45,
+    "height": 55,
+    "roof": "flat",
+    "nozzles": [
+     {
+      "name": "N1",
+      "side": "top",
+      "fraction": 0.2
+     },
+     {
+      "name": "N2",
+      "side": "left",
+      "fraction": 0.8
+     },
+     {
+      "name": "N3",
+      "side": "left",
+      "fraction": 0.65
+     },
+     {
+      "name": "N4",
+      "side": "left",
+      "fraction": 0.5
+     },
+     {
+      "name": "N5",
+      "side": "bottom",
+      "fraction": 0.5
+     }
+    ]
+   },
+   "tag": "TQ-101"
+  },
+  {
+   "id": "AG-101",
+   "symbol": "agitator",
+   "x": 600,
+   "y": 385,
+   "desc": "MISTURADOR",
+   "dados": [
+    "Fibrais: 3 CV / 45 rpm, AISI 304"
+   ],
+   "tag": "AG-101"
+  },
+  {
+   "id": "MAC-101",
+   "symbol": "strainer_y",
+   "x": 600,
+   "y": 245,
+   "desc": "MACERADOR EM LINHA",
+   "dados": [
+    "A VERIFICAR (LAC-016)"
+   ],
+   "aparencia": "macerador",
+   "rotation": 270,
+   "tag": "MAC-101"
+  },
+  {
+   "id": "P-101",
+   "symbol": "pd_pump",
+   "x": 680,
+   "y": 200,
+   "desc": "ALIMENTAÇÃO R-101",
+   "dados": [
+    "Rubrica FINEP: Bombas (4)"
+   ],
+   "tag": "P-101"
+  },
+  {
+   "id": "P-102",
+   "symbol": "pd_pump",
+   "x": 680,
+   "y": 150,
+   "desc": "BY-PASS R-101 / MANIFOLD",
+   "dados": [
+    "Rotas RL-03 e RL-07"
+   ],
+   "tag": "P-102"
+  }
+ ],
+ "valves": [
+  {
+   "id": "DV-101",
+   "symbol": "three_way",
+   "x": 330,
+   "y": 428,
+   "tag": "DV-101",
+   "desc": "DIVISOR 70/30",
+   "actuator": "motor",
+   "rotation": 270
+  },
+  {
+   "id": "HV-151",
+   "symbol": "gate",
+   "x": 160,
+   "y": 270,
+   "tag": "HV-151",
+   "actuator": "hand"
+  },
+  {
+   "id": "XV-152",
+   "symbol": "ball",
+   "x": 195,
+   "y": 270,
+   "tag": "XV-152",
+   "desc": "VAPOR P/ EV-101",
+   "actuator": "piston",
+   "fail": "FC"
+  },
+  {
+   "id": "XV-153",
+   "symbol": "ball",
+   "x": 255,
+   "y": 240,
+   "tag": "XV-153",
+   "desc": "DESCOMPRESSÃO RÁPIDA",
+   "actuator": "piston",
+   "fail": "FC",
+   "rotation": 270
+  },
+  {
+   "id": "PSV-151",
+   "symbol": "relief",
+   "x": 110,
+   "y": 306,
+   "tag": "PSV-151"
+  },
+  {
+   "id": "PSV-152",
+   "symbol": "relief",
+   "x": 262,
+   "y": 352,
+   "tag": "PSV-152"
+  },
+  {
+   "id": "VR-101",
+   "symbol": "check",
+   "x": 712,
+   "y": 200,
+   "tag": "VR-101"
+  },
+  {
+   "id": "HV-102",
+   "symbol": "gate",
+   "x": 742,
+   "y": 200,
+   "tag": "HV-102",
+   "actuator": "hand"
+  },
+  {
+   "id": "VR-102",
+   "symbol": "check",
+   "x": 712,
+   "y": 150,
+   "tag": "VR-102"
+  },
+  {
+   "id": "HV-103",
+   "symbol": "gate",
+   "x": 742,
+   "y": 150,
+   "tag": "HV-103",
+   "actuator": "hand"
+  }
+ ],
+ "instruments": [
+  {
+   "id": "PIT-151",
+   "type": "plc",
+   "location": "field",
+   "x": 60,
+   "y": 300,
+   "tag": "PIT-151"
+  },
+  {
+   "id": "PIT-152",
+   "type": "plc",
+   "location": "field",
+   "x": 305,
+   "y": 315,
+   "tag": "PIT-152"
+  },
+  {
+   "id": "TIT-152",
+   "type": "plc",
+   "location": "field",
+   "x": 305,
+   "y": 285,
+   "tag": "TIT-152"
+  },
+  {
+   "id": "PIT-153",
+   "type": "plc",
+   "location": "field",
+   "x": 375,
+   "y": 126,
+   "tag": "PIT-153"
+  },
+  {
+   "id": "LIT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 682,
+   "y": 368,
+   "tag": "LIT-101"
+  },
+  {
+   "id": "TIT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 682,
+   "y": 338,
+   "tag": "TIT-101"
+  },
+  {
+   "id": "LSLL-101",
+   "type": "plc",
+   "location": "field",
+   "x": 682,
+   "y": 308,
+   "tag": "LSLL-101"
+  },
+  {
+   "id": "FIT-101",
+   "type": "plc",
+   "location": "field",
+   "x": 772,
+   "y": 228,
+   "tag": "FIT-101"
+  },
+  {
+   "id": "FIT-102",
+   "type": "plc",
+   "location": "field",
+   "x": 372,
+   "y": 452,
+   "tag": "FIT-102"
+  }
+ ],
+ "lines": [
+  {
+   "from": "BAL-101.N2",
+   "to": "SIL-101.N1",
+   "class": "process_minor",
+   "number": "SOL-1001",
+   "route": [
+    [
+     140,
+     505
+    ],
+    [
+     140,
+     555
+    ],
+    [
+     165,
+     555
+    ]
+   ]
+  },
+  {
+   "from": "SIL-101.N2",
+   "to": "ES-101.N1",
+   "class": "process_minor",
+   "number": "SOL-1002",
+   "route": [
+    [
+     165,
+     470
+    ]
+   ]
+  },
+  {
+   "from": "ES-101.N2",
+   "to": "TRI-101.N1",
+   "class": "process_minor",
+   "number": "SOL-1003",
+   "route": [
+    [
+     285,
+     470
+    ],
+    [
+     285,
+     520
+    ],
+    [
+     330,
+     520
+    ]
+   ]
+  },
+  {
+   "from": "TRI-101.N2",
+   "to": "DV-101.in",
+   "class": "process_minor",
+   "number": "SOL-1004"
+  },
+  {
+   "from": "DV-101.out",
+   "to": "TQ-101.N1",
+   "class": "process_minor",
+   "number": "SOL-1005",
+   "route": [
+    [
+     330,
+     410
+    ],
+    [
+     573,
+     410
+    ]
+   ]
+  },
+  {
+   "from": "DV-101.branch",
+   "to": "EV-101.N1",
+   "class": "process_minor",
+   "number": "SOL-1006",
+   "route": [
+    [
+     295,
+     428
+    ],
+    [
+     295,
+     392
+    ],
+    [
+     249.4,
+     392
+    ]
+   ]
+  },
+  {
+   "from": "TA-101.out",
+   "to": "CL-101.in",
+   "class": "utility",
+   "number": "AT-1201"
+  },
+  {
+   "from": "CL-101.out",
+   "to": "AC-101.N1",
+   "class": "process_major",
+   "number": "VP-1301",
+   "route": [
+    [
+     190,
+     162
+    ],
+    [
+     190,
+     220
+    ],
+    [
+     62,
+     220
+    ],
+    [
+     62,
+     270
+    ]
+   ]
+  },
+  {
+   "from": "CL-101.flue",
+   "to": "CH-101.in",
+   "class": "process_minor",
+   "number": "GC-1302",
+   "label": false
+  },
+  {
+   "from": "AC-101.N2",
+   "to": "HV-151.in",
+   "class": "process_major",
+   "number": "VP-1302"
+  },
+  {
+   "from": "HV-151.out",
+   "to": "XV-152.in",
+   "class": "process_major",
+   "number": "VP-1302"
+  },
+  {
+   "from": "XV-152.out",
+   "to": "EV-101.N3",
+   "class": "process_major",
+   "number": "VP-1302"
+  },
+  {
+   "from": "AC-101.N3",
+   "to": "PSV-151.in",
+   "class": "process_major",
+   "number": "VP-1303",
+   "label": false
+  },
+  {
+   "from": "PSV-151.out",
+   "to": "RS-151.in",
+   "class": "utility",
+   "number": "ALIV-1304",
+   "label": false
+  },
+  {
+   "from": "EV-101.N2",
+   "to": "PSV-152.in",
+   "class": "process_major",
+   "number": "VP-1305",
+   "label": false
+  },
+  {
+   "from": "PSV-152.out",
+   "to": "RS-152.in",
+   "class": "utility",
+   "number": "ALIV-1306",
+   "label": false
+  },
+  {
+   "from": "EV-101.N4",
+   "to": "XV-153.in",
+   "class": "process_major",
+   "number": "LODO-1101"
+  },
+  {
+   "from": "XV-153.out",
+   "to": "TQ-103.N1",
+   "class": "process_major",
+   "number": "LODO-1101",
+   "route": [
+    [
+     255,
+     215
+    ],
+    [
+     329.4,
+     215
+    ]
+   ]
+  },
+  {
+   "from": "TQ-103.N2",
+   "to": "CD-101.shell_in",
+   "class": "utility",
+   "number": "CD-1307",
+   "route": [
+    [
+     343.4,
+     280
+    ],
+    [
+     397,
+     280
+    ]
+   ]
+  },
+  {
+   "from": "TQ-103.N3",
+   "to": "TQ-101.N2",
+   "class": "process_major",
+   "number": "LODO-1102",
+   "route": [
+    [
+     470,
+     153
+    ],
+    [
+     470,
+     363
+    ]
+   ]
+  },
+  {
+   "from": "TQ-101.N5",
+   "to": "MAC-101.in",
+   "class": "process_major",
+   "number": "LODO-1103"
+  },
+  {
+   "from": "MAC-101.out",
+   "to": "P-101.in",
+   "class": "process_major",
+   "number": "LODO-1103",
+   "route": [
+    [
+     600,
+     200
+    ]
+   ]
+  },
+  {
+   "from": "P-101.out",
+   "to": "VR-101.in",
+   "class": "process_major",
+   "number": "LODO-1104"
+  },
+  {
+   "from": "VR-101.out",
+   "to": "HV-102.in",
+   "class": "process_major",
+   "number": "LODO-1104"
+  },
+  {
+   "from": "P-102.out",
+   "to": "VR-102.in",
+   "class": "process_major",
+   "number": "LODO-1105"
+  },
+  {
+   "from": "VR-102.out",
+   "to": "HV-103.in",
+   "class": "process_major",
+   "number": "LODO-1105"
+  }
+ ],
+ "connectors": [
+  {
+   "id": "BL-RES",
+   "direction": "in",
+   "x": 45,
+   "y": 505,
+   "tag": "BL-RES",
+   "link": "RESÍDUO 2 t/d",
+   "to": "BAL-101.N1",
+   "class": "process_minor",
+   "number": "SOL-1000"
+  },
+  {
+   "id": "BL-01",
+   "direction": "in",
+   "x": 497,
+   "y": 346.5,
+   "tag": "BL-01",
+   "link": "ÁGUA DE REDE",
+   "to": "TQ-101.N3",
+   "class": "utility",
+   "number": "AGUA-1201"
+  },
+  {
+   "id": "BL-02",
+   "direction": "in",
+   "x": 45,
+   "y": 150,
+   "tag": "BL-02",
+   "link": "ÁGUA P/ CALDEIRA",
+   "to": "TA-101.in",
+   "class": "utility",
+   "number": "AGUA-1202"
+  },
+  {
+   "id": "F02A",
+   "direction": "in",
+   "x": 497,
+   "y": 330,
+   "tag": "F02",
+   "link": "RL-05 RETORNO P-301",
+   "to": "TQ-101.N4",
+   "class": "process_major",
+   "number": "LODO-1106"
+  },
+  {
+   "id": "F02B",
+   "direction": "out",
+   "x": 800,
+   "y": 200,
+   "tag": "F02",
+   "link": "P/ R-101",
+   "from": "HV-102.out",
+   "class": "process_major",
+   "number": "LODO-1104"
+  },
+  {
+   "id": "F02C",
+   "direction": "out",
+   "x": 800,
+   "y": 150,
+   "tag": "F02",
+   "link": "RL-03/RL-07",
+   "from": "HV-103.out",
+   "class": "process_major",
+   "number": "LODO-1105"
+  },
+  {
+   "id": "DR-1",
+   "direction": "out",
+   "x": 445,
+   "y": 222,
+   "tag": "DRENO",
+   "link": "CONDENSADO",
+   "from": "CD-101.shell_out",
+   "class": "utility",
+   "number": "CD-1308"
+  }
+ ],
+ "derivacoes": [
+  {
+   "from": [
+    600,
+    200
+   ],
+   "to": "P-102.in",
+   "route": [
+    [
+     600,
+     150
+    ]
+   ],
+   "class": "process_major",
+   "number": "LODO-1103"
+  }
+ ],
+ "casa": {
+  "areas": [
+   {
+    "titulo": "RECEPÇÃO, PESAGEM E TRITURAÇÃO (S01)",
+    "x0": 25,
+    "y0": 438,
+    "x1": 455,
+    "y1": 578
+   },
+   {
+    "titulo": "PRÉ-TRATAMENTO TÉRMICO - EXPLOSÃO A VAPOR, CALDEIRA E ÁGUA (S03/S04) - ILHA 1",
+    "x0": 25,
+    "y0": 90,
+    "x1": 455,
+    "y1": 432
+   },
+   {
+    "titulo": "DILUIÇÃO E HOMOGENEIZAÇÃO - TQ-101 (S02)",
+    "x0": 462,
+    "y0": 90,
+    "x1": 826,
+    "y1": 578
+   }
+  ],
+  "quadros": [
+   {
+    "titulo": "BASE DE PROCESSO DE REFERÊNCIA (A RECALCULAR NA S1)",
+    "x": 500,
+    "y": 562,
+    "altura": 2.2,
+    "colunas": [
+     [
+      "GRANDEZA",
+      120
+     ],
+     [
+      "VALOR DE REFERÊNCIA",
+      105
+     ],
+     [
+      "SITUAÇÃO",
+      95
+     ]
+    ],
+    "linhas": [
+     [
+      "Resíduo (base úmida)",
+      "2.000 kg/d; ST 24,5%; SV 89% ST",
+      "LAC-002"
+     ],
+     [
+      "Diluição",
+      "~7,22 m3/d a 8% ST",
+      "recalcular c/ fração térmica"
+     ],
+     [
+      "Fração p/ explosão a vapor (DV-101)",
+      "30% (hipótese)",
+      "LAC-003"
+     ],
+     [
+      "EV-101 (explosão a vapor)",
+      "6,5 bar(g) / 168 °C",
+      "proposta Gen E"
+     ],
+     [
+      "CL-101 (pressão de trabalho / PMTA)",
+      "7,0 / 8,0 kgf/cm2",
+      "as-built (LAC-004)"
+     ],
+     [
+      "TQ-101 após têmpera (RL-02)",
+      "<= 35-38 °C",
+      "proposta Gen E"
+     ],
+     [
+      "Biogás bruto (meta)",
+      "~306 Nm3/d",
+      "retrocálculo; BMP"
+     ]
+    ],
+    "fonte": "Fonte: Bases e Critérios REV00 §3-4; Matriz S01-S04."
+   }
+  ],
+  "linhas": [
+   {
+    "pontos": [
+     [
+      152,
+      108
+     ],
+     [
+      152,
+      144
+     ]
+    ],
+    "numero": "GLP-1401",
+    "rotulo": false
+   },
+   {
+    "pontos": [
+     [
+      172,
+      108
+     ],
+     [
+      172,
+      144
+     ]
+    ],
+    "numero": "TRAT-1402",
+    "rotulo": false
+   }
+  ],
+  "textos": [
+   {
+    "texto": "TRIP P-101/P-102",
+    "x": 704,
+    "y": 262,
+    "altura": 2.2
+   },
+   {
+    "texto": "BL-03 GLP",
+    "x": 152,
+    "y": 102,
+    "altura": 2.5,
+    "alinh": "R"
+   },
+   {
+    "texto": "F03 BIOGÁS / TAIL-GAS (S22)",
+    "x": 174,
+    "y": 102,
+    "altura": 2.5
+   },
+   {
+    "texto": "ÁGUA DE RESFRIAMENTO DO CD-101 NA S1 (LAC-003)",
+    "x": 372,
+    "y": 300,
+    "altura": 2.2
+   },
+   {
+    "texto": "RL-02: TRANSFERÊNCIA TQ-103 > TQ-101 (MEIO NA S1)",
+    "x": 474,
+    "y": 140,
+    "altura": 2.2
+   }
+  ],
+  "conexoes": [
+   {
+    "de": "PIT-151",
+    "ate": [
+     84,
+     276
+    ]
+   },
+   {
+    "de": "PIT-152",
+    "ate": [
+     269,
+     315
+    ]
+   },
+   {
+    "de": "TIT-152",
+    "ate": [
+     269,
+     285
+    ]
+   },
+   {
+    "de": "PIT-153",
+    "ate": [
+     349,
+     146
+    ]
+   },
+   {
+    "de": "LIT-101",
+    "ate": [
+     645,
+     368
+    ]
+   },
+   {
+    "de": "TIT-101",
+    "ate": [
+     645,
+     338
+    ]
+   },
+   {
+    "de": "LSLL-101",
+    "ate": [
+     645,
+     308
+    ]
+   },
+   {
+    "de": "FIT-101",
+    "ate": [
+     772,
+     200
+    ]
+   },
+   {
+    "de": "FIT-102",
+    "ate": [
+     330,
+     452
+    ]
+   }
+  ],
+  "sinais": [
+   {
+    "de": "LSLL-101",
+    "ate": [
+     690,
+     208
+    ],
+    "via": [
+     [
+      700,
+      308
+     ]
+    ]
+   }
+  ]
+ },
+ "notas": [
+  "1. EMISSÃO PRELIMINAR (T.E. A): a S3 (P&ID executivo) do Projeto Executivo Gen E não foi iniciada e a S1 está bloqueada no Gate 0. As premissas D1-D6 estão [A VERIFICAR] (CLAUDE.md §4). Não usar para construção.",
+  "2. Diâmetros das linhas não indicados: dependem do memorial de cálculo da S1 (LAC-003/006). Numeração de linha: SERVIÇO-SEQUENCIAL.",
+  "3. CL-101 Caldemax 800 kgv/h, PMTA 8,0 kgf/cm², usada (2002); propriedade e compra indefinidas (LAC-004); inspeção extraordinária NR-13 após mudança de local. Dual-fuel biogás/tail-gas proposto (S22, LAC-021).",
+  "4. EV-101 a 6,5 bar(g)/168 °C sobre 30% da carga (fração: LAC-003). CL-101, AC-101 e EV-101 sob NR-13. Severidade log R0 e margem de pressão caldeira > EV-101 a verificar na S1.",
+  "5. DV-101: 70% direto ao TQ-101 e 30% ao EV-101. RL-01 (by-pass térmico) = 100% direto com o EV-101 fora. RL-02: têmpera pós-flash no TQ-101 (T <= 35-38 °C, TIT-101 com alarme alto).",
+  "6. MAC-101 (macerador úmido em linha) não consta na Relação de Itens FINEP (LAC-016). Balança, esteira, triturador e caldeira com símbolo da casa; sólidos sem tubulação.",
+  "7. P-101/P-102: rubrica FINEP 'Bombas (4) - recirculação de digestato e purga de lodo'. RL-03 (by-pass do R-101) e RL-07 (manifold P-102 <> P-201) seguem na F02. LSLL-101 desarma P-101/P-102."
+ ]
+}

@@ -1,0 +1,1251 @@
+{
+ "folha": {
+  "titulo": "LEGENDA, SIMBOLOGIA, LISTA DE EQUIPAMENTOS E NOTAS GERAIS",
+  "numero": "TBU-GENE-PID-F00",
+  "revisao": "A",
+  "folha": "1/3",
+  "projeto": "THERMOBIOGASUP - CSTR / FINEP 0786/23 - GEN E",
+  "unidade": "GERAL",
+  "escala": "S/ESCALA",
+  "data": "30/10/2026",
+  "contrato": "FINEP 03.24.0194.00",
+  "classificacao": "USO INTERNO",
+  "tipo_emissao": "A",
+  "empresa": "INTELECTO & CSTR",
+  "escala_simbolos": 1.0,
+  "revisoes": [
+   [
+    "A",
+    "A",
+    "EMISSÃO INICIAL - PRELIMINAR (S3 NÃO INICIADA)",
+    "IA",
+    "-",
+    "-",
+    "30/10/26"
+   ]
+  ],
+  "documentos": [
+   "CLAUDE.md Rev01-A - Constituição do Projeto Executivo (alternativa Gen E)",
+   "00_BASES_E_CRITERIOS_DE_PROJETO_REV00 (S0)",
+   "MATRIZ_RASTREABILIDADE_TOTAL REV00 - subsistemas S01 a S31",
+   "REGISTRO_LACUNAS (40 lacunas; 15 bloqueantes)",
+   "RES-001 REV03 - Envelope de pressões e vazões de alívio (aguarda RT)",
+   "Fibrais 315C/315E/315D/315A/315B-25 Rev. A (as-built tanques)",
+   "Engecontrol 0618/2026 - relatório da caldeira CL-101",
+   "TBU-GENE-PID-F00 - Legenda, simbologia e notas gerais"
+  ],
+  "rodape": "Exemplo da skill fluxograma-pid - não emitido pelo projeto"
+ },
+ "sheet": {
+  "layer_set": "pid",
+  "sheet_size": "A1",
+  "scale": 1.0,
+  "intent": "legenda"
+ },
+ "equipment": [
+  {
+   "id": "E0",
+   "symbol": "pd_pump",
+   "x": 40,
+   "y": 562
+  },
+  {
+   "id": "E1",
+   "symbol": "filter",
+   "x": 40,
+   "y": 549.0
+  },
+  {
+   "id": "E2",
+   "symbol": "agitator",
+   "x": 40,
+   "y": 536.0
+  },
+  {
+   "id": "E3",
+   "symbol": "drain_vent",
+   "x": 40,
+   "y": 523.0,
+   "rotation": 180
+  },
+  {
+   "id": "E4",
+   "symbol": "hopper",
+   "x": 40,
+   "y": 510.0,
+   "params": {
+    "width": 6,
+    "height": 7
+   }
+  },
+  {
+   "id": "E5",
+   "symbol": "tank",
+   "x": 40,
+   "y": 497.0,
+   "params": {
+    "width": 7,
+    "height": 5,
+    "roof": "flat"
+   }
+  },
+  {
+   "id": "E6",
+   "symbol": "shell_tube_hx",
+   "x": 40,
+   "y": 484.0
+  },
+  {
+   "id": "E7",
+   "symbol": "horizontal_vessel",
+   "x": 40,
+   "y": 471.0,
+   "params": {
+    "width": 9,
+    "height": 4
+   }
+  },
+  {
+   "id": "E8",
+   "symbol": "vertical_vessel",
+   "x": 40,
+   "y": 458.0,
+   "params": {
+    "width": 4,
+    "height": 6
+   }
+  },
+  {
+   "id": "FL0",
+   "symbol": "flange_pair",
+   "x": 264,
+   "y": 469.0,
+   "scale": 0.6
+  },
+  {
+   "id": "FL1",
+   "symbol": "flange_pair",
+   "x": 216,
+   "y": 456.0,
+   "scale": 0.6
+  }
+ ],
+ "valves": [
+  {
+   "id": "V0",
+   "symbol": "three_way",
+   "x": 240,
+   "y": 562,
+   "actuator": "motor"
+  },
+  {
+   "id": "V1",
+   "symbol": "check",
+   "x": 240,
+   "y": 549.0
+  },
+  {
+   "id": "V2",
+   "symbol": "relief",
+   "x": 240,
+   "y": 536.0
+  },
+  {
+   "id": "V3",
+   "symbol": "ball",
+   "x": 240,
+   "y": 523.0,
+   "actuator": "piston",
+   "fail": "FC"
+  },
+  {
+   "id": "V4",
+   "symbol": "gate",
+   "x": 240,
+   "y": 510.0,
+   "actuator": "hand"
+  }
+ ],
+ "instruments": [
+  {
+   "id": "I0",
+   "type": "plc",
+   "location": "field",
+   "x": 240,
+   "y": 485.0,
+   "tag": "XX-000"
+  }
+ ],
+ "lines": [],
+ "connectors": [
+  {
+   "id": "C0",
+   "direction": "in",
+   "x": 240,
+   "y": 469.0,
+   "tag": "F00",
+   "link": "DESTINO",
+   "to": "FL0.in",
+   "class": "process_minor"
+  },
+  {
+   "id": "C1",
+   "direction": "out",
+   "x": 240,
+   "y": 456.0,
+   "tag": "F00",
+   "link": "DESTINO",
+   "from": "FL1.out",
+   "class": "process_minor"
+  }
+ ],
+ "casa": {
+  "simbolos": [
+   {
+    "simbolo": "emergencia",
+    "x": 40,
+    "y": 433.0,
+    "tag": "",
+    "scale": 1.0
+   },
+   {
+    "simbolo": "balanca",
+    "x": 40,
+    "y": 420.0,
+    "tag": "",
+    "scale": 1.0
+   },
+   {
+    "simbolo": "caldeira",
+    "x": 40,
+    "y": 407.0,
+    "tag": "",
+    "scale": 0.8
+   },
+   {
+    "simbolo": "esteira",
+    "x": 40,
+    "y": 394.0,
+    "tag": "",
+    "scale": 0.8
+   },
+   {
+    "simbolo": "macerador",
+    "x": 40,
+    "y": 381.0,
+    "tag": "",
+    "scale": 1.0
+   },
+   {
+    "simbolo": "amostragem",
+    "x": 40,
+    "y": 368.0,
+    "tag": "",
+    "scale": 1.0
+   },
+   {
+    "simbolo": "respiro",
+    "x": 40,
+    "y": 355.0,
+    "tag": "",
+    "scale": 1.0
+   },
+   {
+    "simbolo": "triturador",
+    "x": 40,
+    "y": 342.0,
+    "tag": "",
+    "scale": 1.0
+   }
+  ],
+  "linhas": [
+   {
+    "pontos": [
+     [
+      435,
+      562
+     ],
+     [
+      465,
+      562
+     ]
+    ],
+    "servico": "ACID",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      554
+     ],
+     [
+      465,
+      554
+     ]
+    ],
+    "servico": "AGUA",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      546
+     ],
+     [
+      465,
+      546
+     ]
+    ],
+    "servico": "ALIV",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      538
+     ],
+     [
+      465,
+      538
+     ]
+    ],
+    "servico": "AT",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      530
+     ],
+     [
+      465,
+      530
+     ]
+    ],
+    "servico": "BRUTO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      522
+     ],
+     [
+      465,
+      522
+     ]
+    ],
+    "servico": "CD",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      514
+     ],
+     [
+      465,
+      514
+     ]
+    ],
+    "servico": "GLP",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      506
+     ],
+     [
+      465,
+      506
+     ]
+    ],
+    "servico": "LODO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      498
+     ],
+     [
+      465,
+      498
+     ]
+    ],
+    "servico": "N2",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      490
+     ],
+     [
+      465,
+      490
+     ]
+    ],
+    "servico": "QUIM",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      482
+     ],
+     [
+      465,
+      482
+     ]
+    ],
+    "servico": "SOL",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      474
+     ],
+     [
+      465,
+      474
+     ]
+    ],
+    "servico": "TRAT",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      466
+     ],
+     [
+      465,
+      466
+     ]
+    ],
+    "servico": "VP",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      458
+     ],
+     [
+      465,
+      458
+     ]
+    ],
+    "servico": "SINAL",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      450
+     ],
+     [
+      465,
+      450
+     ]
+    ],
+    "servico": "CONEXAO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      435,
+      442
+     ],
+     [
+      447,
+      442
+     ]
+    ],
+    "servico": "LODO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      453,
+      442
+     ],
+     [
+      465,
+      442
+     ]
+    ],
+    "servico": "LODO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      450,
+      437
+     ],
+     [
+      450,
+      447
+     ]
+    ],
+    "servico": "AGUA",
+    "seta": false
+   }
+  ],
+  "textos": [
+   {
+    "texto": "1. EQUIPAMENTOS DE PROCESSO (ISO 10628-2)",
+    "x": 28,
+    "y": 572,
+    "altura": 3.2
+   },
+   {
+    "texto": "Bomba de deslocamento positivo",
+    "x": 60,
+    "y": 561,
+    "altura": 2.5
+   },
+   {
+    "texto": "Filtro (vaso)",
+    "x": 60,
+    "y": 548.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Misturador / agitador",
+    "x": 60,
+    "y": 535.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Respiro / dreno",
+    "x": 60,
+    "y": 522.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Silo / moega",
+    "x": 60,
+    "y": 509.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Tanque / reator de teto plano",
+    "x": 60,
+    "y": 496.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Trocador casco e tubos",
+    "x": 60,
+    "y": 483.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Vaso horizontal",
+    "x": 60,
+    "y": 470.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Vaso vertical",
+    "x": 60,
+    "y": 457.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "2. SÍMBOLOS DA CASA (sem equivalente no catálogo)",
+    "x": 28,
+    "y": 443.0,
+    "altura": 3.2
+   },
+   {
+    "texto": "Alívio de emergência bidirecional (pressão/vácuo)",
+    "x": 60,
+    "y": 432.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Balança de recepção",
+    "x": 60,
+    "y": 419.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Caldeira flamotubular (gerador de vapor)",
+    "x": 60,
+    "y": 406.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Esteira / transportador de correia",
+    "x": 60,
+    "y": 393.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Macerador / triturador úmido em linha",
+    "x": 60,
+    "y": 380.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Ponto de amostragem",
+    "x": 60,
+    "y": 367.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Respiro / descarga para local seguro",
+    "x": 60,
+    "y": 354.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Triturador de dois eixos com moega",
+    "x": 60,
+    "y": 341.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "3. VÁLVULAS E ACESSÓRIOS (ISO 10628-2 / ISA-5.1)",
+    "x": 228,
+    "y": 572,
+    "altura": 3.2
+   },
+   {
+    "texto": "Válvula de 3 vias (divisora), motorizada",
+    "x": 260,
+    "y": 561,
+    "altura": 2.5
+   },
+   {
+    "texto": "Válvula de retenção",
+    "x": 260,
+    "y": 548.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Válvula de segurança / alívio (PSV)",
+    "x": 260,
+    "y": 535.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Válvula esfera, atuador pneumático (FC = falha fecha)",
+    "x": 260,
+    "y": 522.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Válvula gaveta / faca, manual",
+    "x": 260,
+    "y": 509.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "4. BOLHAS DE INSTRUMENTO (ANSI/ISA-5.1)",
+    "x": 228,
+    "y": 495.0,
+    "altura": 3.2
+   },
+   {
+    "texto": "Função de CLP (ISA-5.1), campo",
+    "x": 260,
+    "y": 484.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Conector de folha / limite de bateria (chegada)",
+    "x": 272,
+    "y": 468.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "Conector de folha / limite de bateria (saída)",
+    "x": 272,
+    "y": 455.0,
+    "altura": 2.5
+   },
+   {
+    "texto": "5. TIPOS DE LINHA E SERVIÇOS",
+    "x": 433,
+    "y": 572,
+    "altura": 3.2
+   },
+   {
+    "texto": "ACID - Gás ácido do R-101 (H2, IIC) - rota RG-01",
+    "x": 470,
+    "y": 561,
+    "altura": 2.5
+   },
+   {
+    "texto": "AGUA - Água de processo / reposição",
+    "x": 470,
+    "y": 553,
+    "altura": 2.5
+   },
+   {
+    "texto": "ALIV - Alívio / respiro para local seguro",
+    "x": 470,
+    "y": 545,
+    "altura": 2.5
+   },
+   {
+    "texto": "AT - Água tratada de caldeira",
+    "x": 470,
+    "y": 537,
+    "altura": 2.5
+   },
+   {
+    "texto": "BRUTO - Biogás bruto (coletor comum, IIC)",
+    "x": 470,
+    "y": 529,
+    "altura": 2.5
+   },
+   {
+    "texto": "CD - Condensado / flash",
+    "x": 470,
+    "y": 521,
+    "altura": 2.5
+   },
+   {
+    "texto": "GLP - Gás combustível (GLP)",
+    "x": 470,
+    "y": 513,
+    "altura": 2.5
+   },
+   {
+    "texto": "LODO - Lodo / digestato (fase líquida)",
+    "x": 470,
+    "y": 505,
+    "altura": 2.5
+   },
+   {
+    "texto": "N2 - Nitrogênio (partida e purga)",
+    "x": 470,
+    "y": 497,
+    "altura": 2.5
+   },
+   {
+    "texto": "QUIM - Produto químico (dosagem)",
+    "x": 470,
+    "y": 489,
+    "altura": 2.5
+   },
+   {
+    "texto": "SOL - Resíduo sólido (transporte mecânico)",
+    "x": 470,
+    "y": 481,
+    "altura": 2.5
+   },
+   {
+    "texto": "TRAT - Biogás dessulfurizado",
+    "x": 470,
+    "y": 473,
+    "altura": 2.5
+   },
+   {
+    "texto": "VP - Vapor de processo",
+    "x": 470,
+    "y": 465,
+    "altura": 2.5
+   },
+   {
+    "texto": "Sinal elétrico (intertravamento / controle)",
+    "x": 470,
+    "y": 457,
+    "altura": 2.5
+   },
+   {
+    "texto": "Conexão do instrumento ao processo",
+    "x": 470,
+    "y": 449,
+    "altura": 2.5
+   },
+   {
+    "texto": "Cruzamento sem conexão: a linha de menor hierarquia é interrompida",
+    "x": 470,
+    "y": 441,
+    "altura": 2.5
+   }
+  ],
+  "quadros": [
+   {
+    "titulo": "6. ISA-5.1 - PRIMEIRA LETRA",
+    "x": 640,
+    "y": 576,
+    "altura": 2.6,
+    "colunas": [
+     [
+      "LETRA",
+      22
+     ],
+     [
+      "VARIÁVEL MEDIDA",
+      90
+     ]
+    ],
+    "linhas": [
+     [
+      "A",
+      "Análise (pH, O2, gás)"
+     ],
+     [
+      "F",
+      "Vazão"
+     ],
+     [
+      "L",
+      "Nível"
+     ],
+     [
+      "P",
+      "Pressão / vácuo"
+     ],
+     [
+      "T",
+      "Temperatura"
+     ],
+     [
+      "Z",
+      "Posição"
+     ],
+     [
+      "H",
+      "Comando manual"
+     ],
+     [
+      "X",
+      "Não classificada"
+     ]
+    ]
+   },
+   {
+    "titulo": "7. ISA-5.1 - LETRAS SUBSEQUENTES",
+    "x": 640,
+    "y": 504,
+    "altura": 2.6,
+    "colunas": [
+     [
+      "LETRA",
+      22
+     ],
+     [
+      "FUNÇÃO",
+      90
+     ]
+    ],
+    "linhas": [
+     [
+      "I",
+      "Indicador"
+     ],
+     [
+      "T",
+      "Transmissor"
+     ],
+     [
+      "C",
+      "Controlador"
+     ],
+     [
+      "S",
+      "Chave (switch)"
+     ],
+     [
+      "V",
+      "Válvula / elemento final"
+     ],
+     [
+      "A",
+      "Alarme"
+     ],
+     [
+      "H / L",
+      "Alto / baixo"
+     ],
+     [
+      "HH / LL",
+      "Muito alto / muito baixo"
+     ],
+     [
+      "E",
+      "Elemento primário"
+     ]
+    ]
+   },
+   {
+    "titulo": "8. FORMATO DE IDENTIFICAÇÃO",
+    "x": 640,
+    "y": 424,
+    "altura": 2.4,
+    "colunas": [
+     [
+      "ITEM",
+      28
+     ],
+     [
+      "FORMATO / EXEMPLO",
+      158
+     ]
+    ],
+    "linhas": [
+     [
+      "Instrumento",
+      "LETRAS-MALHA: PIT-111 = P pressão, I indicador, T transmissor; malha 111 (R-101)"
+     ],
+     [
+      "Equipamento",
+      "PREFIXO-ÁREA+SEQ: R-201, TQ-101, P-301; reserva com sufixo A/B"
+     ],
+     [
+      "Válvula",
+      "HV manual, XV on-off, PSV segurança, PVSV emergência; LO/LC travada aberta/fechada; KL chave presa"
+     ],
+     [
+      "Linha",
+      "SERVIÇO-SEQUENCIAL: LODO-1103; DN e material conforme memorial (S1)"
+     ],
+     [
+      "Conector",
+      "FOLHA + destino (ex.: F02 / P/ R-101)"
+     ]
+    ]
+   },
+   {
+    "titulo": "9. LISTA DE EQUIPAMENTOS (F01-F02) E ENQUADRAMENTO FINEP",
+    "x": 28,
+    "y": 300,
+    "altura": 2.5,
+    "colunas": [
+     [
+      "TAG",
+      20
+     ],
+     [
+      "DESCRIÇÃO",
+      70
+     ],
+     [
+      "FL.",
+      9
+     ],
+     [
+      "DADOS PRINCIPAIS / FONTE",
+      152
+     ],
+     [
+      "RUBRICA FINEP",
+      140
+     ]
+    ],
+    "linhas": [
+     [
+      "BAL-101",
+      "Balança de recepção",
+      "F01",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "SIL-101",
+      "Silo / moega de recepção",
+      "F01",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "ES-101",
+      "Esteira de alimentação",
+      "F01",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "TRI-101",
+      "Triturador de dois eixos",
+      "F01",
+      "Rubrica FINEP: Triturador (1)",
+      "Triturador (1)"
+     ],
+     [
+      "TA-101",
+      "Tratamento de água da caldeira",
+      "F01",
+      "Rubrica FINEP (1)",
+      "Tratamento de água da caldeira (1)"
+     ],
+     [
+      "CL-101",
+      "Caldeira",
+      "F01",
+      "Caldemax flamotubular, 800 kgv/h; PMTA 8,0 / trab. 7,0 kgf/cm2 - GLP; Usada (2002); NR-13 (LAC-004)",
+      "Caldeira (1) - compra indefinida (LAC-004)"
+     ],
+     [
+      "AC-101",
+      "Acumulador de vapor",
+      "F01",
+      "Vaso NR-13",
+      "Planta de explosão a vapor - a verificar"
+     ],
+     [
+      "EV-101",
+      "Reator de explosão a vapor",
+      "F01",
+      "6,5 bar(g) / 168 °C (proposta); Batelada, 30% da carga (LAC-003); Vaso NR-13",
+      "Planta de explosão a vapor (1)"
+     ],
+     [
+      "TQ-103",
+      "Vaso flash",
+      "F01",
+      "Descompressão pós-explosão",
+      "Planta de explosão a vapor - a verificar"
+     ],
+     [
+      "CD-101",
+      "Condensador do flash",
+      "F01",
+      "",
+      "Planta de explosão a vapor - a verificar"
+     ],
+     [
+      "CH-101",
+      "Chaminé",
+      "F01",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "TQ-101",
+      "Tanque de diluição e homogeneização",
+      "F01",
+      "Fibrais 315C-25: Øint 3,00 x Hcil 2,60 m + cone 0,80 m; N1 4x6\" +3,82 | N2 4x6\" +1,61 | dreno 6\" +0,50; 70% frio + 30% pós-flash: T <= 35-38 °C",
+      "Tanques (3)"
+     ],
+     [
+      "AG-101",
+      "Misturador",
+      "F01",
+      "Fibrais: 3 CV / 45 rpm, AISI 304",
+      "Incluso na proposta Fibrais (pago)"
+     ],
+     [
+      "MAC-101",
+      "Macerador em linha",
+      "F01",
+      "A VERIFICAR (LAC-016)",
+      "Não consta (LAC-016)"
+     ],
+     [
+      "P-101",
+      "Alimentação r-101",
+      "F01",
+      "Rubrica FINEP: Bombas (4)",
+      "Bombas (4)"
+     ],
+     [
+      "P-102",
+      "By-pass r-101 / manifold",
+      "F01",
+      "Rotas RL-03 e RL-07",
+      "Bombas (4)"
+     ],
+     [
+      "R-101",
+      "Reator acidogênico",
+      "F02",
+      "PRFV - Fibrais 315E-25; Øint 3,20 x Hcil 4,70 m; Misturador AG-R101; Gás com H2 (IIC)",
+      "Biodigestores (5)"
+     ],
+     [
+      "AG-R101",
+      "Misturador vertical de topo do R-101",
+      "F02",
+      "",
+      "Sem item próprio (LAC-008)"
+     ]
+    ]
+   },
+   {
+    "titulo": " ",
+    "x": 429,
+    "y": 300,
+    "altura": 2.5,
+    "colunas": [
+     [
+      "TAG",
+      20
+     ],
+     [
+      "DESCRIÇÃO",
+      70
+     ],
+     [
+      "FL.",
+      9
+     ],
+     [
+      "DADOS PRINCIPAIS / FONTE",
+      152
+     ],
+     [
+      "RUBRICA FINEP",
+      140
+     ]
+    ],
+    "linhas": [
+     [
+      "SH-101",
+      "",
+      "F02",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "TQ-201",
+      "Tanque de neutralização",
+      "F02",
+      "Atmosférico 2,5-3,6 m3 (proposta); H2S / NR-15 (LAC-009)",
+      "Tanques (3) - neutralização (Formulário)"
+     ],
+     [
+      "AG-200",
+      "",
+      "F02",
+      "",
+      "Sem item próprio"
+     ],
+     [
+      "FCA-201",
+      "Carvão ativado",
+      "F02",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "DOS-201",
+      "Alcalinizante",
+      "F02",
+      "Rubrica FINEP: dosadora (4)",
+      "Bomba dosadora (4)"
+     ],
+     [
+      "P-201",
+      "Transferência",
+      "F02",
+      "Q <= 20 m3/h (proposta)",
+      "Bombas (4)"
+     ],
+     [
+      "R-201",
+      "Reator metanogênico 1",
+      "F02",
+      "PRFV - Fibrais 315D-25; Øint 3,80 x Hcil 9,30 m; Misturador AG-R201; Nível: LAC-005",
+      "Biodigestores (5)"
+     ],
+     [
+      "AG-R201",
+      "Misturador vertical de topo do R-201",
+      "F02",
+      "",
+      "Sem item próprio (LAC-008)"
+     ],
+     [
+      "SH-201",
+      "",
+      "F02",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "R-202",
+      "Reator metanogênico 2",
+      "F02",
+      "PRFV - Fibrais 315D-25; Øint 3,80 x Hcil 9,30 m; Misturador AG-R202; Nível: LAC-005",
+      "Biodigestores (5)"
+     ],
+     [
+      "AG-R202",
+      "Misturador vertical de topo do R-202",
+      "F02",
+      "",
+      "Sem item próprio (LAC-008)"
+     ],
+     [
+      "SH-202",
+      "",
+      "F02",
+      "",
+      "Contrapartida"
+     ],
+     [
+      "TQ-301",
+      "Tanque de biofertilizante",
+      "F02",
+      "Fibrais 315A-25; Øint 3,00 x Hcil 2,40 + cone 1,50 m; N1 4x6\" +4,66 | N2 4x6\" +2,48; Rubrica: LAC-012",
+      "Tanque de digestato excluído (LAC-012)"
+     ],
+     [
+      "P-301",
+      "Expedição / rl-05",
+      "F02",
+      "Rubrica FINEP: Bombas (4)",
+      "Bombas (4)"
+     ],
+     [
+      "PVSV-111",
+      "Alívio de emergência bidirecional na M2 Ø800",
+      "F02",
+      "+12/-6 mbar (R-101: -4/-5) - RES-001 REV03",
+      "Contrapartida (Fibrais garante - ART)"
+     ],
+     [
+      "PVSV-211",
+      "Alívio de emergência bidirecional na M2 Ø800",
+      "F02",
+      "+12/-6 mbar (R-101: -4/-5) - RES-001 REV03",
+      "Contrapartida (Fibrais garante - ART)"
+     ],
+     [
+      "PVSV-221",
+      "Alívio de emergência bidirecional na M2 Ø800",
+      "F02",
+      "+12/-6 mbar (R-101: -4/-5) - RES-001 REV03",
+      "Contrapartida (Fibrais garante - ART)"
+     ]
+    ],
+    "fonte": "Rubrica: Relação de Itens FINEP 06/05/2026 (Bases REV00 §2, Matriz S0). 'Contrapartida' = fora da relação."
+   }
+  ]
+ },
+ "notas": [
+  "1. Conjunto F00-F02 elaborado como EXEMPLO da skill fluxograma-pid a partir da pasta PROJETO_EXECUTIVO_OFICIAL (Gen E, 29/10/2026). Emissão preliminar (T.E. A): a S3 não foi iniciada e a S1 está bloqueada no Gate 0.",
+  "2. Premissas D1-D6 marcadas [A VERIFICAR] até deliberação da Diretoria e confirmação na seção indicada (CLAUDE.md §4-5).",
+  "3. Toda pendência aparece como LACUNA com ID (REGISTRO_LACUNAS.md). DN das linhas, níveis operacionais e set points só vão para 'Para Construção' sem LACUNA bloqueante aberta.",
+  "4. Simbologia ISO 10628-2 e ANSI/ISA-5.1 (letras compatíveis com a NBR 8190). Símbolos da casa onde o catálogo não tem equivalente. Cores de linha por serviço; impressão P&B disponível (arquivo _PB.pdf).",
+  "5. Cruzamentos sem conexão: a linha de menor hierarquia é interrompida. Tês indicados pela junção das linhas."
+ ]
+}
