@@ -68,3 +68,24 @@ test("Horas comerciais: livro legado marcado como histórico, só leitura", () =
   assert.match(html, /Horas comerciais \(histórico\)/);
   assert.match(html, /Livro antigo, só leitura\./);
 });
+
+test("Agenda: prazos e vencimentos de todos os módulos, cada fonte no seu recorte de acesso", () => {
+  assert.match(ts, /prazos: "equipe"/);
+  const b = trecho(ts, 'if (action === "prazos")', "\n  }\n  if (action === \"addevento\")");
+  assert.match(b, /FROM proj WHERE tenant_id = \? AND registro = 'ATIVO'/);
+  // CRM só para quem vê o comercial; RH só para coordenação/RH; contas só com financeiro.ver e sem valor
+  assert.match(b, /if \(\(await podeComercial\(u\.slug\)\) \|\| temCapSet\(caps, "comercial\.ver"\)\)/);
+  assert.match(b, /temCapSet\(caps, "rh\.ver"\)/);
+  assert.match(b, /temCapSet\(await capsAtribuidas\(u\), "financeiro\.ver"\)/);
+  assert.doesNotMatch(b.slice(b.indexOf("FROM fluxo") - 120), /valor/);
+  assert.match(html, /<div id="ag-prazos"><\/div>/);
+  assert.match(html, /api\("prazos",\{dias:AGP\.dias\}\)/);
+});
+
+test("Consistência dos dados visível no clássico (dono), com atalho para o módulo", () => {
+  assert.match(html, /\$\{state\.owner\?'<button class="subnav-btn" data-tab="pend-tab-cons"/);
+  assert.match(html, /"pend-tab-cons":function\(\)\{_consistencia\(\);\}/);
+  assert.match(trecho(html, "function _consistencia(){", "\n}\n"), /api\("consistencia"\)/);
+  assert.match(ts, /atalho: "RH › Banco de horas"/);
+  assert.doesNotMatch(ts, /atalho: "Financeiro › Capacidade"/);
+});

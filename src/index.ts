@@ -2097,7 +2097,7 @@ const PUBLICAS = new Set<string>(["ping", "haspin", "setpin", "login", "recupera
 const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
-  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmMetasSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
+  prazos: "equipe", comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmMetasSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
   // CRM na casca nova: tags/filtros por pessoa e atividades do negócio. Gate fino na ação (comercial.*).
   crmTagSet: "equipe", crmTagDel: "equipe", crmDealTag: "equipe", crmAtividades: "equipe", crmAtividadeSet: "equipe",
   crmAtividadeFeita: "equipe", crmAtividadeDel: "equipe", filtroList: "equipe", filtroSet: "equipe", filtroDel: "equipe",
@@ -5048,6 +5048,45 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, eventos: r.rows };
   }
 
+  /* PRAZOS E VENCIMENTOS (Agenda) — derivados dos módulos, cada fonte com o seu recorte de acesso:
+     prazo previsto dos projetos ativos (todos); próximas ações e tarefas do CRM (comercial);
+     contratos e acordos de colaboradores (RH); contas a pagar/receber previstas (financeiro, sem
+     valor — o valor fica no Financeiro). Janela: vencidos + próximos `dias` (padrão 30). */
+  if (action === "prazos") {
+    const u = await auth(p);
+    const caps = await capsDe(u);
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dias = Math.max(7, Math.min(120, Math.floor(Number(p.dias) || 30)));
+    const ate = new Date(Date.parse(hoje + "T00:00:00Z") + dias * 86400000).toISOString().slice(0, 10);
+    const desde = new Date(Date.parse(hoje + "T00:00:00Z") - 90 * 86400000).toISOString().slice(0, 10); // vencidos: até 90 dias atrás
+    const itens: P[] = [];
+    const pr = await sqlite.execute({ sql: "SELECT cc, projeto, status, previsto FROM proj WHERE tenant_id = ? AND registro = 'ATIVO' AND status NOT LIKE 'CONCLU%' AND status NOT LIKE 'CANCEL%'", args: [u.tenant_id] });
+    let semPrazo = 0;
+    for (const x of pr.rows as P[]) {
+      const d = String(x.previsto || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { if (String(x.status) === "EM ANDAMENTO") semPrazo++; continue; }
+      if (d < desde || d > ate) continue;
+      itens.push({ d, tipo: "projeto", titulo: String(x.projeto || x.cc), sub: "Prazo previsto · " + x.cc + " · " + x.status, ref: String(x.cc) });
+    }
+    if ((await podeComercial(u.slug)) || temCapSet(caps, "comercial.ver")) {
+      const dr = await sqlite.execute({ sql: "SELECT id, co, next, nextdate, owner FROM crm_deal WHERE tenant_id = ? AND nextdate >= ? AND nextdate <= ? AND COALESCE(next,'') <> ''", args: [u.tenant_id, desde, ate] });
+      for (const x of dr.rows as P[]) itens.push({ d: String(x.nextdate).slice(0, 10), tipo: "crm", titulo: String(x.co || x.id), sub: "Próxima ação: " + String(x.next).slice(0, 120) + (x.owner ? " · " + x.owner : ""), ref: String(x.id) });
+      const ta = await sqlite.execute({ sql: "SELECT a.deal_id, a.texto, a.prazo, a.resp, d.co FROM crm_atividade a LEFT JOIN crm_deal d ON d.tenant_id = a.tenant_id AND d.id = a.deal_id WHERE a.tenant_id = ? AND a.tipo = 'tarefa' AND a.feito = 0 AND a.prazo >= ? AND a.prazo <= ?", args: [u.tenant_id, desde, ate] });
+      for (const x of ta.rows as P[]) itens.push({ d: String(x.prazo).slice(0, 10), tipo: "crm", titulo: String(x.co || x.deal_id), sub: "Tarefa: " + String(x.texto || "").slice(0, 120) + (x.resp ? " · " + x.resp : ""), ref: String(x.deal_id) });
+    }
+    if (u.coord || temCapSet(caps, "pessoas.cargo_atribuir") || temCapSet(caps, "rh.ver")) {
+      const c = await sqlite.execute({ sql: "SELECT id, slug, tipo, inicio, fim, renovacao_auto FROM rh_contrato WHERE tenant_id = ?", args: [u.tenant_id] });
+      const a = await sqlite.execute({ sql: "SELECT id, slug, tipo, inicio, fim FROM rh_acordo WHERE tenant_id = ?", args: [u.tenant_id] });
+      for (const x of alertasRh(c.rows as any, a.rows as any, hoje) as P[])
+        itens.push({ d: String(x.fim), tipo: "rh", titulo: (NOMES[String(x.slug)] || x.slug) + " — " + x.tipo, sub: (x.origem === "acordo" ? "Acordo" : "Contrato") + (Number(x.dias) < 0 ? " vencido" : " vence"), ref: String(x.slug) });
+    }
+    if (isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver")) {
+      const fx = await sqlite.execute({ sql: "SELECT id, tipo, descricao, categoria, data_prev FROM fluxo WHERE tenant_id = ? AND status = 'previsto' AND data_prev >= ? AND data_prev <= ?", args: [u.tenant_id, desde, ate] });
+      for (const x of fx.rows as P[]) itens.push({ d: String(x.data_prev), tipo: "conta", titulo: String(x.descricao || x.categoria || "Lançamento"), sub: (String(x.tipo) === "entrada" ? "A receber" : "A pagar") + (x.categoria ? " · " + x.categoria : ""), ref: String(x.id) });
+    }
+    itens.sort((a, b) => String(a.d).localeCompare(String(b.d)) || String(a.tipo).localeCompare(String(b.tipo)));
+    return { ok: true, hoje, ate, itens: itens.slice(0, 600), semPrazo };
+  }
   if (action === "addevento") {
     const u = await auth(p);
     if (!temCapSet(await capsDe(u), "agenda.editar")) throw new Error("Seu cargo não permite criar ou alterar eventos da agenda.");
@@ -6202,7 +6241,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         sql: "SELECT COUNT(*) n FROM cc_contrato c WHERE c.tenant_id = ? AND c.status='confirmado' AND NOT EXISTS (SELECT 1 FROM contrato_parcela pp WHERE pp.contrato_id=c.id AND pp.tenant_id=c.tenant_id)", args: [T] },
       { rule: "C14", titulo: "Parcela prevista vencida e não recebida", sev: "alto", dono: "Financeiro", atalho: "Financeiro › Conciliação",
         sql: "SELECT COUNT(*) n FROM contrato_parcela WHERE tenant_id = ? AND status='prevista' AND venc_prev <> '' AND venc_prev < date('now')", args: [T] },
-      { rule: "C15", titulo: "Pessoa com horas e sem capacidade cadastrada", sev: "medio", dono: "RH", atalho: "Financeiro › Capacidade",
+      { rule: "C15", titulo: "Pessoa com horas e sem capacidade cadastrada", sev: "medio", dono: "RH", atalho: "RH › Banco de horas",
         sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug=a.slug AND c.tenant_id = ?)", args: [T, T] },
       { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
         sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },

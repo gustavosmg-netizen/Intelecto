@@ -730,7 +730,7 @@ var TAB_LOAD={
   "fin-tab-ch":function(){_finCustoHora();},"fin-tab-cf":function(){_finCustoFixo();},"rh-tab-banco":function(){_finCapacidade();},
   "fin-tab-conc":function(){_finConciliacao();},"fin-tab-fx":function(){_finFluxo();},
   "com-painel":function(){_crmLoad();},"com-crm":function(){_crmLoad();},"com-leads":function(){_crmLoad();},
-  "area-com":function(){_execCrm();},"area-fin":function(){_finResumo();}
+  "area-com":function(){_execCrm();},"pend-tab-cons":function(){_consistencia();},"area-fin":function(){_finResumo();}
 };
 
 /* ===================== T6 · PERFIL & CONTA ===================== */
@@ -1726,10 +1726,66 @@ function viewAgenda(el){
       '<button class="btn sec sm" id="ag-flimpar">Limpar</button>'+
     '</div>'+
   '</div>';
-  el.innerHTML=head+'<div id="ag-kpis"></div>'+(temCap('agenda.editar')?form:'')+filtros+'<div id="ag-lista"><p class="muted" style="padding:10px 0">Carregando eventos…</p></div>'+'<div id="ag-ritos" style="margin-top:22px"></div>';
+  el.innerHTML=head+'<div id="ag-prazos"></div><div id="ag-kpis"></div>'+(temCap('agenda.editar')?form:'')+filtros+'<div id="ag-lista"><p class="muted" style="padding:10px 0">Carregando eventos…</p></div>'+'<div id="ag-ritos" style="margin-top:22px"></div>';
   ligaAgenda();
   loadAgenda();
   _agRitosLoad();
+  _agPrazos();
+}
+/* CONSISTÊNCIA DOS DADOS (dono) — as regras de integridade entre módulos (servidor: ação
+   consistencia). Abertas primeiro, por severidade; o atalho leva ao módulo onde se corrige. */
+var CONS_VIEW={"Financeiro":"financeiro","Comercial":"comercial","RH":"rh","Lançar horas":"lancar","Projeto 360":"projetos","Projetos":"projetos","Cadastro":"cadastro"};
+function _consistencia(){
+  var box=$("#pend-cons");if(!box)return;box.innerHTML='<p class="muted" style="padding:8px 0">Rodando as regras…</p>';
+  api("consistencia").then(function(j){
+    var rs=(j.regras||[]).slice(),ordem={crit:0,alto:1,medio:2},nome={crit:"Crítica",alto:"Alta",medio:"Média"},cor={crit:"var(--crit)",alto:"var(--serious,var(--warn))",medio:"var(--warn)"};
+    rs.sort(function(a,b){var na=a.n>0?0:1,nb=b.n>0?0:1;return na-nb||(ordem[a.sev]==null?3:ordem[a.sev])-(ordem[b.sev]==null?3:ordem[b.sev])||b.n-a.n;});
+    var abertas=rs.filter(function(r){return r.n>0;}).length,td='padding:7px 10px;font-size:.84rem;border-top:1px solid var(--line)';
+    box.innerHTML='<div class="kpis" style="margin-bottom:12px"><div class="kpi"><div class="v" style="color:'+(j.criticosAbertos?'var(--crit)':'var(--ok,#1f7a3d)')+'">'+(j.criticosAbertos||0)+'</div><div class="l">Regras críticas abertas</div></div>'
+      +'<div class="kpi"><div class="v">'+abertas+'</div><div class="l">de '+rs.length+' regras com pendência</div></div>'
+      +'</div><div style="display:flex;justify-content:flex-end;margin:-4px 0 8px"><button class="btn sec sm" type="button" id="cons-rodar">Rodar de novo</button></div>'
+      +'<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Regra</th><th style="'+td+';text-align:left">Severidade</th><th style="'+td+';text-align:right">Pendências</th><th style="'+td+';text-align:left">Dono</th><th style="'+td+';text-align:left">Onde corrigir</th></tr></thead><tbody>'
+      +rs.map(function(r){var n=Number(r.n),v=CONS_VIEW[String(r.atalho||"").split(" › ")[0]];
+        return '<tr><td style="'+td+'"><span class="muted" style="font-size:.72rem">'+esc(r.rule)+'</span><div style="font-weight:600">'+esc(r.titulo)+'</div></td>'
+          +'<td style="'+td+';color:'+(cor[r.sev]||'inherit')+'">'+esc(nome[r.sev]||r.sev)+'</td>'
+          +'<td style="'+td+';text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:'+(n>0?(cor[r.sev]||'inherit'):'var(--ok,#1f7a3d)')+'">'+(n<0?'—':n===0?'ok':n)+'</td>'
+          +'<td style="'+td+'">'+esc(r.dono||"")+'</td>'
+          +'<td style="'+td+'">'+(v?'<button class="linkbtn" type="button" data-go="'+esc(v)+'">'+esc(r.atalho)+' →</button>':'<span class="muted">'+esc(r.atalho||"")+'</span>')+'</td></tr>';}).join("")
+      +'</tbody></table></div><p class="muted" style="font-size:.74rem;margin:8px 0 0">Recalculado em '+esc(String(j.em||"").slice(0,16).replace("T"," "))+'. Cada regra mede a integridade entre módulos (fonte única, contrato × caixa, andamento).</p>';
+    $("#cons-rodar").onclick=_consistencia;
+    box.querySelectorAll("[data-go]").forEach(function(b){b.onclick=function(){irPara(b.getAttribute("data-go"));};});
+  }).catch(function(e){box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+/* PRAZOS E VENCIMENTOS — o que vence nos módulos (projetos, CRM, RH, contas), cada um no recorte
+   de acesso de quem vê (o servidor decide). Clicar abre o módulo. Filtro por tipo e janela. */
+var AGP={dias:30,off:{}};
+var AGP_TIPO={projeto:["Projetos","projetos","var(--vz-1)"],crm:["Comercial","comercial","var(--vz-2)"],rh:["RH","rh","var(--vz-3)"],conta:["Contas","financeiro","var(--vz-4)"]};
+function _agPrazos(){
+  var box=$("#ag-prazos");if(!box)return;
+  api("prazos",{dias:AGP.dias}).then(function(j){
+    var it=j.itens||[],hj=j.hoje||hoje();
+    var em7=new Date(Date.parse(hj+"T00:00:00Z")+7*864e5).toISOString().slice(0,10);
+    var cont={};it.forEach(function(x){cont[x.tipo]=(cont[x.tipo]||0)+1;});
+    var vis=it.filter(function(x){return !AGP.off[x.tipo];});
+    var grupos=[["Vencidos",function(x){return x.d<hj;},"var(--crit)"],["Hoje",function(x){return x.d===hj;},"var(--warn)"],["Próximos 7 dias",function(x){return x.d>hj&&x.d<=em7;},""],["Depois",function(x){return x.d>em7;},""]];
+    var linha=function(x){var t=AGP_TIPO[x.tipo]||["", "", "var(--muted)"];
+      return '<div class="agp-item" data-go="'+esc(t[1])+'" style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px dashed var(--line);cursor:pointer">'
+        +'<span style="min-width:74px;font-size:.78rem;font-variant-numeric:tabular-nums" class="muted">'+esc(x.d.slice(8,10)+"/"+x.d.slice(5,7))+'</span>'
+        +'<span style="display:inline-flex;align-items:center;gap:5px;min-width:96px;font-size:.72rem"><i style="width:8px;height:8px;border-radius:2px;background:'+t[2]+'"></i>'+esc(t[0])+'</span>'
+        +'<span style="flex:1;min-width:0"><b style="font-size:.86rem">'+esc(x.titulo)+'</b><span class="muted" style="font-size:.78rem"> · '+esc(x.sub||"")+'</span></span></div>';};
+    var corpo=grupos.map(function(g){var xs=vis.filter(g[1]);if(!xs.length)return "";
+      return '<div style="margin-top:10px"><div style="font-size:.78rem;font-weight:700;'+(g[2]?'color:'+g[2]:'')+'">'+g[0]+' <span class="muted" style="font-weight:400">('+xs.length+')</span></div>'+xs.slice(0,60).map(linha).join("")+(xs.length>60?'<div class="muted" style="font-size:.74rem;padding-top:4px">+'+(xs.length-60)+' itens</div>':'')+'</div>';}).join("");
+    var chips=Object.keys(AGP_TIPO).filter(function(k){return cont[k];}).map(function(k){return '<button type="button" class="chip-f'+(AGP.off[k]?'':' on')+'" data-agt="'+k+'">'+AGP_TIPO[k][0]+' ('+cont[k]+')</button>';}).join("");
+    var janelas=[7,30,60,90].map(function(n){return '<button type="button" class="chip-f'+(AGP.dias===n?' on':'')+'" data-agd="'+n+'">'+n+' dias</button>';}).join("");
+    box.innerHTML='<div class="card" style="margin-bottom:16px;padding:12px 16px">'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0;font-size:1rem;margin-right:auto">Prazos e vencimentos</h3>'+chips+'<span class="muted" style="font-size:.72rem;margin-left:6px">janela</span>'+janelas+'</div>'
+      +(corpo||'<p class="muted" style="margin:10px 0 0;font-size:.84rem">Nada vencendo nesta janela.</p>')
+      +(j.semPrazo?'<p class="muted" style="font-size:.76rem;margin:10px 0 0">⚠ '+j.semPrazo+' projeto(s) em andamento sem prazo previsto — informe na Carteira para aparecerem aqui.</p>':'')
+      +'</div>';
+    box.querySelectorAll("[data-agt]").forEach(function(b){b.onclick=function(){var k=b.getAttribute("data-agt");AGP.off[k]=!AGP.off[k];_agPrazos();};});
+    box.querySelectorAll("[data-agd]").forEach(function(b){b.onclick=function(){AGP.dias=Number(b.getAttribute("data-agd"));_agPrazos();};});
+    box.querySelectorAll(".agp-item").forEach(function(r){r.onclick=function(){var v=r.getAttribute("data-go");if(v&&typeof irPara==="function")irPara(v);};});
+  }).catch(function(){box.innerHTML="";});
 }
 /* Ritos & Cadência: catálogo da casa (ação ritos). Leitura p/ todos; editar p/ quem tem
    agenda.editar (coordenação). O que é cada rito, quando, quem, objetivo, pauta e entregável. */
@@ -5589,7 +5645,9 @@ function viewPend(){
   <nav class="subnav" role="tablist">
     <button class="subnav-btn is-active" data-tab="pend-tab-aprov" type="button">Aprovações</button>
     <button class="subnav-btn" data-tab="pend-tab-trilha" type="button">Trilha de auditoria</button>
+    ${state.owner?'<button class="subnav-btn" data-tab="pend-tab-cons" type="button">Consistência dos dados</button>':''}
   </nav>
+  ${state.owner?'<section class="tabpanel hidden" id="pend-tab-cons"><div id="pend-cons"><p class="muted" style="padding:8px 0">Abra para rodar as regras…</p></div></section>':''}
   <section class="tabpanel" id="pend-tab-aprov">
   <div id="pend-solacesso" class="card" style="padding:14px 16px;margin-bottom:14px">
     <b>Solicitações de acesso</b>

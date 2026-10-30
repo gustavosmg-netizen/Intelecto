@@ -55,7 +55,7 @@ const sevNome = (s: string) => s === "crit" ? "Crítico" : s === "alto" ? "Alto"
 const atalhoHash: Record<string, string> = {
   "Financeiro › Conciliação": "#/financeiro", "Projeto 360 › Financeiro": "#/projetos", "Projeto 360 › Visão": "#/projetos",
   "Projeto 360 › Contrato": "#/projetos", "Lançar horas": "#/meu", "Financeiro › Custo/hora": "#/financeiro",
-  "Financeiro › Capacidade": "#/financeiro", "Comercial › Horas": "#/comercial",
+  "Comercial › Horas": "#/comercial", // "RH › Banco de horas" fica sem link: a casca nova ainda não tem RH
 };
 
 export function Administracao() {
