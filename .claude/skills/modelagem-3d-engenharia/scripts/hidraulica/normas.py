@@ -171,9 +171,16 @@ FF_JUNTA_DESMONTAGEM = {50: 200, 65: 200, 80: 200, 100: 200, 125: 200, 150: 200,
                         250: 220, 300: 250, 350: 250, 400: 250, 500: 300, 600: 300}
 
 
+# corta-chamas em linha (detonação/deflagração, carcaça com elemento de lâminas): típicos
+# de catálogo (biogás; grupo IIC quando há H₂, como no gás de reator acidogênico), a
+# confirmar com o fabricante
+FF_CORTA_CHAMAS = {50: 300, 80: 360, 100: 420, 150: 520, 200: 620}
+
+
 def face_a_face(tipo: str, dn: int) -> float:
     tab = {"gaveta": FF_GAVETA, "borboleta": FF_BORBOLETA, "retencao": FF_RETENCAO,
-           "esfera": FF_ESFERA, "junta_desmontagem": FF_JUNTA_DESMONTAGEM}[tipo]
+           "esfera": FF_ESFERA, "junta_desmontagem": FF_JUNTA_DESMONTAGEM,
+           "corta_chamas": FF_CORTA_CHAMAS}[tipo]
     if dn not in tab:
         raise ValueError(f"{tipo} sem face a face tabelado para DN{dn}")
     return float(tab[dn])

@@ -22,8 +22,9 @@ CORES = {"agua": (0.10, 0.45, 0.80, 1), "agua_bruta": (0.10, 0.55, 0.35, 1),
          "ar": (0.95, 0.95, 0.95, 1), "quimico": (1.0, 0.55, 0.0, 1),
          "drenagem": (0.10, 0.10, 0.10, 1), "concreto": (0.62, 0.61, 0.58, 1),
          "metal": (0.58, 0.60, 0.63, 1), "valvula": (0.70, 0.08, 0.06, 1),
-         "bomba": (0.10, 0.30, 0.60, 1), "pead": (0.08, 0.08, 0.08, 1)}
-FLANGEADOS = {"gaveta", "borboleta", "retencao", "esfera", "junta_desmontagem"}
+         "bomba": (0.10, 0.30, 0.60, 1), "pead": (0.08, 0.08, 0.08, 1),
+         "biogas": (0.93, 0.72, 0.08, 1)}
+FLANGEADOS = {"gaveta", "borboleta", "retencao", "esfera", "junta_desmontagem", "corta_chamas"}
 
 
 @dataclass
@@ -568,7 +569,8 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                     "borboleta": lambda: g.valvula_borboleta(fl, L, di),
                     "retencao": lambda: g.valvula_retencao(fl, L, di),
                     "esfera": lambda: g.valvula_esfera(fl, L, di),
-                    "junta_desmontagem": lambda: g.junta_desmontagem(fl, L, tb.de, di)}[c.tipo]()
+                    "junta_desmontagem": lambda: g.junta_desmontagem(fl, L, tb.de, di),
+                    "corta_chamas": lambda: g.corta_chamas(fl, L, di)}[c.tipo]()
             grupo = f"{c.tag}-DN{c.dn}" if c.tipo != "junta_desmontagem" else nome
             m.add(grupo, g.posicionar(peca, P, d, cima),
                   CORES["valvula"] if c.tipo != "junta_desmontagem" else CORES["metal"])
@@ -576,7 +578,8 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                       "borboleta": "Válvula borboleta wafer c/ redutor",
                       "retencao": "Válvula de retenção portinhola flangeada",
                       "esfera": "Válvula esfera flangeada",
-                      "junta_desmontagem": "Junta de desmontagem travada"}[c.tipo]
+                      "junta_desmontagem": "Junta de desmontagem travada",
+                      "corta_chamas": "Corta-chamas em linha certificado (grupo de gás da classificação; IIC se houver H₂)"}[c.tipo]
             rotulo = c.extra.get("rotulo", rotulo)
             m.item(rotulo, f"DN{c.dn} {normas.classe_txt(int(linha.spec.get('pn', 10)))} F-F {L:.0f} mm", "un", 1)
             # vizinhos: componente flangeado colado -> só parafusos; senão adaptador no tubo
@@ -757,7 +760,8 @@ def _dentro_de_tanque(m: Modelo, P: Vector, folga: float = 0.0) -> bool:
         cx, cy = eq["centro"]
         a, b = eq["dim"]
         t = eq["parede"]
-        f = min(folga, 300.0) if eq.get("pote") else folga   # pote de selagem: só as pernas
+        # pote ou tanque pequeno (Ø ≤ 2,5 m): só o próprio corpo, sem a faixa larga de exclusão
+        f = min(folga, 300.0) if eq.get("pote") or eq["dim"][0] <= 2500 else folga
         if eq["cil"]:
             if math.hypot(P.X - cx, P.Y - cy) <= a / 2 + t + f and P.Z <= eq["borda"] + 2000:
                 return True

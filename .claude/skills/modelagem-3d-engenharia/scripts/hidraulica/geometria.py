@@ -197,6 +197,21 @@ def junta_desmontagem(fl: normas.Flange, L: float, de: float, di: float) -> Part
                                                                            align=BASE)
 
 
+def corta_chamas(fl: normas.Flange, L: float, di: float) -> Part:
+    """Corta-chamas em linha: carcaça cilíndrica alargada com o elemento de lâminas e
+    flanges nos extremos; tomadas de pressão diferencial e termopar na carcaça (cima = +Y)."""
+    r = fl.D / 2
+    corpo = Pos(0, 0, L / 2) * Cylinder(1.05 * r, L * 0.55, align=(Align.CENTER,) * 3)
+    cones = Pos(0, 0, fl.t) * Cone(0.6 * r, 1.05 * r, L * 0.225 - fl.t, align=BASE)
+    cones += Pos(0, 0, L * 0.775) * Cone(1.05 * r, 0.6 * r, L * 0.225 - fl.t, align=BASE)
+    tomadas = posicionar(Cylinder(0.06 * r, 0.35 * r, align=BASE), (0, 1.0 * r, L * 0.35),
+                         (0, 1, 0))
+    tomadas += posicionar(Cylinder(0.06 * r, 0.35 * r, align=BASE), (0, 1.0 * r, L * 0.65),
+                          (0, 1, 0))
+    v = corpo + cones + tomadas + _flanges_extremos(fl, L, di)
+    return v - Cylinder(di / 2, L, align=BASE)
+
+
 def ventosa(fl_ramal: normas.Flange, altura: float) -> Part:
     """Ventosa de duplo efeito sobre flange do ramal (local: base em z=0, para cima +Z)."""
     r = fl_ramal.D / 2

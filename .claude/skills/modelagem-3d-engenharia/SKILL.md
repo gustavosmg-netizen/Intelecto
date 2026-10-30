@@ -94,6 +94,12 @@ Para tanques já fabricados (ex.: Fibrais), monte o modelo em Python. O YAML nã
   - carga de partida 4·τy·L/(ρgD);
   - declividade mínima de lâmina livre;
   - casos de 8% ST.
+- `copo_selagem` cria um copo de selagem INTERNO num tanque novo. A borda fica acima do nível máximo do tanque, então o fecho não depende do nível. É a forma preferida de selar a saída de um reator fechado num tanque no chão; o `pote_selagem` elevado é a alternativa.
+- `gas.py` traz os envelopes com bocais reais do sistema de biogás:
+  - `gasometro_membrana`: bolsa de baixa pressão com entrada e saída separadas, selo d'água e medição de volume;
+  - `gasometro_dupla_membrana`;
+  - `soprador_skid`, `flare`, `pote_condensado` e `analisador`.
+- O componente de linha `corta_chamas` (flangeado) completa o sistema de gás. Linhas de gás usam `servico: biogas` e `cor: servico`, que as pintam de amarelo.
 - A memória com LE/LP fica no projeto (`hidraulica_gene.py`). `nao_newtoniano: true` na linha amplia a faixa de velocidade aceita.
 
 ## Arquivos

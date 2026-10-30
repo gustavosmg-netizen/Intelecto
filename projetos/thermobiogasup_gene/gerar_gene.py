@@ -14,6 +14,7 @@ from pathlib import Path
 AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI))
 import planta_gene as pg  # noqa: E402  (insere o caminho das scripts da skill)
+import gas_gene as gg  # noqa: E402
 import hidraulica_gene as hg  # noqa: E402
 from hidraulica import montagem, prfv, validacao  # noqa: E402
 
@@ -70,8 +71,9 @@ def escrever_bocais(linhas, pasta: Path):
         w.writeheader()
         w.writerows(linhas)
     L = ["# Lista de bocais De→Para — reatores e tanques PRFV (Gen E)\n",
-         "Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 3, depois "
-         "de três rodadas do Crivo A–F independente, liberada para circular em discussão. **Não furar antes de fechar a LAC-006** (arranjo "
+         "Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 4 (coleta "
+         "no chão e sistema de biogás), revisada pelo Crivo A–F independente e corrigida. "
+         "**Não furar antes de fechar a LAC-006** (arranjo "
          "de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). "
          "Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.\n",
          "Convenções:",
@@ -88,7 +90,7 @@ def escrever_bocais(linhas, pasta: Path):
     novos = Counter((l["equipamento"], l["dn"]) for l in linhas if l["estado"] == "novo")
     cegos = Counter((l["equipamento"], l["dn"]) for l in linhas
                     if l["estado"] in ("tamponar", "converter"))
-    fib = [l for l in linhas if not l["equipamento"].startswith("PS-")]   # potes: item CSTR
+    fib = [l for l in linhas if l["equipamento"] not in ("CS-301", "TQ-201")]   # itens CSTR
     tot_n = Counter(l["dn"] for l in fib if l["estado"] == "novo")
     tot_c = Counter(l["dn"] for l in fib if l["estado"] in ("tamponar", "converter"))
     L.append("| equipamento | bocais novos (qtd × DN) | flanges cegos (qtd × DN) |")
@@ -97,36 +99,38 @@ def escrever_bocais(linhas, pasta: Path):
         n = " + ".join(f"{q}× DN{dn}" for (e, dn), q in sorted(novos.items()) if e == eq) or "—"
         c = " + ".join(f"{q}× DN{dn}" for (e, dn), q in sorted(cegos.items()) if e == eq) or "—"
         L.append(f"| {eq} | {n} | {c} |")
-    L.append(f"| **total Fibrais (sem os potes)** | **{' + '.join(f'{q}× DN{dn}' for dn, q in sorted(tot_n.items()))}**"
+    L.append(f"| **total nos tanques Fibrais existentes** | **{' + '.join(f'{q}× DN{dn}' for dn, q in sorted(tot_n.items()))}**"
              f" | **{' + '.join(f'{q}× DN{dn}' for dn, q in sorted(tot_c.items()))}** |\n")
     L.append("Leitura do resumo:")
-    L.append("- **Reatores e TQ-301 (já fabricados):** os bocais novos são só a saída N-SAI "
-             "DN150, com a soleira interna no N.A. (+3,50 / +7,50), e o LSHH DN50.")
+    L.append("- **Reatores (já fabricados):** os bocais novos são só a saída N-SAI DN150, com a "
+             "soleira interna no N.A. (+3,50 / +7,50), e o LSHH DN50.")
+    L.append("- **TQ-301 (já fabricado):** passa a ser só armazenamento do digestato. Recebe "
+             "pela P-301 no N1-270; N1-0 e N1-90 ficam cegos; novos só o extravasor e o LSHH.")
     L.append("- **Reatores, flanges cegos:** dois N2, o M1 e o A4. Os quatro N1 ficam em uso: "
              "respiro de equalização da saída, descarga da ventosa da alça, selo hidráulico e "
              "radar.")
     L.append("- **A4 (8\"):** é convertido em flange com cego multitomada. É o candidato ao "
              "transbordo dedicado (LAC-038) e às tomadas independentes de PSLL/PAHH (LAC-048).")
-    L.append("- **TQ-201:** todos os bocais são novos, porque o tanque é especificado pela "
-             "CSTR (LAC-010).")
-    L.append("- **Potes PS-101/201/202:** são itens novos da CSTR (PRFV ou PEAD), não da "
-             "Fibrais.\n")
+    L.append("- **TQ-201 e CS-301 (novos, especificação CSTR):** todos os bocais são novos e "
+             "cada um leva copo de selagem interno laminado (CP-101 no TQ-201; CP-201 e CP-202 "
+             "na CS-301). Não entram no total dos tanques existentes.\n")
     L.append("## O que a Fibrais precisa confirmar ou fornecer antes de furar\n")
     for t in (
-            "**Cargas nos bocais novos.** A N-SAI recebe só o registro e o tê do respiro. O pote "
-            "tem estrutura própria até o piso, e a descida e o transbordo se apoiam numa "
-            "estrutura metálica a projetar (LAC-047), não no bocal. A Fibrais informa as "
+            "**Cargas nos bocais novos.** A N-SAI recebe só o registro e o tê do respiro. A "
+            "descida até o tanque do chão se apoia numa estrutura metálica a projetar "
+            "(LAC-047), não no bocal. A Fibrais informa as "
             "cargas admissíveis (forças e momentos) e o reforço (repad) de cada abertura nova, "
             "com a FEA da LAC-006.",
             "**Distância mínima de bocal à junta fundo-costado** (N-SUC a 250 mm e N-DRE a "
             "200 mm do fundo do TQ-201).",
-            "**Detalhes internos:** quebra-vórtice no N-SUC; tubos de imersão no N-DOS e no "
-            "N-RL05.",
+            "**Detalhes internos dos tanques novos:** copos de selagem (CP-101 no TQ-201, "
+            "CP-201/202 na CS-301) com borda acima do nível máximo; quebra-vórtice nos N-SUC; "
+            "tubos de imersão no N-DOS e no N-RL05.",
             "**Dilatação do PEAD** entre o piso e os bocais altos (até ≈ 60 mm a ΔT 30 K). "
             "Prever liras ou mangote flexível junto ao bocal, sem carregar o PRFV.",
             "**Acessos e plataformas** (projeto CSTR, LAC proposta): V-201SAI e V-202SAI a "
-            "+7,6 m, potes PS-201/202 com topo a ≈ +6,7 m, LSHH a +8,35 m e ventosas das alças a "
-            "+5,35/+9,35 m.",
+            "+7,6 m, LSHH a +8,35 m e ventosas das alças a +5,35/+9,35 m. As caixas e bombas "
+            "ficam no chão.",
             "**Tampa de visita M1:** aparafusada e removível, estanque a gás (LAC-029). Não "
             "é um cego definitivo.",
             ):
@@ -146,10 +150,10 @@ def escrever_bocais(linhas, pasta: Path):
 
 
 LACUNAS_PROPOSTAS = [
-    ("LAC-041", "Reometria da polpa real (τy e μp a 35 °C, 6–9% ST) e ensaio de bancada do pote "
+    ("LAC-041", "Reometria da polpa real (τy e μp a 35 °C, 6–9% ST) e ensaio de bancada do copo "
      "de selagem", "Fecha as margens das saídas por gravidade e as AMT (caso pessimista)",
      "CSTR – S2", "Gate 3"),
-    ("LAC-042", "Especificação do FCA-201 (carvão, perda de carga, saturação por H₂S)",
+    ("LAC-042", "Especificação do FCA-201 e do FCA-301 (carvão, perda de carga, saturação por H₂S)",
      "A perda de carga do FCA define o vácuo no TQ-201 atmosférico", "CSTR – S4", "Gate 4"),
     ("LAC-043", "Posição radial real do N3 (2\") no tampo dos reatores", "Locação das linhas "
      "de gás e do PT", "Fibrais (as-built)", "Gate 1"),
@@ -161,18 +165,34 @@ LACUNAS_PROPOSTAS = [
      "Gate 1"),
     ("LAC-046", "Selo das saídas: 330 mm de polpa (≈ 33 mbar) em vez dos 500 mmCA da proposta",
      "Decisão do responsável de processo", "CSTR – processo", "Gate 1"),
-    ("LAC-047", "Estruturas de apoio dos potes e das descidas; cargas admissíveis nos bocais "
-     "novos; plataformas de acesso às válvulas e aos potes elevados", "Integridade dos "
+    ("LAC-047", "Estruturas de apoio das descidas; cargas admissíveis nos bocais novos; "
+     "plataformas de acesso às válvulas altas (V-xSAI, ventosas)", "Integridade dos "
      "bocais PRFV e operação segura", "CSTR (S5) + Fibrais (cargas)", "Gate 3"),
     ("LAC-048", "Instrumentação complementar da RES-001 §5.6: tomadas independentes de "
-     "PSLL/PAHH (N1 de reserva), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC "
+     "PSLL/PAHH (A4 multitomada), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC "
      "no V-xGAS, LSLL do TQ-201 como SIF dedicada", "Barreiras contra vácuo e entrada de ar",
      "CSTR – S4", "Gate 4"),
-    ("LAC-049", "Biogás arrastado pelos potes de selagem aos tanques atmosféricos e descarga "
-     "da ventosa VQ-301 (crista da L-301R a +8,65, junto ao topo dos R-201/202) na purga: "
-     "vazão estimada, tratamento dos respiros (A7 do TQ-301 sem tratamento; FCA-201) e "
+    ("LAC-049", "Biogás arrastado pelos copos de selagem ao TQ-201 e à CS-301 (respiros aos "
+     "FCA-201/301) e residual do digestato no TQ-301 (A7 sem tratamento): "
+     "vazão estimada, tratamento dos respiros e "
      "classificação de área (ver LAC-009)", "Odor, H₂S e área classificada", "CSTR – S4",
      "Gate 4"),
+    ("LAC-050", "Gasômetros: fornecedor (consultar Plaslonas e outros; catálogo não encontrado "
+     "em fonte aberta), pressão real de operação do GH-1 (alvo ≈ 0 a +2 mbar, faixa de "
+     "mercado −1 a +5) e do GH-2 (15–30 mbar), volumes, alívio, medição de volume e "
+     "ventilador de suporte", "Pressão dos reatores e ciclos de transferência", "CSTR – S3",
+     "Gate 3"),
+    ("LAC-051", "Material das linhas de gás aéreas (inox 304L/316L ou PEAD enterrado), "
+     "distâncias de segurança (gasômetros, flare, consumidores), classificação de área e "
+     "corta-chamas, sopradores, gasômetros e instrumentos certificados para o grupo IIC (gás do R-101 com H₂, D-RES-10)", "Segurança contra incêndio e explosão",
+     "CSTR – S4", "Gate 4"),
+    ("LAC-053", "Divergências com a RES-001 a validar: GH-1 a ≈ +0,5–2 mbar (RES-001 D3: +1,5 a "
+     "+3); alternância GH-1A/B no lugar de gasômetro único com retirada simultânea; válvula "
+     "mantenedora a montante ajustada em ≈ +0,3 mbar", "Coerência com a resolução de processo",
+     "CSTR – processo", "Gate 1"),
+    ("LAC-052", "Consumidores a jusante do GH-2 (SK-501, GE-601, caldeira): vazões e pressões "
+     "de tie-in para fechar o volume do GH-2 e a pressão de descarga dos S-501",
+     "Dimensionamento do GH-2 e dos sopradores", "CSTR – S3", "Gate 3"),
 ]
 
 
@@ -213,6 +233,8 @@ def main():
     escrever_lacunas(pasta)
     hg.grafico(m, pg.NIVEL, pasta / "LE_LP_gene.png")
     hg.memoria(m, pg.NIVEL, res, pasta / "MEMORIA_HIDRAULICA.md", "LE_LP_gene.png")
+    gg.memoria(m, gg.calcular(m), pasta / "MEMORIA_GAS.md")
+    gg.matriz(pasta / "MATRIZ_CAUSA_EFEITO.md")
     base = str(pasta / "planta_gene")
     montagem.exportar(m, base, 6.0)
     if not a.sem_previa:

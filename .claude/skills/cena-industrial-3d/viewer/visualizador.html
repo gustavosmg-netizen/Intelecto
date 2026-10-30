@@ -128,6 +128,7 @@ section { display: flex; flex-direction: column; }
       <input type="range" id="corte" min="0" max="100" value="100">
     </div>
     <label class="camadas" id="ctl-girar"><span><input type="checkbox" id="girar" checked> Misturadores em operação</span></label>
+    <label class="camadas"><span><input type="checkbox" id="sombras"> Sombras (mais pesado)</span></label>
   </section>
 
   <section aria-labelledby="h-arq">
@@ -151,6 +152,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const TIPOS = {
   TQ: { nome: "Tanque", mat: { color: 0x6f6d68, metalness: 0.0, roughness: 0.85 } },
@@ -165,8 +167,8 @@ const TIPOS = {
 const $ = (id) => document.getElementById(id);
 const cena = $("cena");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = false;           // sombras sob demanda (caixa "Sombras")
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.localClippingEnabled = true;
@@ -182,7 +184,7 @@ controls.enableDamping = true;
 
 scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x50483e, 0.6));
 const sol = new THREE.DirectionalLight(0xfff4e2, 2.2);
-sol.castShadow = true;
+sol.castShadow = false;
 sol.shadow.mapSize.set(2048, 2048);
 sol.shadow.bias = -0.0004;
 scene.add(sol, sol.target);
@@ -208,6 +210,45 @@ function descrever(nome) {
   const partes = nome.split("-");
   const desc = partes.filter((p, i) => i > 0 && !/^\d+$/.test(p) && !/^DN/i.test(p)).join(" ");
   return { dn: dn ? `DN ${dn}` : "—", desc: desc || "—" };
+}
+
+// geometria em float (o .glb vem quantizado: posições/normais inteiras normalizadas)
+function emFloat(g, m) {
+  const out = new THREE.BufferGeometry();
+  for (const nome of ["position", "normal"]) {
+    const a = g.getAttribute(nome);
+    if (!a) continue;
+    const arr = new Float32Array(a.count * 3);
+    for (let i = 0; i < a.count; i++) {
+      arr[3 * i] = a.getX(i); arr[3 * i + 1] = a.getY(i); arr[3 * i + 2] = a.getZ(i);
+    }
+    out.setAttribute(nome, new THREE.BufferAttribute(arr, 3));
+  }
+  if (!out.getAttribute("normal")) out.computeVertexNormals();
+  const n = out.getAttribute("position").count;
+  out.setIndex(g.index ? Array.from(g.index.array) : Array.from({ length: n }, (_, i) => i));
+  out.applyMatrix4(m);
+  return out;
+}
+
+// junta todas as malhas de uma peça que têm o mesmo material: de milhares de chamadas de
+// desenho para algumas centenas, sem perder a seleção por peça
+function fundir(peca) {
+  peca.updateWorldMatrix(true, true);
+  const inv = new THREE.Matrix4().copy(peca.matrixWorld).invert();
+  const grupos = new Map();
+  peca.traverse((m) => { if (m.isMesh) (grupos.get(m.material) ?? grupos.set(m.material, []).get(m.material)).push(m); });
+  for (const [mat, malhas] of grupos) {
+    if (malhas.length < 2) continue;
+    const geos = malhas.map((m) => emFloat(m.geometry, new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld)));
+    const g = mergeGeometries(geos, false);
+    if (!g) continue;
+    for (const m of malhas) { m.parent.remove(m); m.geometry.dispose(); }
+    const nova = new THREE.Mesh(g, mat);
+    nova.userData.peca = peca;
+    nova.castShadow = nova.receiveShadow = true;
+    peca.add(nova);
+  }
 }
 
 function limpar() {
@@ -245,9 +286,9 @@ function carregar(fonte, rotulo) {
       const mats = new Map();
       const material = (cor) => {
         const hex = cor.getHex();
-        if (!mats.has(hex)) mats.set(hex, new THREE.MeshPhysicalMaterial({
+        if (!mats.has(hex)) mats.set(hex, new THREE.MeshStandardMaterial({
           color: cor, metalness: base.metalness, roughness: base.roughness,
-          clearcoat: tipo === "L" || tipo === "V" ? 0.4 : 0, clippingPlanes: [planoCorte], side: THREE.DoubleSide,
+          clippingPlanes: [planoCorte], side: THREE.DoubleSide,
         }));
         return mats.get(hex);
       };
@@ -260,6 +301,7 @@ function carregar(fonte, rotulo) {
         const n = m.geometry?.attributes?.position?.count ?? 0;
         contagem.set(cor.getHex(), (contagem.get(cor.getHex()) ?? 0) + n);
       });
+      fundir(peca);
       // cor da lista = cor dominante (a do tubo, não a do flange)
       const dominante = [...contagem].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0x888888;
       peca.userData = { tipo, mats: [...mats.values()], corLista: "#" + new THREE.Color(dominante).getHexString() };
@@ -432,11 +474,23 @@ function redimensionar() {
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 new ResizeObserver(redimensionar).observe(cena);
+// renderiza só quando algo muda (câmera, interface, misturadores girando): GPU parada em repouso
+let precisa = true;
+const pedir = () => { precisa = true; };
+for (const ev of ["input", "change", "click", "pointerup", "wheel"]) document.addEventListener(ev, pedir, true);
+controls.addEventListener("change", pedir);
+new ResizeObserver(pedir).observe(cena);
+$("sombras").addEventListener("change", (e) => {
+  renderer.shadowMap.enabled = sol.castShadow = e.target.checked;
+  scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+  pedir();
+});
 renderer.setAnimationLoop(() => {
   const dt = relogio.getDelta();
-  if ($("girar").checked) for (const p of misturadores) p.rotation.y += dt * 1.2;
-  controls.update();
-  renderer.render(scene, camera);
+  const girando = $("girar").checked && misturadores.length > 0;
+  if (girando) for (const p of misturadores) p.rotation.y += dt * 1.2;
+  const mexeu = controls.update();
+  if (precisa || mexeu || girando) { renderer.render(scene, camera); precisa = false; }
 });
 
 // modelo.js (gerado por embutir_modelo.py) define window.MODELO_GLB_B64; sem ele, busca modelo.glb

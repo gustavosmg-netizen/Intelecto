@@ -1,17 +1,16 @@
 # Memória hidráulica — cascata Gen E com polpa de 8% ST (documento de trabalho)
 
-Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 3, depois de três rodadas do Crivo A–F independente (bloqueantes das rodadas 1 e 2 tratados aqui); liberada para circular em discussão, não para emissão. Cotas na base comum z = 0 (premissa de S5). Sem valores monetários.
+Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 4 (coleta no chão, bombas reposicionadas, purgas por gravidade). Precisa passar pelo Crivo A–F independente. Cotas na base comum z = 0 (premissa de S5). Sem valores monetários.
 
 ## 1. Premissas e método
 
-- **Vazão de projeto das saídas: 6 m³/h.** É a vazão máxima das PCP de alimentação (2–6 m³/h); em regime, o que entra sai. A verificação a 20 m³/h só mostra folga, porque retiradas são bombeadas.
+- **Vazão de projeto das saídas: 6 m³/h.** É a vazão máxima das PCP de alimentação; em regime, o que entra sai. A linha de 20 m³/h só mostra folga.
 - **Reologia:** plástico de Bingham.
   - Tubo cheio: Buckingham–Reiner e Darby–Mun–Boger.
   - Partida: 4·τy·L/(ρ·g·D).
   - Lâmina livre: sen θ ≥ τy/(ρ·g·0,304·D).
-  - **Singulares pelo 2-K de Hooper com o Re de Metzner–Reed** (8ρv²/τw), não com o Re de Bingham. Em polpa com τy cada curva de 90° custa K1·τw/(16ρg): da ordem de 0,5 m com 100 Pa, quase independente do diâmetro.
-  - Consequência de projeto: **nenhuma curva cheia nas saídas por gravidade.** Bocal no nível, descidas livres e pote de selagem com tubo mergulhado reto.
-- **Três casos de reologia.** São HIPÓTESE até a reometria da polpa real (LAC-041, proposta):
+  - Singulares pelo 2-K de Hooper com o Re de Metzner–Reed (8ρv²/τw). Com τy alto, uma curva cheia custa ≈ 0,5 m. Por isso **as saídas não têm curvas cheias.**
+- **Três casos de reologia** (HIPÓTESE até a reometria da polpa real, LAC-041):
 
 | caso | τy (Pa) | μp (Pa·s) | ρ (kg/m³) |
 |---|---|---|---|
@@ -19,146 +18,154 @@ Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 3, depois de três
 | central | 30 | 0,06 | 1030 |
 | pessimista | 100 | 0,20 | 1030 |
 
-- **Espaço de gás:** opera de +1,5 a +3,5 mbar. As verificações de nível usam 0 mbar (partida, conservador), e o gráfico usa a operação.
-- **NPSH:** P_atm 91,3 kPa no sítio de referência (Congonhas/MG, ≈ 870 m; RES-001 §5.5, a confirmar na LAC-027) e P_vapor 5,6 kPa (35 °C).
-- **Pote de selagem, virada de 180° no fundo:** modelada como 0.30 m de caminho equivalente no ânulo. É estimativa de engenharia, a confirmar na reometria ou em ensaio de bancada (LAC-041).
+- **Espaço de gás:** opera de ≈ 0 a +2 mbar, ligado ao gasômetro GH-1 que estiver recebendo (memória de gás). As verificações de nível usam 0 mbar e o gráfico usa +3,5 mbar (envelope de operação, conservador para a LP).
+- **NPSH:** P_atm 91,3 kPa (sítio de referência Congonhas/MG, ≈ 870 m; RES-001 §5.5 e LAC-027). P_vapor 5,6 kPa (35 °C).
+- **Copo de selagem:** a virada de 180° no fundo foi modelada como 0.30 m de caminho equivalente no ânulo (estimativa a confirmar na LAC-041).
 
-## 2. Saídas por gravidade (N-SAI no nível → descida livre → pote de selagem → destino)
+## 2. Saídas por gravidade: reator → copo de selagem interno no tanque do chão
 
 Arranjo de cada saída:
-- **N-SAI:** bocal novo DN150 com a soleira interna no N.A. de projeto (a mesma cota da tabela de níveis).
-- **Descida:** registro LO (faca), depois descida com lâmina livre, com sen θ de 0,31 a 0,50 (mínimo exigido no caso pessimista: 0,23).
-- **Pote de selagem:** ao chegar, a descida vira tubo mergulhado DE160 até 330 mm abaixo da soleira do vertedor do pote. O pote transborda por lâmina livre ao destino.
-- **Quebra-sifão: respiro de equalização R-xxx-RS (DE90).** Ele sai da geratriz superior da descida, logo depois do registro LO, e vai a um N1 do tampo, com faca DN80 LO presa à mesma chave da V-xSAI e do dreno do pote (na manutenção, as duas fecham antes de drenar o pote). O bocal no nível sozinho não basta. Com τy alto, o nível sobe acima do topo do N-SAI (0,2 a 0,5 m na soleira), em operação e também em repouso, e o bocal fica afogado.
-  - Sem respiro, o bolsão de gás da descida se dissolve ou é arrastado pela polpa, a descida enche e sifona o reator até o topo do bocal. Isso retira 2,6 a 3,8 m³ de um reator fechado e cria vácuo.
-  - Com o respiro, a descida fica sempre à pressão do gás e nada abaixo da soleira escoa por gravidade. O fecho hídrico é a superfície interna do pote.
+- **N-SAI:** bocal novo DN150 com a soleira interna no N.A., seguido de registro LO (faca) e do tê do respiro de equalização R-xxx-RS, que vai a um N1 do tampo.
+- **Descida:** lâmina livre, sen θ ≥ 0,64 (mínimo exigido no caso pessimista: 0,23), até um bocal do tanque de destino **no nível do chão**:
+  - R-101 → TQ-201, bocal de costado com curva interna;
+  - R-201/R-202 → caixa CS-301, bocais de tampo.
+- **Copo de selagem interno** (CP-101, CP-201, CP-202): dentro do tanque novo, a descida continua como tubo mergulhado num copo aberto.
+  - A borda do copo fica acima do extravasor do tanque (TQ-201: +1,95 contra +1,85; CS-301: +1,50 contra +1,36). O fecho é a submersão do tubo dentro do copo e não depende do nível do tanque. Se o tanque subir acima da borda, o copo só fica mais afogado.
+  - Limpeza: boca de inspeção DN200 sobre o CP-101 (TQ-201). Na CS-301, os copos saem pela tampa aparafusada da caixa.
+  - **O fecho de 330 mm não depende do nível do tanque.** O copo é laminado no tanque novo; nenhum tanque existente recebe vertedor.
+- **Quebra-sifão:** o respiro RS mantém a descida à pressão do gás mesmo com o N-SAI afogado. Nada abaixo da soleira escoa por gravidade.
 
-Colunas da tabela:
-- **Subida na soleira:** lâmina crítica + partida no trecho horizontal + entrada + registro.
-- **Carga no pote:** superfície interna menos a soleira do vertedor. Soma a lâmina do vertedor, o tubo mergulhado (atrito + saída) e o ânulo (partida).
-- **Folga na soleira:** soleira do N-SAI menos a superfície interna do pote. Se for negativa, o pote afoga a saída e o nível do reator sobe junto.
-
-| reator | caso | Q (m³/h) | subida na soleira (m) | nível máx. (m) | folga até LSH (m) | carga no pote (m) | folga na soleira (m) | sen θ mín. exigido | sen θ adotado | selo (mm / mbar) |
+| reator | caso | Q (m³/h) | subida na soleira (m) | nível máx. (m) | folga até LSH (m) | carga no copo (m) | folga na soleira (m) | sen θ mín. exigido | sen θ adotado | selo (mm / mbar) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| R-101 | otimista | 6 | 0,06 | 3,56 | 0,64 | 0,06 | 0,95 | 0,012 | 0,50 | 330 / 33 |
-| R-201 | otimista | 6 | 0,06 | 7,56 | 0,64 | 0,06 | 1,10 | 0,012 | 0,37 | 330 / 33 |
-| R-202 | otimista | 6 | 0,06 | 7,56 | 0,64 | 0,06 | 1,19 | 0,012 | 0,31 | 330 / 33 |
-| R-101 | otimista | 20 | 0,10 | 3,60 | 0,60 | 0,10 | 0,91 | 0,012 | 0,50 | 330 / 33 |
-| R-201 | otimista | 20 | 0,10 | 7,60 | 0,60 | 0,11 | 1,05 | 0,012 | 0,37 | 330 / 33 |
-| R-202 | otimista | 20 | 0,10 | 7,60 | 0,60 | 0,11 | 1,14 | 0,012 | 0,31 | 330 / 33 |
-| R-101 | central | 6 | 0,18 | 3,68 | 0,52 | 0,18 | 0,83 | 0,069 | 0,50 | 330 / 33 |
-| R-201 | central | 6 | 0,19 | 7,69 | 0,51 | 0,18 | 0,98 | 0,069 | 0,37 | 330 / 33 |
-| R-202 | central | 6 | 0,19 | 7,69 | 0,51 | 0,18 | 1,07 | 0,069 | 0,31 | 330 / 33 |
-| R-101 | central | 20 | 0,23 | 3,73 | 0,47 | 0,23 | 0,78 | 0,069 | 0,50 | 330 / 33 |
-| R-201 | central | 20 | 0,23 | 7,73 | 0,47 | 0,23 | 0,93 | 0,069 | 0,37 | 330 / 33 |
-| R-202 | central | 20 | 0,23 | 7,73 | 0,47 | 0,24 | 1,01 | 0,069 | 0,31 | 330 / 33 |
-| R-101 | pessimista | 6 | 0,53 | 4,03 | 0,17 | 0,66 | 0,35 | 0,231 | 0,50 | 330 / 33 |
-| R-201 | pessimista | 6 | 0,54 | 8,04 | 0,16 | 0,66 | 0,50 | 0,231 | 0,37 | 330 / 33 |
-| R-202 | pessimista | 6 | 0,54 | 8,04 | 0,16 | 0,66 | 0,59 | 0,231 | 0,31 | 330 / 33 |
-| R-101 | pessimista | 20 | 0,59 | 4,09 | 0,11 | 0,76 | 0,25 | 0,231 | 0,50 | 330 / 33 |
-| R-201 | pessimista | 20 | 0,60 | 8,10 | 0,10 | 0,77 | 0,39 | 0,231 | 0,37 | 330 / 33 |
-| R-202 | pessimista | 20 | 0,60 | 8,10 | 0,10 ⚠ | 0,77 | 0,48 | 0,231 | 0,31 | 330 / 33 |
+| R-101 | otimista | 6 | 0,06 | 3,56 | 0,64 | 0,02 | 1,53 | 0,012 | 0,64 | 330 / 33 |
+| R-201 | otimista | 6 | 0,06 | 7,56 | 0,64 | 0,02 | 5,98 | 0,012 | 0,71 | 330 / 33 |
+| R-202 | otimista | 6 | 0,06 | 7,56 | 0,64 | 0,02 | 5,98 | 0,012 | 0,71 | 330 / 33 |
+| R-101 | otimista | 20 | 0,10 | 3,60 | 0,60 | 0,04 | 1,51 | 0,012 | 0,64 | 330 / 33 |
+| R-201 | otimista | 20 | 0,10 | 7,60 | 0,60 | 0,04 | 5,96 | 0,012 | 0,71 | 330 / 33 |
+| R-202 | otimista | 20 | 0,10 | 7,60 | 0,60 | 0,04 | 5,96 | 0,012 | 0,71 | 330 / 33 |
+| R-101 | central | 6 | 0,19 | 3,69 | 0,51 | 0,08 | 1,47 | 0,069 | 0,64 | 330 / 33 |
+| R-201 | central | 6 | 0,19 | 7,69 | 0,51 | 0,08 | 5,92 | 0,069 | 0,71 | 330 / 33 |
+| R-202 | central | 6 | 0,19 | 7,69 | 0,51 | 0,08 | 5,92 | 0,069 | 0,71 | 330 / 33 |
+| R-101 | central | 20 | 0,23 | 3,73 | 0,47 | 0,11 | 1,44 | 0,069 | 0,64 | 330 / 33 |
+| R-201 | central | 20 | 0,23 | 7,73 | 0,47 | 0,11 | 5,89 | 0,069 | 0,71 | 330 / 33 |
+| R-202 | central | 20 | 0,23 | 7,73 | 0,47 | 0,11 | 5,89 | 0,069 | 0,71 | 330 / 33 |
+| R-101 | pessimista | 6 | 0,53 | 4,03 | 0,17 | 0,33 | 1,22 | 0,231 | 0,64 | 330 / 33 |
+| R-201 | pessimista | 6 | 0,53 | 8,03 | 0,17 | 0,33 | 5,67 | 0,231 | 0,71 | 330 / 33 |
+| R-202 | pessimista | 6 | 0,53 | 8,03 | 0,17 | 0,33 | 5,67 | 0,231 | 0,71 | 330 / 33 |
+| R-101 | pessimista | 20 | 0,59 | 4,09 | 0,11 | 0,38 | 1,17 | 0,231 | 0,64 | 330 / 33 |
+| R-201 | pessimista | 20 | 0,59 | 8,09 | 0,11 | 0,38 | 5,62 | 0,231 | 0,71 | 330 / 33 |
+| R-202 | pessimista | 20 | 0,59 | 8,09 | 0,11 | 0,38 | 5,62 | 0,231 | 0,71 | 330 / 33 |
 
-Conclusões das saídas:
+Conclusões:
 
-1. A saída por gravidade de polpa a 8% ST funciona a 6 m³/h nos três casos de reologia, com este arranjo.
-   - Menor folga entre a superfície do pote e a soleira: R-101 0,35 m (pessimista); R-201 0,50 m (pessimista); R-202 0,59 m (pessimista).
-   - O nível máximo fica abaixo do LSH em todos os casos.
-   - **Divergência do arranjo anterior:** o U de fecho e o standpipe submerso foram abandonados. Com τy alto, as curvas cheias deles faziam o nível passar do LSHH.
-2. **Selo de 330 mm de polpa (≈ 33 mbar).** É 2,7× a abertura da emergência (+12 mbar) e 4× o envelope de vácuo dos R-201/202 (−8 mbar). O R-101 tem envelope de −6 mbar e emergência de −4/−5. Também passa os ≥ 250 mm da RES-001 LQ-04.
-   - Sob +12 mbar, a superfície interna do pote desce 0,12 m e o tubo mergulhado continua 0,21 m afogado.
-   - A proposta citava 500 mmCA: **divergência a validar pelo responsável de processo.**
-3. Q = 20 m³/h por gravidade não ocorre, porque as PCP não entregam essa vazão. A linha aparece só como folga.
-4. **Arraste de biogás pelo selo.** Bolhas retidas na polpa (τy de 30–100 Pa) podem passar pelo tubo mergulhado ao ânulo do pote e seguir pela linha de transbordo aos tanques atmosféricos.
-   - Os respiros do TQ-201 (FCA-201) e do TQ-301 (A7, sem tratamento) passam a receber CH₄/H₂S.
-   - Estimar a vazão arrastada e tratá-la na classificação de área e no tratamento dos respiros (LAC-049).
+1. A saída por gravidade funciona a 6 m³/h nos três casos, com folga grande entre a superfície no copo e a soleira do reator: R-101 1,22 m; R-201 5,67 m; R-202 5,67 m.
+   - Na revisão 3, com potes elevados, essa folga era de 0,35 a 0,6 m.
+   - O limite passa a ser só a subida do nível sobre a soleira do N-SAI (até 0,53 m no caso pessimista), coberta pelo LSH.
+2. **Selo de 330 mm (≈ 33 mbar)** contra emergência de +12 mbar e envelope de −8 mbar (R-101: −6). A LAC-046 registra a divergência dos 500 mmCA da proposta.
+3. **O biogás arrastado pelos copos vai aos tanques do chão.** TQ-201 e CS-301 têm respiro tratado (FCA-201, FCA-301). O interior do TQ-201 vira zona classificada e o AG-200 precisa ser ATEX; ver LAC-049.
 
-## 3. Alças de entrada e demais trens bombeados (Q = 6 m³/h)
+## 3. Purgas: só por bomba volumétrica, com reposição de gás
 
-Funcionamento das alças:
-- As alças são pressurizadas, com crista em LSHH + 1,0 m.
-- Uma ventosa de esgoto (corpo longo) fica na crista e descarrega no espaço de gás do reator por um N1.
-- **Com τy baixo:** a descida perde pouco, a crista fica sob a pressão do gás e a ventosa admite gás (não ar). A descida trabalha livre.
-- **Com τy alto:** a PCP pressuriza a descida em DE160 até o N2.
-- Em qualquer caso a crista acima do nível impede o sifonamento do reator de volta pela alça.
-- A alimentação dos R-201/R-202 é **alternada** pelas V-201AL e V-202BQ atuadas, intertravadas para nunca ficarem abertas juntas: não há rateio em paralelo.
-  - O ramal parado (até ≈ 34 m no R-202-AL) envelhece e ganha τy. Alternar com frequência e lavar com água antes de longas paradas. A AMT pessimista já cobre a partida com τy = 100 Pa.
-- **Ventosa com τy baixo:** a ventosa da crista cicla (descida livre). Especificar ventosa de esgoto de corpo longo, com manutenção programada, e ZSC/inspeção no plano de manutenção.
+Por gravidade, com a carga do reator (≈ 6,4 m), a purga dos R-201/202 passaria de 100 m³/h com a válvula aberta. Isso fica muito acima do Q_máx de 20 m³/h, que a RES-001 §5.6 exige limitado fisicamente. Orifício não serve para polpa: com 17 mm entope. Por isso:
+
+- **R-201/R-202 → P-302 → CS-301.** A P-302 é uma PCP dedicada às purgas. A vazão fica limitada pelo deslocamento da bomba (≤ 6 m³/h), com descarga livre no tampo da CS-301.
+  - Barreiras: LC + XV falha-fecha no N2 (abre só com a bomba em marcha, fecha com ela) e chave presa única V-201PG × V-202PG (um reator por vez).
+  - A PCP parada e a XV fechada são dois elementos independentes contra o escoamento por gravidade.
+  - Com τy baixo a AMT da P-302 fica negativa (tabela da seção 4): a carga do reator empurra e a PCP trabalha como **freio volumétrico**.
+  - Especificar inversor com frenagem e PCP de 2 estágios, para conter a carga do reator com escorregamento baixo.
+  - O FIT confere a vazão real. Se ela passar do comando, a XV fecha.
+- **R-101 → P-201 → TQ-201.** A P-201 aspira o R-101 pela purga, com chave presa com a V-201S, e descarrega pela recirculação L-201RC no TQ-201, que neutraliza o lodo ácido antes de qualquer alimentação dos metanogênicos.
+- **Reposição de gás:** o reator só perde volume ligado à bolsa GH-1 que recebe (V-xGAS aberta, ZSO; bolsa ≥ 70%). A 6 m³/h a reposição pelo ramal custa centésimos de mbar.
+- **Lavagem:** engates de água nas linhas de purga, que ficam cheias de polpa parada.
+
+## 4. Trens bombeados (Q = 6 m³/h)
+
+Bombas e localização:
+- **P-201**, junto ao TQ-201: sucção reta, sem curvas. Alimenta R-201/R-202 alternadamente pelas alças pressurizadas com ventosa ligada ao gás.
+- **P-302** (purgas), junto à CS-301, em poço raso de 0,15 m para a sucção ficar na cota dos N2.
+- **Reserva:** bomba PCP móvel sobre skid, com engate na CS-301 (N-BYP) e mobilização ≤ 30 min, para P-301 e P-302. Estatores sobressalentes em almoxarifado.
+  - A CS-301 tem ≈ 6 min entre LSL e LSH a 6 m³/h. Se a P-301 falhar, o LSHH corta a P-201 e a alimentação para, sem extravasar.
+  - Recirculação ou expedição pelo N3 do TQ-301 só com a alimentação dos metanogênicos parada (a V-301S fica fechada por chave).
+- **P-301**, junto à CS-301 no chão: sucção curta e reta.
+  - Transfere o digestato ao TQ-301 (armazenamento), faz o retorno alcalino RL-05 e a expedição. O RL-05 tem XV com FIT e fecha no LSHH do TQ-201 sem parar a transferência.
+  - Por chave presa, aspira o TQ-301 pelo N3 para recirculação ou expedição.
+  - By-pass por engate rápido de bomba móvel na CS-301.
 
 | trem | caso | perda sucção (m) | perda recalque (m) | AMT (m) | AMT (bar) | pressão na crista (m) | p. sucção no flange (m) | NPSHd (m) |
 |---|---|---|---|---|---|---|---|---|
 | P-101 → R-101 | otimista | 0,00 | 0,64 | 4,62 | 0,47 | 0,03 | — | — |
-| P-201 → R-201 | otimista | 0,06 | 0,87 | 9,12 | 0,92 | 0,03 | 0,16 | 8,64 |
-| P-201 → R-202 | otimista | 0,06 | 1,46 | 9,68 | 0,98 | 0,03 | 0,16 | 8,64 |
-| P-301 → TQ-301 (recirculação) | otimista | 0,19 | 0,74 | 8,38 | 0,85 | — | 0,56 | 9,04 |
-| P-301 → TQ-201 (RL-05) | otimista | 0,19 | 1,19 | 3,67 | 0,37 | — | 0,56 | 9,04 |
-| Purga R-201 → P-301 | otimista | 0,41 | 0,74 | 2,27 | 0,23 | — | 6,67 | 15,15 |
-| Purga R-101 → P-201 | otimista | 0,32 | 0,87 | 6,77 | 0,68 | 0,03 | 2,51 | 10,99 |
+| P-201 → R-201 | otimista | 0,06 | 0,87 | 9,13 | 0,92 | 0,03 | 0,16 | 8,64 |
+| P-201 → R-202 | otimista | 0,06 | 1,47 | 9,69 | 0,98 | 0,03 | 0,16 | 8,64 |
+| P-301 → TQ-301 (transferência) | otimista | 0,03 | 0,54 | 5,72 | 0,58 | — | 0,22 | 8,70 |
+| P-301 → TQ-201 (RL-05) | otimista | 0,03 | 1,23 | 4,07 | 0,41 | — | 0,22 | 8,70 |
+| P-301 ← TQ-301 (recirculação/expedição) | otimista | 0,28 | 0,54 | 5,46 | 0,55 | — | 0,47 | 8,96 |
+| Purga R-101 → P-201 → TQ-201 | otimista | 0,32 | 0,59 | 1,22 | 0,12 | — | 1,98 | 10,46 |
+| Purga R-201 → P-302 → CS-301 | otimista | 0,16 | 0,38 | -4,06 | -0,41 | — | 6,54 | 15,02 |
+| Purga R-202 → P-302 → CS-301 | otimista | 0,32 | 0,38 | -3,90 | -0,39 | — | 6,38 | 14,86 |
 | P-101 → R-101 | central | 0,00 | 3,43 | 6,61 | 0,67 | 0,14 | — | — |
-| P-201 → R-201 | central | 0,34 | 4,67 | 12,48 | 1,26 | 0,51 | -0,12 | 8,36 |
-| P-201 → R-202 | central | 0,34 | 7,89 | 15,70 | 1,59 | 0,69 | -0,12 | 8,36 |
-| P-301 → TQ-301 (recirculação) | central | 1,09 | 4,11 | 12,65 | 1,28 | — | -0,34 | 8,14 |
-| P-301 → TQ-201 (RL-05) | central | 1,09 | 6,41 | 9,80 | 0,99 | — | -0,34 | 8,14 |
-| Purga R-201 → P-301 | central | 2,38 | 4,11 | 7,61 | 0,77 | — | 4,70 | 13,18 |
-| Purga R-101 → P-201 | central | 1,86 | 4,67 | 11,38 | 1,15 | 0,51 | 0,98 | 9,46 |
+| P-201 → R-201 | central | 0,34 | 4,70 | 12,51 | 1,26 | 0,51 | -0,12 | 8,36 |
+| P-201 → R-202 | central | 0,34 | 7,93 | 15,73 | 1,59 | 0,69 | -0,12 | 8,36 |
+| P-301 → TQ-301 (transferência) | central | 0,19 | 3,00 | 8,32 | 0,84 | — | 0,06 | 8,54 |
+| P-301 → TQ-201 (RL-05) | central | 0,19 | 6,68 | 9,67 | 0,98 | — | 0,06 | 8,54 |
+| P-301 ← TQ-301 (recirculação/expedição) | central | 1,60 | 3,00 | 9,23 | 0,93 | — | -0,85 | 7,64 |
+| Purga R-101 → P-201 → TQ-201 | central | 1,86 | 3,11 | 5,27 | 0,53 | — | 0,44 | 8,92 |
+| Purga R-201 → P-302 → CS-301 | central | 0,91 | 2,07 | -1,62 | -0,16 | — | 5,79 | 14,27 |
+| Purga R-202 → P-302 → CS-301 | central | 1,87 | 2,07 | -0,66 | -0,07 | — | 4,83 | 13,31 |
 | P-101 → R-101 | pessimista | 0,00 | 11,36 | 14,54 | 1,47 | 2,70 | — | — |
-| P-201 → R-201 | pessimista | 1,14 | 15,48 | 24,09 | 2,43 | 3,91 | -0,92 | 7,56 |
-| P-201 → R-202 | pessimista | 1,14 | 26,20 | 34,81 | 3,52 | 4,52 | -0,92 | 7,56 |
-| P-301 → TQ-301 (recirculação) | pessimista | 3,63 | 13,67 | 24,76 | 2,50 | — | -2,88 | 5,60 |
-| P-301 → TQ-201 (RL-05) | pessimista | 3,63 | 21,29 | 27,23 | 2,75 | — | -2,88 | 5,60 |
-| Purga R-201 → P-301 | pessimista | 7,94 | 13,67 | 22,73 | 2,30 | — | -0,85 | 7,63 |
-| Purga R-101 → P-201 | pessimista | 6,19 | 15,48 | 26,52 | 2,68 | 3,91 | -3,35 | 5,13 |
+| P-201 → R-201 | pessimista | 1,14 | 15,59 | 24,20 | 2,45 | 3,91 | -0,92 | 7,56 |
+| P-201 → R-202 | pessimista | 1,14 | 26,32 | 34,92 | 3,53 | 4,52 | -0,92 | 7,56 |
+| P-301 → TQ-301 (transferência) | pessimista | 0,62 | 9,95 | 15,71 | 1,59 | — | -0,37 | 8,11 |
+| P-301 → TQ-201 (RL-05) | pessimista | 0,62 | 22,20 | 25,62 | 2,59 | — | -0,37 | 8,11 |
+| P-301 ← TQ-301 (recirculação/expedição) | pessimista | 5,31 | 9,95 | 19,91 | 2,01 | — | -4,56 | 3,92 |
+| Purga R-101 → P-201 → TQ-201 | pessimista | 6,19 | 10,29 | 16,77 | 1,69 | — | -3,89 | 4,60 |
+| Purga R-201 → P-302 → CS-301 | pessimista | 3,04 | 6,87 | 5,32 | 0,54 | — | 3,66 | 12,14 |
+| Purga R-202 → P-302 → CS-301 | pessimista | 6,24 | 6,87 | 8,51 | 0,86 | — | 0,46 | 8,94 |
 
 Leitura da tabela:
 
-- **Maior AMT:** P-201 → R-202, caso pessimista, com 3,52 bar.
-  - Especificar as PCP P-201 e P-301 com ≥ 2 estágios.
-  - **PSV (ou disco de ruptura com retorno) e PSHH com trip na descarga, antes de qualquer válvula** (RES-001 VC-10/LQ-01). A PCP fechada contra uma válvula passa da classe do PEAD SDR17.
-- **Pressão na crista:** igual à do gás nos casos de τy baixo, quando a ventosa abre; positiva quando a descida é pressurizada.
-- **Pressão na sucção:** fica negativa com τy alto. O pior caso é Purga R-101 → P-201, pessimista, com -3,35 m. O menor NPSH disponível é 5,13 m (Purga R-101 → P-201, pessimista).
-  - Especificar PCP com NPSHr ≤ 3 m.
-  - Sucção toda em PEAD soldado e selo mecânico com flush, porque a sucção em vácuo admite ar por juntas e selo, e a ventosa leva esse ar ao espaço de gás.
-  - A sucção da P-201 é reta, sem curvas, com a bomba alinhada ao N-SUC.
-  - Nas purgas, a sucção depende do nível do reator: PSL na sucção.
-- **Purgas:** registro LC + XV falha-fecha no N2, e chave presa entre V-xPG e a sucção do tanque (V-201S / V-301S).
-  - A chave é única para V-201PG/V-202PG: um reator por vez, sem interligar os dois pelo fundo.
-  - Na purga dos R-201/202 pela P-301, a crista da L-301R fica acima do LSHH dos reatores e tem ventosa (quebra-vácuo a ar, lado atmosférico). Com a PCP parada ou gasta, o reator não sifona pela bomba: a AMT da purga é positiva.
-  - A XV abre só com os permissivos da RES-001 §5.6: PALL, ZSC do gás, LSL do reator, LSHH do destino e PSL da sucção. Ela fecha no trip da bomba.
+- **Maior AMT:** P-201 → R-202 (pessimista), 3,53 bar.
+  - PCP de ≥ 2 estágios.
+  - PSV ou disco de ruptura com retorno ao tanque de origem e PSHH com trip na descarga, antes de qualquer válvula.
+- **Pior pressão de sucção:** -4,56 m (P-301 ← TQ-301 (recirculação/expedição), pessimista). **Menor NPSHd:** 3,92 m.
+  - PCP com NPSHr ≤ 3 m.
+  - Sucção soldada e selo com flush, porque vácuo na sucção admite ar.
+- **Purgas:** ver seção 3.
 
-## 4. TQ-201 (neutralização): Ø1,80 m, fundo a +0,45, sucção a +0,70
+## 5. TQ-201 (neutralização) e CS-301 (coleta do digestato)
 
-| nível | cota (m) | volume (m³) |
+| TQ-201: nível | cota (m) | volume (m³) |
 |---|---|---|
 | LSLL | 0,92 | 1,20 |
 | LSL | 1,07 | 1,58 |
 | LSH | 1,45 | 2,54 |
 | LSHH | 1,60 | 2,93 |
 | extravasor | 1,85 | 3,56 |
-| entrada | 2,31 | 4,73 |
+| entrada | 2,47 | 5,14 |
+| copo | 1,95 | 3,82 |
 
-- **Volume útil** LSL→LSH: 0,97 m³. Detenção até o LSH a 6 m³/h: 25 min (neutralização: 10–30 min usuais).
-- **Submergência da sucção (HI 9.8):** o LSLL fica ≥ 0,15 m acima do topo do bocal N-SUC. O pulmão LSH→LSHH é de 3,8 min.
-- **Volume que ainda chega depois do trip** (o reator escoa até a soleira, caso otimista), contra o volume LSHH→extravasor:
-  - R-101 → TQ-201: 0,50 m³ contra 0,64 m³;
-  - R-201 ou R-202 → TQ-301 (alimentação alternada: um reator por vez): 0,72 m³ contra 1,06 m³.
-  - O caso otimista é o pior, porque com τy alto parte do volume fica retida no reator em repouso.
-  - Com o extravasor do TQ-201 a +1,85 m, os dois volumes cabem e o extravasor não opera num trip normal.
-  - O LSHH do TQ-201 também corta a P-301 (RL-05).
+- **TQ-201:** volume útil LSL→LSH 0,97 m³. Detenção até o LSH a 6 m³/h: 25 min.
+- **CS-301:** Ø2,0 m, fundo a +0,15 e tampa estanque com respiro ao FCA-301.
+  - Níveis: LSLL +0,70, LSL +0,80, LSH +1,00, LSHH +1,10, extravasor +1,36, borda dos copos +1,50.
+  - A P-301 trabalha com inversor, controlada pelo LT da CS-301.
+- **Volume que ainda chega depois de um corte da alimentação** (caso otimista, o pior), contra o volume entre LSHH e extravasor:
+  - R-101 → TQ-201: 0,51 contra 0,64 m³;
+  - R-201 ou R-202 → CS-301 (um por vez): 0,71 contra 0,82 m³.
+  - Mesmo com a P-301 parada, nenhum dos dois extravasa num corte normal.
+  - O volume vale para um metanogênico por vez. A alternância R-201/R-202 deve durar mais que o esvaziamento até a soleira (dezenas de minutos); se os dois escoarem juntos, são ≈ 1,4 m³ e o excedente vai ao extravasor e à contenção (LAC-044).
 
-## 5. Linhas de energia e piezométricas
+## 6. Linhas de energia e piezométricas
 
 ![LE e LP](LE_LP_gene.png)
 
-- **Lâmina livre:** a LP coincide com a superfície da polpa.
-- **No pote:** a LP cai pelo tubo mergulhado e pelo ânulo até o vertedor.
-- **Velocidade:** de 0,1 a 0,4 m/s, então v²/2g < 1 cm e a LE se sobrepõe à LP.
+- **Lâmina livre:** a LP é a superfície da polpa.
+- **No copo:** a LP cai pelo tubo mergulhado e pelo ânulo até a borda; depois a polpa cai livre no tanque.
+- **Velocidade:** v²/2g < 1 cm, então a LE se sobrepõe à LP.
 - **Bombas:** a LP sobe na bomba (AMT) e cai com o atrito.
-- **Alças:** a LP fica no mínimo na crista mais o gás, porque a ventosa admite gás quando cai abaixo disso.
 
-## 6. Lacunas
+## 7. Lacunas
 
-As lacunas propostas (LAC-041 a LAC-049) estão em `LACUNAS_PROPOSTAS.md`. As que decidem este cálculo:
-- **LAC-041:** reometria da polpa e ensaio do pote.
-- **LAC-027/045:** sítio e base z = 0.
-- **LAC-046:** selo de 330 mm.
-- **LAC-049:** biogás arrastado aos respiros dos tanques atmosféricos.
+Ver `LACUNAS_PROPOSTAS.md`. As que decidem este cálculo:
+- LAC-041: reometria e ensaio do copo.
+- LAC-027/045: sítio e base z = 0.
+- LAC-046: selo de 330 mm.
+- LAC-049: biogás nos respiros.

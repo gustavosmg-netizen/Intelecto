@@ -28,6 +28,17 @@ Pré-requisito: o modelo vem da skill `modelagem-3d-engenharia` (peças nomeadas
    O título da página vem de `--titulo` (edite também o `<title>` da página). Publique `visualizador.html` com a ferramenta Artifact, passando `files: {"modelo.js": …}`. O Artifact não serve `.glb`; por isso o `modelo.js` em base64.
 3. Localmente: `python -m http.server` na pasta e abrir `visualizador.html` (lê `modelo.glb`), ou arrastar qualquer .glb para a página.
 
+**Plantas grandes (mais de 100 peças):** o .glb fica pesado. Reduza nesta ordem:
+- exporte com deflexão de 6 a 25 mm;
+- quantize com `npx @gltf-transform/cli@4.1.1 quantize in.glb out.glb --quantize-position 14 --quantize-normal 8` (de ≈ 38 MB para ≈ 8 MB, sem perder a seleção por peça);
+- confira que o `modelo.js` em base64 fica abaixo de 16 MB.
+
+O visualizador já faz o resto sozinho:
+- funde no carregamento as malhas de cada peça por material (de milhares para algumas centenas de chamadas de desenho);
+- usa material padrão, sem clearcoat;
+- deixa as sombras desligadas (caixa "Sombras");
+- só renderiza quando a câmera ou a interface mudam.
+
 Recursos: vistas isométrica/planta/frente/lateral, clique para ficha da peça (tag, DN, envelope, elevação do topo), camadas por tipo, corte vertical, N.A. ajustável nos tanques, misturadores girando, layout de celular, tema claro/escuro.
 
 ## 2. Render cinematográfico no Blender

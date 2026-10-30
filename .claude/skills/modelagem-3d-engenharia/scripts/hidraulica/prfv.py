@@ -417,3 +417,35 @@ def pote_selagem(m, tag: str, centro, z_vertedor: float, selo: float, az_saida: 
     m.item("Pote de selagem (fecho hídrico) com tubo mergulhado e vertedor DN150",
            f"{tag}: Ø{Di:.0f} × {H:.0f} mm, selo {selo:.0f} mm, apoio metálico até o piso", "un", 1)
     return tq
+
+
+def copo_selagem(m, tag: str, tq: TanquePRFV, xy, z_vertedor: float, selo: float,
+                 z_topo_dip: float, Di: float = 400.0, de_dip: float = 160.0,
+                 folga_fundo: float = 200.0, entrada_lateral=None):
+    """Copo de selagem INTERNO (tanque novo): o tubo mergulhado do reator desce dentro de um
+    copo aberto cuja borda (vertedor circular) fica acima do nível máximo do tanque, de modo
+    que o fecho hídrico não depende do nível do tanque. entrada_lateral=(P_face_interna, n)
+    desenha o toco horizontal e a curva interna quando o bocal é de costado."""
+    z_dip = z_vertedor - selo
+    z0 = z_dip - folga_fundo
+    x, y = xy
+    di_dip = normas.tubo("pead", int(de_dip)).di
+    t = 8.0
+    copo = Pos(x, y, z0 - t) * Cylinder(Di / 2 + t, z_vertedor - z0 + t, align=g.BASE)
+    copo -= Pos(x, y, z0) * Cylinder(Di / 2, z_vertedor - z0 + 1, align=g.BASE)
+    m.add(f"{tag}-{tq.tag}", copo, COR["novo"])
+    dip = Pos(x, y, z_dip) * (Cylinder(de_dip / 2, z_topo_dip - z_dip, align=g.BASE)
+                              - Cylinder(di_dip / 2, z_topo_dip - z_dip, align=g.BASE))
+    if entrada_lateral is not None:
+        P, n = entrada_lateral
+        L = math.hypot(P.X - x, P.Y - y) - 20          # folga para o pescoço do bocal
+        dip += g.posicionar(g.tubo_reto(de_dip, di_dip, L), Vector(x, y, z_topo_dip), n)
+        dip += Pos(x, y, z_topo_dip) * Sphere(de_dip / 2)
+    m.add(f"{tag}-DIP-{tq.tag}", dip, COR["usar"])
+    m.copos = getattr(m, "copos", {})
+    m.copos[tag] = {"z_vertedor": z_vertedor, "z_dip": z_dip, "z_fundo": z0, "Di": Di,
+                    "de_dip": de_dip, "di_dip": di_dip, "tanque": tq.tag,
+                    "z_topo_dip": z_topo_dip, "lateral": entrada_lateral is not None}
+    m.item("Copo de selagem interno com tubo mergulhado (laminado no tanque novo)",
+           f"{tag} em {tq.tag}: Ø{Di:.0f} mm, borda +{z_vertedor / 1000:.2f}, selo {selo:.0f} mm",
+           "un", 1)
