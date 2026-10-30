@@ -59,3 +59,14 @@ test("fiação no Worker: auth, criação de sessão e cookie usam o helper", ()
   const html = readFileSync(join(root, "public/index.html"), "utf8");
   assert.match(html, /id="lg-manter"/);
 });
+
+test("boot: só recusa explícita de sessão leva ao login; falha passageira tenta de novo", () => {
+  const html = readFileSync(join(root, "public/index.html"), "utf8");
+  const i = html.indexOf("(async function boot(){"); const b = html.slice(i, html.indexOf("})();", i));
+  assert.match(b, /var sessaoRecusada=function\(e\)\{return \/sess\[aã\]o expirada\|acesso encerrado/);
+  assert.match(b, /for\(var tentativa=0;tentativa<4;tentativa\+\+\)/);
+  assert.match(b, /if\(sessaoRecusada\(e\)\|\|tentativa===3\)break;/);
+  assert.match(b, /sua sessão continua válida/);
+  // o padrão antigo (qualquer erro do probe => login) não pode voltar
+  assert.doesNotMatch(b, /try\{\s*await api\("perfil"\);\s*await entrarApp\(\);\s*\}catch\(e\)\{/);
+});

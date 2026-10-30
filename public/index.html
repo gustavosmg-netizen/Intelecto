@@ -5676,15 +5676,22 @@ aplicaTema();
      e sempre mostra o app, então NÃO serve para decidir sessão: primeiro SONDA o servidor com uma
      ação autenticada barata ('perfil', piso cliente). Só entra no app se a sonda passar; senão
      mantém a tela de login visível e o app oculto. */
-  try{
-    await api("perfil");
-    await entrarApp();
-  }catch(e){
-    try{localStorage.removeItem("ce_tok")}catch(_){}
-    state.token="";
-    $("#login").classList.remove("hidden");
-    $("#app").classList.add("hidden");
+  /* "Manter conectado": só uma recusa EXPLÍCITA de sessão (sessão expirada / acesso encerrado)
+     leva ao login. Falha passageira (Worker acordando, 1º request após deploy recriando o schema,
+     rede) tenta de novo com espera crescente — antes, qualquer erro aqui derrubava para o login
+     mesmo com o cookie de 30 dias válido. */
+  var sessaoRecusada=function(e){return /sess[aã]o expirada|acesso encerrado|entre de novo|fa[cç]a login/i.test(String((e&&e.message)||e));};
+  var ultimoErro=null;
+  for(var tentativa=0;tentativa<4;tentativa++){
+    try{ await api("perfil"); ultimoErro=null; break; }
+    catch(e){ ultimoErro=e; if(sessaoRecusada(e)||tentativa===3)break; await new Promise(function(r){setTimeout(r,600*(tentativa+1));}); }
   }
+  if(!ultimoErro){ await entrarApp(); return; }
+  state.token="";
+  $("#login").classList.remove("hidden");
+  $("#app").classList.add("hidden");
+  if(sessaoRecusada(ultimoErro)){ try{localStorage.removeItem("ce_tok")}catch(_){} }
+  else setMsg("lg-emsg","Não foi possível falar com o servidor agora. Recarregue a página em alguns segundos — sua sessão continua válida.",true);
 })();
 </script>
 </body>
