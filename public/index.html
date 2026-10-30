@@ -2791,7 +2791,7 @@ function viewFinanceiro(el){
       '<button class="subnav-btn" data-tab="fin-tab-cart" type="button">Carteira financeira</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-ch" type="button">Custo/hora por colaborador</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-cf" type="button">Custos fixos &amp; overhead</button>'+
-      '<button class="subnav-btn" data-tab="fin-tab-cap" type="button">Capacidade × apontado</button>'+
+      '<button class="subnav-btn" data-tab="fin-tab-cap" type="button">Banco de horas</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-conc" type="button">Conciliação</button>'+
       '<button class="subnav-btn" data-tab="fin-tab-fx" type="button">Fluxo de caixa</button>'+
     '</nav>'+
@@ -2983,34 +2983,95 @@ function _finCustoFixo(){
   }).catch(function(e){var box=$("#fin-cf");if(box)box.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
 }
 /* CAPACIDADE × APONTADO — horas extras/déficit por colaborador e mês (Onda 3 financeiro). */
+/* ===== GRÁFICOS (SVG puro, tokens --vz-*) — valores escritos, legenda (≥2 séries), tooltip e
+   "ver tabela" em todo gráfico (a paleta clara tem 3 cores abaixo de 3:1: a regra de alívio exige). */
+var VZ=["var(--vz-1)","var(--vz-2)","var(--vz-3)","var(--vz-4)","var(--vz-5)","var(--vz-6)"];
+function _vzFmt(v,fmt){v=Number(v)||0;if(fmt==="h")return (Math.round(v*10)/10).toLocaleString("pt-BR")+" h";if(fmt==="brl")return fmtBRL(v);if(fmt==="pct")return Math.round(v)+"%";return v.toLocaleString("pt-BR",{maximumFractionDigits:1});}
+function _vzCurto(v,fmt){var a=Math.abs(Number(v)||0),sg=v<0?"−":"";if(fmt==="brl"){if(a>=1e6)return sg+"R$ "+(a/1e6).toFixed(1).replace(".",",")+" mi";if(a>=1e3)return sg+"R$ "+Math.round(a/1e3)+" mil";return sg+"R$ "+Math.round(a);}if(fmt==="h")return sg+(a>=1000?(a/1000).toFixed(1).replace(".",",")+" mil h":Math.round(a)+" h");return sg+(a>=1000?(a/1000).toFixed(1).replace(".",",")+" mil":Math.round(a*10)/10);}
+function _vzTipInit(){if(document.getElementById("vz-tip"))return;var t=document.createElement("div");t.id="vz-tip";t.setAttribute("role","tooltip");document.body.appendChild(t);
+  document.addEventListener("mousemove",function(e){var el=e.target&&e.target.closest?e.target.closest("[data-tip]"):null;if(!el){t.style.display="none";return;}
+    t.textContent=el.getAttribute("data-tip");t.style.display="block";var x=e.clientX+14,y=e.clientY+14;if(x+t.offsetWidth>innerWidth-8)x=e.clientX-t.offsetWidth-14;if(y+t.offsetHeight>innerHeight-8)y=e.clientY-t.offsetHeight-14;t.style.left=x+"px";t.style.top=y+"px";});}
+function _vzLegenda(series){return series.length<2?"":'<div class="vz-legend">'+series.map(function(s,i){return '<span><i style="background:'+(s.cor||VZ[i])+'"></i>'+esc(s.nome)+'</span>';}).join("")+'</div>';}
+function _vzTabela(cats,series,fmt){return '<table class="vz-table"><thead><tr><th></th>'+series.map(function(s){return '<th>'+esc(s.nome)+'</th>';}).join("")+'</tr></thead><tbody>'+cats.map(function(c,i){return '<tr><td>'+esc(c)+'</td>'+series.map(function(s){return '<td>'+_vzFmt(s.vals[i],fmt)+'</td>';}).join("")+'</tr>';}).join("")+'</tbody></table>';}
+var _vzN=0;
+function _vzCard(titulo,sub,svg,legenda,tabela){var id="vzt"+(++_vzN);_vzTipInit();
+  return '<div class="vz-card"><h4>'+esc(titulo)+'</h4>'+(sub?'<div class="vz-sub">'+esc(sub)+'</div>':'')+svg+(legenda||"")
+    +(tabela?'<button type="button" class="vz-tablink" onclick="var t=document.getElementById(\''+id+'\');t.hidden=!t.hidden;this.textContent=t.hidden?\'ver tabela\':\'ocultar tabela\'">ver tabela</button><div id="'+id+'" hidden>'+tabela+'</div>':'')+'</div>';}
+/* Colunas agrupadas por categoria (aceita negativos; zero com linha de base). */
+function _vzColunas(o){var cats=o.cats||[],ser=o.series||[],fmt=o.fmt,H=o.altura||190,pad=26,base=18;
+  var vals=[];ser.forEach(function(s){(s.vals||[]).forEach(function(v){vals.push(Number(v)||0);});});
+  var mx=Math.max(0,Math.max.apply(null,vals.concat([0]))),mn=Math.min(0,Math.min.apply(null,vals.concat([0])));if(mx===mn)mx=mn+1;
+  var W0=560,gw=Math.max(34,(ser.length*16)+14,cats.length?(W0-44)/cats.length:34),W=Math.max(W0,cats.length*gw+44),ih=H-pad-base,y=function(v){return pad+(mx-v)/(mx-mn)*ih;};
+  var bw=Math.min(26,(gw-14)/Math.max(1,ser.length)),out='';
+  [mx,(mx+mn)/2,mn].forEach(function(g){if(g!==0)out+='<line class="vz-grid" x1="34" x2="'+W+'" y1="'+y(g)+'" y2="'+y(g)+'"/><text x="30" y="'+(y(g)+4)+'" text-anchor="end">'+esc(_vzCurto(g,fmt))+'</text>';});
+  cats.forEach(function(c,ci){var x0=40+ci*gw+(gw-ser.length*bw-(ser.length-1)*2)/2;
+    ser.forEach(function(s,si){var v=Number(s.vals[ci])||0,yy=y(Math.max(v,0)),hh=Math.max(v===0?0:1.5,Math.abs(y(v)-y(0))),cor=s.corFn?s.corFn(v):(s.cor||VZ[si]);
+      out+='<rect x="'+(x0+si*(bw+2))+'" y="'+yy+'" width="'+bw+'" height="'+hh+'" rx="3" fill="'+cor+'" data-tip="'+esc(c+" · "+s.nome+": "+_vzFmt(v,fmt))+'"/>';
+      if(o.rotulos&&ser.length===1&&cats.length<=14&&v)out+='<text class="vz-val" x="'+(x0+bw/2)+'" y="'+(v>=0?yy-4:yy+hh+11)+'" text-anchor="middle">'+esc(_vzCurto(v,fmt))+'</text>';});
+    out+='<text x="'+(40+ci*gw+gw/2)+'" y="'+(H-4)+'" text-anchor="middle">'+esc(c)+'</text>';});
+  out+='<line class="vz-zero" x1="34" x2="'+W+'" y1="'+y(0)+'" y2="'+y(0)+'"/>';
+  return '<svg class="vz-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(o.aria||"gráfico de colunas")+'">'+out+'</svg>';}
+/* Barras horizontais ordenadas (ranking). corFn opcional (ex.: divergente +/−). */
+function _vzBarras(o){var it=(o.itens||[]).slice(),fmt=o.fmt,lw=o.larguraRotulo||150,W=560,rh=22,H=it.length*rh+6;
+  var mx=Math.max.apply(null,it.map(function(x){return Math.abs(Number(x.v)||0);}).concat([1])),temNeg=it.some(function(x){return x.v<0;});
+  var x0=temNeg?lw+(W-lw-60)/2:lw,esc2=temNeg?(W-lw-60)/2:(W-lw-70),out='';
+  it.forEach(function(x,i){var v=Number(x.v)||0,w=Math.max(v?2:0,Math.abs(v)/mx*esc2),yy=i*rh+4,cor=o.corFn?o.corFn(v,x):(x.cor||VZ[0]);
+    var nome=String(x.label||"");if(nome.length>24)nome=nome.slice(0,23)+"…";
+    out+='<text x="'+(lw-8)+'" y="'+(yy+13)+'" text-anchor="end">'+esc(nome)+'</text>'
+      +'<rect x="'+(v<0?x0-w:x0)+'" y="'+yy+'" width="'+w+'" height="14" rx="3" fill="'+cor+'" data-tip="'+esc((x.label||"")+": "+_vzFmt(v,fmt)+(x.tip?"\n"+x.tip:""))+'"/>'
+      +'<text class="vz-val" x="'+(v<0?x0-w-4:x0+w+4)+'" y="'+(yy+12)+'" text-anchor="'+(v<0?"end":"start")+'">'+esc(_vzCurto(v,fmt))+'</text>';});
+  if(temNeg)out+='<line class="vz-zero" x1="'+x0+'" x2="'+x0+'" y1="0" y2="'+H+'"/>';
+  return '<svg class="vz-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(o.aria||"gráfico de barras")+'">'+out+'</svg>';}
+/* Linhas (2px) com marcadores (r=4) e tooltip por ponto. */
+function _vzLinha(o){var cats=o.cats||[],ser=o.series||[],fmt=o.fmt,H=o.altura||180,W=Math.max(530,cats.length*46+50),pad=18,base=18;
+  var vals=[];ser.forEach(function(s){s.vals.forEach(function(v){vals.push(Number(v)||0);});});
+  var mx=Math.max(0,Math.max.apply(null,vals.concat([0]))),mn=Math.min(0,Math.min.apply(null,vals.concat([0])));if(mx===mn)mx=mn+1;
+  var ih=H-pad-base,x=function(i){return 46+i*((W-60)/Math.max(1,cats.length-1));},y=function(v){return pad+(mx-v)/(mx-mn)*ih;},out='';
+  [mx,(mx+mn)/2,mn].forEach(function(g){out+='<line class="vz-grid" x1="40" x2="'+W+'" y1="'+y(g)+'" y2="'+y(g)+'"/><text x="36" y="'+(y(g)+4)+'" text-anchor="end">'+esc(_vzCurto(g,fmt))+'</text>';});
+  if(mn<0)out+='<line class="vz-zero" x1="40" x2="'+W+'" y1="'+y(0)+'" y2="'+y(0)+'"/>';
+  ser.forEach(function(s,si){var cor=s.cor||VZ[si];out+='<polyline fill="none" stroke="'+cor+'" stroke-width="2" points="'+s.vals.map(function(v,i){return x(i)+","+y(Number(v)||0);}).join(" ")+'"/>';
+    s.vals.forEach(function(v,i){out+='<circle cx="'+x(i)+'" cy="'+y(Number(v)||0)+'" r="4" fill="'+cor+'" stroke="var(--surface)" stroke-width="2" data-tip="'+esc(cats[i]+" · "+s.nome+": "+_vzFmt(v,fmt))+'"/>';});
+    var u=s.vals.length-1;if(u>=0&&ser.length<=4)out+='<text class="vz-val" x="'+(x(u)+6)+'" y="'+(y(Number(s.vals[u])||0)+4)+'">'+esc(_vzCurto(s.vals[u],fmt))+'</text>';});
+  var passo=Math.ceil(cats.length/12);cats.forEach(function(c,i){if(i%passo===0)out+='<text x="'+x(i)+'" y="'+(H-3)+'" text-anchor="middle">'+esc(c)+'</text>';});
+  return '<svg class="vz-svg" viewBox="0 0 '+(W+30)+' '+H+'" role="img" aria-label="'+esc(o.aria||"gráfico de linha")+'">'+out+'</svg>';}
+function _vzMes(ym){var p=String(ym).split("-");return ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][Number(p[1])-1]+"/"+String(p[0]).slice(2);}
+/* BANCO DE HORAS (Capacidade × apontado) — sem análise de custo (decisão do dono). Esperado =
+   dias úteis × h/dia − feriados, férias e ausências justificadas (o mês corrente só até hoje);
+   saldo = realizado − esperado; banco = saldo acumulado. Gráficos + tabela por pessoa. */
 function _finCapacidade(){
   api("capacidade").then(function(j){
     var box=$("#fin-cap");if(!box)return;var ps=j.pessoas||[];
-    if(!ps.length){box.innerHTML='<div class="card"><p class="muted" style="margin:0">Sem horas apontadas para calcular capacidade.</p></div>';return;}
-    var fH=function(h){return (Math.round((Number(h)||0)*10)/10)+'h';};
+    var fH=function(h){var v=Math.round((Number(h)||0)*10)/10;return (v>0?"+":"")+v.toLocaleString("pt-BR")+" h";};
     var td='padding:6px 10px;font-size:.84rem', tdr='padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:.84rem';
+    var graficos="";
+    if(ps.length){
+      var div=function(v){return v<0?"var(--vz-neg)":"var(--vz-pos)";};
+      var g1=_vzCard("Banco de horas por pessoa","Saldo acumulado (h). Azul = crédito (horas a mais); laranja = débito (horas a compensar).",
+        _vzBarras({itens:ps.map(function(p){return {label:p.nome,v:p.tSaldo,tip:"Esperado "+_vzFmt(p.tEsper,"h")+" · realizado "+_vzFmt(p.tReal,"h")};}).sort(function(a,b){return b.v-a.v;}),fmt:"h",corFn:div,aria:"Banco de horas por pessoa"}),"",
+        _vzTabela(ps.map(function(p){return p.nome;}),[{nome:"Esperado",vals:ps.map(function(p){return p.tEsper;})},{nome:"Realizado",vals:ps.map(function(p){return p.tReal;})},{nome:"Banco",vals:ps.map(function(p){return p.tSaldo;})}],"h"));
+      var porMes={};ps.forEach(function(p){(p.meses||[]).forEach(function(m){var x=porMes[m.ym]=porMes[m.ym]||{e:0,r:0};x.e+=m.esperado;x.r+=m.realizado;});});
+      var meses=Object.keys(porMes).sort().slice(-12),ser=[{nome:"Realizado",vals:meses.map(function(m){return Math.round(porMes[m].r);})},{nome:"Esperado",vals:meses.map(function(m){return Math.round(porMes[m].e);})}];
+      var g2=_vzCard("Equipe: realizado × esperado por mês","Últimos 12 meses (h). O mês corrente conta só até hoje.",_vzColunas({cats:meses.map(_vzMes),series:ser,fmt:"h",aria:"Horas da equipe por mês"}),_vzLegenda(ser),_vzTabela(meses.map(_vzMes),ser,"h"));
+      graficos='<div class="vz-grid2" style="margin-bottom:14px">'+g1+g2+'</div>';
+    }
     var linhas=ps.map(function(p,i){
-      var sCor=p.tSaldo<0?'var(--crit)':'var(--ok,#1f7a3d)';
-      var det=(p.meses||[]).map(function(m){
-        var c=m.saldo<0?'var(--crit)':'var(--ok,#1f7a3d)';
-        return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'">'+esc(m.ym)+'</td>'+
-          '<td style="'+tdr+'">'+fH(m.esperado)+'</td><td style="'+tdr+'">'+fH(m.realizado)+'</td>'+
-          '<td style="'+tdr+';color:'+c+';font-weight:600">'+(m.saldo>=0?'+':'')+fH(m.saldo)+'</td>'+
-          '<td style="'+tdr+'">'+((m.feriado||0)?fH(m.feriado):'—')+'</td><td style="'+tdr+'">'+((m.ferias||0)?fH(m.ferias):'—')+'</td>'+
-          '<td style="'+tdr+'">'+((m.ausj||0)?fH(m.ausj):'—')+'</td><td style="'+tdr+'">'+((m.ausn||0)?fH(m.ausn):'—')+'</td>'+
-          '<td style="'+tdr+'">'+((m.custoExtra||0)?fmtBRL(m.custoExtra):'—')+'</td></tr>';
+      var sCor=p.tSaldo<0?'var(--vz-neg)':'var(--vz-pos)';
+      var det=(p.meses||[]).slice().reverse().map(function(m){
+        var c=m.saldo<0?'var(--vz-neg)':'var(--vz-pos)',cb=m.banco<0?'var(--vz-neg)':'var(--vz-pos)';
+        return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'">'+esc(_vzMes(m.ym))+(m.parcial?' <span class="muted" style="font-size:.7rem">(até hoje)</span>':'')+'</td>'+
+          '<td style="'+tdr+'">'+_vzFmt(m.esperado,"h")+'</td><td style="'+tdr+'">'+_vzFmt(m.realizado,"h")+'</td>'+
+          '<td style="'+tdr+';color:'+c+';font-weight:600">'+fH(m.saldo)+'</td><td style="'+tdr+';color:'+cb+';font-weight:700">'+fH(m.banco)+'</td>'+
+          '<td style="'+tdr+'">'+((m.feriado||0)?_vzFmt(m.feriado,"h"):'—')+'</td><td style="'+tdr+'">'+((m.ferias||0)?_vzFmt(m.ferias,"h"):'—')+'</td>'+
+          '<td style="'+tdr+'">'+((m.ausj||0)?_vzFmt(m.ausj,"h"):'—')+'</td><td style="'+tdr+'">'+((m.ausn||0)?_vzFmt(m.ausn,"h"):'—')+'</td></tr>';
       }).join("");
-      return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'"><div style="font-weight:600">'+esc(p.nome)+'</div><div class="muted" style="font-size:.72rem">'+p.hsem+'h/sem</div></td>'+
-        '<td style="'+tdr+'">'+fH(p.tEsper)+'</td><td style="'+tdr+'">'+fH(p.tReal)+'</td>'+
-        '<td style="'+tdr+';color:'+sCor+';font-weight:700">'+(p.tSaldo>=0?'+':'')+fH(p.tSaldo)+'</td>'+
-        '<td style="'+tdr+';color:var(--ok,#1f7a3d)">'+(p.tExtra?fH(p.tExtra):'—')+'</td>'+
-        '<td style="'+tdr+';color:var(--crit)">'+(p.tDef?fH(p.tDef):'—')+'</td>'+
-        '<td style="'+tdr+'">'+(p.tCustoExtra?fmtBRL(p.tCustoExtra):'—')+'</td>'+
+      return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'"><div style="font-weight:600">'+esc(p.nome)+'</div><div class="muted" style="font-size:.72rem">'+p.hsem+' h/semana</div></td>'+
+        '<td style="'+tdr+'">'+_vzFmt(p.tEsper,"h")+'</td><td style="'+tdr+'">'+_vzFmt(p.tReal,"h")+'</td>'+
+        '<td style="'+tdr+';color:'+sCor+';font-weight:700">'+fH(p.tSaldo)+'</td>'+
+        '<td style="'+tdr+'">'+(p.tExtra?_vzFmt(p.tExtra,"h"):'—')+'</td><td style="'+tdr+'">'+(p.tDef?_vzFmt(p.tDef,"h"):'—')+'</td>'+
         '<td style="'+td+';text-align:center"><button class="linkbtn cap-det" data-i="'+i+'" style="font-size:.72rem">meses ▾</button></td></tr>'+
-        '<tr class="cap-detrow" data-i="'+i+'" style="display:none"><td colspan="8" style="padding:0 10px 10px">'+
-          '<div style="overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:4px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Mês</th><th style="'+tdr+'">Esper.</th><th style="'+tdr+'">Real.</th><th style="'+tdr+'">Saldo</th><th style="'+tdr+'">Feriado</th><th style="'+tdr+'">Férias</th><th style="'+tdr+'">Aus.J</th><th style="'+tdr+'">Aus.NJ</th><th style="'+tdr+'">Custo extra</th></tr></thead><tbody>'+det+'</tbody></table></div></td></tr>';
+        '<tr class="cap-detrow" data-i="'+i+'" style="display:none"><td colspan="7" style="padding:0 10px 10px">'+
+          '<div style="overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:4px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Mês</th><th style="'+tdr+'">Esperado</th><th style="'+tdr+'">Realizado</th><th style="'+tdr+'">Saldo do mês</th><th style="'+tdr+'">Banco</th><th style="'+tdr+'">Feriado</th><th style="'+tdr+'">Férias</th><th style="'+tdr+'">Aus. just.</th><th style="'+tdr+'">Aus. não just.</th></tr></thead><tbody>'+det+'</tbody></table></div></td></tr>';
     }).join("");
-    var totExtra=ps.reduce(function(s,p){return s+(p.tCustoExtra||0);},0);
     // EDITOR de capacidade (h/semana com vigência) — tira a lista fixa do código.
     var caps=j.capacidades||{}; var slugs={}; Object.keys(caps).forEach(function(s){slugs[s]=1;}); ps.forEach(function(p){slugs[p.slug]=1;});
     var capRows=Object.keys(slugs).sort(function(a,b){return nomeDe(a).localeCompare(nomeDe(b));}).map(function(s){
@@ -3018,16 +3079,16 @@ function _finCapacidade(){
         '<input class="sm cap-h" data-slug="'+esc(s)+'" type="number" min="0" max="80" step="0.5" value="'+esc(caps[s]!=null?caps[s]:40)+'" style="max-width:90px"><span class="muted" style="font-size:.74rem">h/sem a partir de</span>'+
         '<input class="sm cap-d" data-slug="'+esc(s)+'" type="date" value="'+hoje()+'" style="max-width:150px"><button class="btn sec sm cap-save" data-slug="'+esc(s)+'">salvar</button></div>';
     }).join("");
-    var capCard='<div class="card" style="margin-top:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Capacidade por pessoa (h/semana, com vigência)</div><p class="muted" style="font-size:.72rem;margin:0 0 6px">Datada como o custo/hora: a mudança vale a partir da data; meses anteriores mantêm a capacidade da época. hdia = h/semana ÷ 5.</p>'+(capRows||'<p class="muted" style="margin:0">Sem colaboradores.</p>')+'<div id="cap-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>';
+    var capCard='<div class="card" style="margin-top:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Capacidade por pessoa (h/semana, com vigência)</div><p class="muted" style="font-size:.72rem;margin:0 0 6px">Datada: a mudança vale a partir da data; meses anteriores mantêm a capacidade da época. hdia = h/semana ÷ 5.</p>'+(capRows||'<p class="muted" style="margin:0">Sem colaboradores.</p>')+'<div id="cap-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>';
     // EDITOR do catálogo de classes de atividade (feriado/férias/ausência) — tira os termos do código.
     var cls=j.classes||[];
     var clsRows=cls.map(function(c){return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82rem;padding:3px 0;border-top:1px dashed var(--line)"><span style="min-width:170px">'+esc(c.nome||c.cid)+'</span>'+
       '<input class="sm cls-p" data-cid="'+esc(c.cid)+'" value="'+esc(c.padroes||"")+'" placeholder="termos separados por |" style="flex:1;min-width:180px"><button class="btn sec sm cls-save" data-cid="'+esc(c.cid)+'">salvar</button></div>';}).join("");
     var clsCard=cls.length?('<div class="card" style="margin-top:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Catálogo de atividades (classificação de ausências)</div><p class="muted" style="font-size:.72rem;margin:0 0 6px">Os termos que marcam feriado, férias e ausência no apontamento. Editáveis por empresa (ex.: "Folga", "PTO"). Casam por trecho do texto do apontamento; separe variações por |.</p>'+clsRows+'<div id="cls-msg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>'):'';
-    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Capacidade esperada (dias úteis × h/dia da pessoa) menos feriados, férias e ausências justificadas, comparada ao efetivamente apontado. <b>Saldo +</b> = horas extras (pagar/folga); <b>saldo −</b> = déficit a compensar. Ausência não justificada puxa p/ déficit. Custo da extra = saldo+ × custo/hora vigente no mês.</p>'+
-      '<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)">'+
-      '<th style="'+td+';text-align:left">Colaborador</th><th style="'+tdr+'">Esperado</th><th style="'+tdr+'">Realizado</th><th style="'+tdr+'">Saldo</th><th style="'+tdr+'">Extra</th><th style="'+tdr+'">Déficit</th><th style="'+tdr+'">Custo extra</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
-      '<p class="muted" style="font-size:.74rem;margin-top:8px">Custo total de horas extras no período: <b>'+fmtBRL(totExtra)+'</b>. Clique em "meses" para o detalhe mensal. Saldo negativo = horas a compensar pelo colaborador.</p>'+capCard+clsCard;
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Banco de horas: esperado = dias úteis × h/dia da pessoa, menos feriados, férias e ausências justificadas (o mês corrente conta só até hoje); saldo = horas efetivas − esperado; o banco é o saldo acumulado. Sem custo: horas, não reais.</p>'+graficos+
+      (ps.length?'<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)">'+
+      '<th style="'+td+';text-align:left">Colaborador</th><th style="'+tdr+'">Esperado</th><th style="'+tdr+'">Realizado</th><th style="'+tdr+'">Banco</th><th style="'+tdr+'">Horas a mais</th><th style="'+tdr+'">Horas a compensar</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>':'<div class="card"><p class="muted" style="margin:0">Sem horas apontadas para calcular o banco de horas.</p></div>')+
+      capCard+clsCard;
     box.querySelectorAll(".cap-det").forEach(function(b){b.onclick=function(){var i=b.getAttribute("data-i");var row=box.querySelector('.cap-detrow[data-i="'+i+'"]');if(row){var vis=row.style.display!=="none";row.style.display=vis?"none":"";b.textContent=vis?"meses ▾":"meses ▴";}};});
     box.querySelectorAll(".cap-save").forEach(function(b){b.onclick=function(){var s=b.getAttribute("data-slug");var h=box.querySelector('.cap-h[data-slug="'+s+'"]'),d=box.querySelector('.cap-d[data-slug="'+s+'"]');var m=$("#cap-msg");if(m)m.textContent="Salvando…";api("capacidadeSet",{slug:s,horas_semana:Number(h.value)||0,desde:d.value}).then(function(){if(m)m.textContent="Capacidade de "+nomeDe(s)+" salva.";_finCapacidade();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};});
     box.querySelectorAll(".cls-save").forEach(function(b){b.onclick=function(){var cid=b.getAttribute("data-cid");var inp=box.querySelector('.cls-p[data-cid="'+cid+'"]');var m=$("#cls-msg");if(m)m.textContent="Salvando…";api("atividadeClasseSet",{cid:cid,padroes:inp.value}).then(function(){if(m)m.textContent="Catálogo atualizado.";_finCapacidade();}).catch(function(e){if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};});

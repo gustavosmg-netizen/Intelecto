@@ -1938,6 +1938,13 @@ async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number
 /* CAPACIDADE × APONTADO (horas extras / déficit). Capacidade estagiário = 20h/sem (4h/dia); demais
  * 40h/sem (8h/dia). Ajustável aqui até virar campo de cargo. */
 const CAP20 = new Set<string>(["cecilia", "david"]);
+/** Dias úteis (seg–sex) do mês até a data (inclusive) — o mês corrente só cobra até hoje. */
+function diasUteisAte(ym: string, ateIso: string): number {
+  const [y, m] = ym.split("-").map(Number); if (!y || !m) return 0;
+  let n = 0; const d = new Date(Date.UTC(y, m - 1, 1));
+  while (d.getUTCMonth() === m - 1 && d.toISOString().slice(0, 10) <= ateIso) { const w = d.getUTCDay(); if (w >= 1 && w <= 5) n++; d.setUTCDate(d.getUTCDate() + 1); }
+  return n;
+}
 function diasUteisMes(ym: string): number {
   const [y, m] = ym.split("-").map(Number); if (!y || !m) return 0;
   let n = 0; const d = new Date(Date.UTC(y, m - 1, 1));
@@ -1947,7 +1954,7 @@ function diasUteisMes(ym: string): number {
 /* Saldo capacidade×apontado por colaborador/mês, derivado do lanc (feriado/férias/ausência pelos
  * rótulos da atividade t). Esperado = dias úteis×h/dia − feriado − férias − ausência JUSTIFICADA;
  * Realizado = trabalho (tudo menos os 4 rótulos); Saldo = Realizado − Esperado (>0 extra, <0 déficit;
- * ausência NÃO justificada puxa p/ déficit). Custo da extra = saldo+ × custo/hora vigente no mês. */
+ * ausência NÃO justificada puxa p/ déficit). Banco = saldo acumulado; sem custo (só horas). */
 /** Classes de atividade não-trabalho do tenant (feriado/férias/ausências), do CATÁLOGO editável.
  *  Devolve os padrões de texto por classe. Fallback para os termos padrão se a tabela estiver vazia. */
 async function classesNaoTrabalho(tenant: string): Promise<{ feriado: string[]; ferias: string[]; aus_just: string[]; aus_naojust: string[] }> {
@@ -1982,11 +1989,11 @@ async function capacidadeApontado(tenant: string): Promise<P[]> {
     : "SUM(h) trab";
   const sql = "SELECT slug, substr(d,1,7) ym, " + [colFer, colFrs, colAj, colAn, trabCol].join(", ")
     + " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym";
-  const r = await sqlite.execute({ sql, args: [...selArgs, tenant] });
-  const cvr = await sqlite.execute({ sql: "SELECT slug, desde, valor FROM custohora_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
-  const vig: Record<string, { desde: string; valor: number }[]> = {};
-  for (const x of cvr.rows as P[]) { (vig[String(x.slug)] = vig[String(x.slug)] || []).push({ desde: String(x.desde), valor: Number(x.valor) || 0 }); }
-  const taxaEm = (slug: string, ym: string) => { let v = 0; const ref = ym + "-01"; for (const e of (vig[slug] || [])) { if (e.desde <= ref) v = e.valor; else break; } return v; };
+  // BANCO DE HORAS (decisão do dono, 2026-10-30): sem análise de custo. Meses em ordem; o mês
+  // corrente só cobra os dias úteis ATÉ HOJE (antes cobrava o mês inteiro e todos apareciam em
+  // déficit até o fim do mês); o saldo acumulado mês a mês é o banco.
+  const r = await sqlite.execute({ sql: sql + " ORDER BY slug, ym", args: [...selArgs, tenant] });
+  const hojeIso = new Date().toISOString().slice(0, 10), mesAtual = hojeIso.slice(0, 7);
   // CAPACIDADE COM VIGÊNCIA (tabela, não mais CAP20): horas/semana datadas por pessoa → hdia = h/5.
   const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
   const capv: Record<string, { desde: string; hsem: number }[]> = {};
@@ -1998,14 +2005,16 @@ async function capacidadeApontado(tenant: string): Promise<P[]> {
     const hsemMes = hsemEm(slug, ym); const hsem = Number.isNaN(hsemMes) ? 40 : hsemMes; // fallback 40h/sem
     const hdia = arred2(hsem / 5);
     const feriado = arred2(Number(row.feriado) || 0), ferias = arred2(Number(row.ferias) || 0), ausj = arred2(Number(row.ausj) || 0), ausn = arred2(Number(row.ausn) || 0), trab = arred2(Number(row.trab) || 0);
-    const esperado = arred2(diasUteisMes(ym) * hdia - feriado - ferias - ausj);
+    if (ym > mesAtual) continue; // lançamento futuro não entra no banco
+    const dias = ym === mesAtual ? diasUteisAte(ym, hojeIso) : diasUteisMes(ym);
+    const esperado = arred2(Math.max(0, dias * hdia - feriado - ferias - ausj));
     const saldo = arred2(trab - esperado);
-    const custoExtra = saldo > 0 ? arred2(saldo * taxaEm(slug, ym)) : 0;
-    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
     o.hsem = hsem;
-    (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, custoExtra });
-    o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = arred2(o.tSaldo + saldo);
-    o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0)); o.tCustoExtra = arred2(o.tCustoExtra + custoExtra);
+    const banco = arred2(o.tSaldo + saldo); // saldo acumulado até este mês
+    (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, banco, parcial: ym === mesAtual ? 1 : 0 });
+    o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = banco;
+    o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0));
     o.tFeriado = arred2(o.tFeriado + feriado); o.tFerias = arred2(o.tFerias + ferias); o.tAusJ = arred2(o.tAusJ + ausj); o.tAusN = arred2(o.tAusN + ausn);
   }
   return Object.values(porSlug).sort((a: any, b: any) => (b.tSaldo as number) - (a.tSaldo as number));
