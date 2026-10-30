@@ -13,6 +13,7 @@ import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximos
 import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
 import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
 import { normalizaLinhas, diffLancamentos, resumoNovos } from "./importa.mjs";
+import { normalizaRcf, cienciaEmDia, validaContrato, validaAcordo, contratoVigente, alertasRh } from "./rh.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -312,7 +313,7 @@ const RESTRITAS = ["financeiro", "comercial", "juridico"];
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-30b";
+const SCHEMA_VER = "2026-10-30c";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -1060,6 +1061,22 @@ function ensureSchema(): Promise<void> {
       // Metas e KPIs esperados do cargo (texto livre, editavel no RH). Da ao RH o "tabuleiro" de
       // metas/indicadores por funcao. ALTER idempotente.
       try { await sqlite.execute("ALTER TABLE rh_cargo ADD COLUMN metas TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+      // RCF digital (Responsabilidades, Cargos e Funções — modelo da casa) como JSON normalizado
+      // por src/rh.mjs; ciência por pessoa e por revisão; contratos e acordos de colaboradores SEM
+      // valores (R$ fica no Financeiro). Migração 0017.
+      try { await sqlite.execute("ALTER TABLE rh_cargo ADD COLUMN rcf TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS rh_rcf_ciencia (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, cid TEXT NOT NULL, revisao TEXT NOT NULL DEFAULT '',
+        ciente_em TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, cid, revisao))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS rh_contrato (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'CLT',
+        inicio TEXT DEFAULT '', fim TEXT DEFAULT '', renovacao_auto INTEGER DEFAULT 0, carga_semanal REAL DEFAULT 0,
+        doc_url TEXT DEFAULT '', obs TEXT DEFAULT '', u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS rh_acordo (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Outro',
+        descricao TEXT DEFAULT '', inicio TEXT DEFAULT '', fim TEXT DEFAULT '', doc_url TEXT DEFAULT '',
+        u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
       // Semeadura ADITIVA e idempotente: INSERT OR IGNORE garante que TODOS os cargos do modelo
       // existam, sem sobrescrever os que a Coordenacao ja editou (preserva edicoes) nem apagar
       // cargos criados a mao. Socios nascem com vinculo Sociedade; os demais, Contratado (8h/dia,
@@ -2145,6 +2162,9 @@ const MIN: Record<string, Papel> = {
   // Quadro de contas (casca nova): leitura, tags por pessoa e operação em lote (esta com reauth: SENSIVEIS).
   // Importação da planilha Calendário Engenharia (prévia lê; importar grava em lote, com reauth).
   planilhaPrevia: "coordenacao", planilhaImportar: "coordenacao",
+  // RH: RCF (leitura e ciência para todos; edição só RH) e contratos/acordos (RH vê todos; cada um, o próprio).
+  rcfGet: "equipe", rcfMeu: "equipe", rcfCiencia: "equipe", rcfSet: "equipe",
+  rhContratos: "equipe", rhContratoSet: "equipe", rhContratoDel: "equipe", rhAcordoSet: "equipe", rhAcordoDel: "equipe",
   finQuadro: "coordenacao", finTagSet: "coordenacao", finTagDel: "coordenacao", fluxoTag: "coordenacao", fluxoLote: "coordenacao",
   conciliacao: "coordenacao", conciliaSugerir: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
@@ -3054,6 +3074,99 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "UPDATE crm_lead SET status = 'aprovado', dealid = ?, aprovado = ? WHERE tenant_id = ? AND id = ?", args: [did, now.slice(0, 10), u.tenant_id, lid] });
     await audit("crm_lead_aprovar", u.slug, lid + " -> " + did, ip);
     return { ok: true, dealid: did };
+  }
+
+  /* ===== RH — RCF digital (modelo da casa) + ciência; contratos e acordos (sem valores) =====
+     Regras em src/rh.mjs. Editar = Coordenação ou quem gere o quadro (pessoas.cargo_atribuir). */
+  if (action === "rcfGet" || action === "rcfSet" || action === "rcfMeu" || action === "rcfCiencia") {
+    const u = await auth(p);
+    const podeRh = u.coord || temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "pessoas.cargo_atribuir");
+    const hoje = new Date().toISOString().slice(0, 10);
+    const ler = (x: P) => { let j: any = {}; try { j = JSON.parse(String(x.rcf || "{}")); } catch { j = {}; } return normalizaRcf(j); };
+    if (action === "rcfMeu") {
+      const mc = await sqlite.execute({ sql: "SELECT c.cid, c.nome, c.area, c.rcf FROM membro_cargo m JOIN rh_cargo c ON c.cid = m.cid AND c.tenant_id = m.tenant_id WHERE m.tenant_id = ? AND m.slug = ? ORDER BY m.principal DESC, m.prioridade", args: [u.tenant_id, u.slug] });
+      const ci = await sqlite.execute({ sql: "SELECT cid, revisao, ciente_em FROM rh_rcf_ciencia WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+      const cs = ci.rows as P[];
+      return { ok: true, cargos: (mc.rows as P[]).map((x) => { const rcf = ler(x); const minhas = cs.filter((c) => String(c.cid) === String(x.cid)) as any; const ult = minhas.find((c: P) => String(c.revisao) === rcf.revisao);
+        return { cid: x.cid, nome: x.nome, area: x.area, rcf, cienciaEmDia: rcf.status === "aprovado" && cienciaEmDia(rcf, minhas), cienteEm: ult ? String(ult.ciente_em) : "" }; }) };
+    }
+    const cid = String(p.cid || "").trim();
+    const cr = await sqlite.execute({ sql: "SELECT cid, nome, area, rcf FROM rh_cargo WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+    if (!cr.rows.length) throw new Error("Cargo não encontrado.");
+    const cargo = cr.rows[0] as P;
+    if (action === "rcfGet") {
+      const oc = await sqlite.execute({ sql: "SELECT m.slug, COALESCE(mb.nome, m.slug) AS nome FROM membro_cargo m LEFT JOIN membro mb ON mb.slug = m.slug AND mb.tenant_id = m.tenant_id WHERE m.tenant_id = ? AND m.cid = ? AND COALESCE(mb.ativo,1) = 1", args: [u.tenant_id, cid] });
+      const rcf = ler(cargo);
+      const ci = await sqlite.execute({ sql: "SELECT slug, ciente_em FROM rh_rcf_ciencia WHERE tenant_id = ? AND cid = ? AND revisao = ?", args: [u.tenant_id, cid, rcf.revisao] });
+      const ciMap: Record<string, string> = {}; for (const x of ci.rows as P[]) ciMap[String(x.slug)] = String(x.ciente_em);
+      return { ok: true, cid, nome: cargo.nome, area: cargo.area, rcf, podeEditar: podeRh, ocupantes: (oc.rows as P[]).map((x) => ({ slug: x.slug, nome: x.nome, cienteEm: ciMap[String(x.slug)] || "" })) };
+    }
+    if (action === "rcfSet") {
+      if (!podeRh) throw new Error("Só o RH ou a Coordenação editam o RCF.");
+      const atual = ler(cargo);
+      const novo = normalizaRcf(p.rcf);
+      // Aprovar fixa a revisão (data); "nova revisão" pede nova ciência de todos os ocupantes.
+      if (novo.status === "aprovado" && (p.novaRevisao === true || !atual.revisao || atual.status !== "aprovado")) novo.revisao = hoje;
+      else novo.revisao = atual.revisao || (novo.status === "aprovado" ? hoje : "");
+      await sqlite.execute({ sql: "UPDATE rh_cargo SET rcf = ?, atualizado = ?, u = ? WHERE tenant_id = ? AND cid = ?", args: [JSON.stringify(novo), new Date().toISOString(), u.slug, u.tenant_id, cid] });
+      await audit("rh_rcf", u.slug, cid + " " + novo.status + " rev " + novo.revisao, ip);
+      return { ok: true, rcf: novo };
+    }
+    // rcfCiencia: só quem ocupa o cargo, só em RCF aprovado, na revisão vigente.
+    const rcf = ler(cargo);
+    if (rcf.status !== "aprovado" || !rcf.revisao) throw new Error("Este RCF ainda está em rascunho; a ciência abre quando o RH aprovar.");
+    const oc = await sqlite.execute({ sql: "SELECT 1 FROM membro_cargo WHERE tenant_id = ? AND slug = ? AND cid = ?", args: [u.tenant_id, u.slug, cid] });
+    if (!oc.rows.length) throw new Error("Você não ocupa este cargo.");
+    await sqlite.execute({ sql: "INSERT OR IGNORE INTO rh_rcf_ciencia (tenant_id, slug, cid, revisao, ciente_em) VALUES (?,?,?,?,?)", args: [u.tenant_id, u.slug, cid, rcf.revisao, new Date().toISOString()] });
+    await audit("rh_rcf_ciencia", u.slug, cid + " rev " + rcf.revisao, ip);
+    return { ok: true };
+  }
+  if (action === "rhContratos" || action === "rhContratoSet" || action === "rhContratoDel" || action === "rhAcordoSet" || action === "rhAcordoDel") {
+    const u = await auth(p);
+    const podeRh = u.coord || temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "pessoas.cargo_atribuir");
+    const hoje = new Date().toISOString().slice(0, 10);
+    if (action === "rhContratos") {
+      // RH vê o quadro inteiro e os alertas; os demais, só os próprios contratos/acordos.
+      const filtro = podeRh ? "" : " AND slug = ?";
+      const args = podeRh ? [u.tenant_id] : [u.tenant_id, u.slug];
+      const c = await sqlite.execute({ sql: "SELECT id, slug, tipo, inicio, fim, renovacao_auto, carga_semanal, doc_url, obs FROM rh_contrato WHERE tenant_id = ?" + filtro + " ORDER BY slug, inicio DESC", args });
+      const a = await sqlite.execute({ sql: "SELECT id, slug, tipo, descricao, inicio, fim, doc_url FROM rh_acordo WHERE tenant_id = ?" + filtro + " ORDER BY slug, inicio DESC", args });
+      const contratos = c.rows as P[], acordos = a.rows as P[];
+      const vigentes: Record<string, any> = {};
+      const porSlug: Record<string, P[]> = {}; for (const x of contratos) (porSlug[String(x.slug)] = porSlug[String(x.slug)] || []).push(x);
+      for (const s in porSlug) vigentes[s] = contratoVigente(porSlug[s] as any, hoje);
+      return { ok: true, podeEditar: podeRh, contratos, acordos, vigentes, alertas: alertasRh(contratos, acordos, hoje) };
+    }
+    if (!podeRh) throw new Error("Só o RH ou a Coordenação gerem contratos e acordos.");
+    const id0 = String(p.id || "").trim();
+    if (action === "rhContratoDel" || action === "rhAcordoDel") {
+      const tab = action === "rhContratoDel" ? "rh_contrato" : "rh_acordo";
+      await sqlite.execute({ sql: "DELETE FROM " + tab + " WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id0] });
+      await audit(tab + "_del", u.slug, id0, ip);
+      return { ok: true };
+    }
+    const slug = String(p.slug || "").trim();
+    const mb = await sqlite.execute({ sql: "SELECT 1 FROM membro WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, slug] });
+    if (!mb.rows.length) throw new Error("Colaborador não encontrado.");
+    const now = new Date().toISOString();
+    if (action === "rhAcordoSet") {
+      const a = validaAcordo(p);
+      const id = id0 || "AC-" + crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO rh_acordo (tenant_id,id,slug,tipo,descricao,inicio,fim,doc_url,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET slug=excluded.slug,tipo=excluded.tipo,descricao=excluded.descricao,inicio=excluded.inicio,fim=excluded.fim,doc_url=excluded.doc_url,u=excluded.u,atualizado=excluded.atualizado",
+        args: [u.tenant_id, id, slug, a.tipo, a.descricao, a.inicio, a.fim, a.doc_url, u.slug, now, now] });
+      await audit("rh_acordo", u.slug, slug + " " + a.tipo, ip);
+      return { ok: true, id };
+    }
+    const c = validaContrato(p);
+    const id = id0 || "CO-" + crypto.randomUUID().slice(0, 12);
+    await sqlite.execute({ sql: "INSERT INTO rh_contrato (tenant_id,id,slug,tipo,inicio,fim,renovacao_auto,carga_semanal,doc_url,obs,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET slug=excluded.slug,tipo=excluded.tipo,inicio=excluded.inicio,fim=excluded.fim,renovacao_auto=excluded.renovacao_auto,carga_semanal=excluded.carga_semanal,doc_url=excluded.doc_url,obs=excluded.obs,u=excluded.u,atualizado=excluded.atualizado",
+      args: [u.tenant_id, id, slug, c.tipo, c.inicio, c.fim, c.renovacao_auto, c.carga_semanal, c.doc_url, c.obs, u.slug, now, now] });
+    // A carga semanal do contrato passa a ser a CAPACIDADE da pessoa a partir do início do contrato
+    // (vigência de capacidade, mesma tabela da tela Capacidade × apontado). Carga 0 não mexe.
+    if (c.carga_semanal > 0) await sqlite.execute({ sql: "INSERT INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id, slug, desde) DO UPDATE SET horas_semana = excluded.horas_semana, u = excluded.u",
+      args: [u.tenant_id, slug, c.inicio, c.carga_semanal, "contrato:" + u.slug, now] });
+    await audit("rh_contrato", u.slug, slug + " " + c.tipo + " " + c.inicio + (c.fim ? "→" + c.fim : "") + " " + c.carga_semanal + "h", ip);
+    return { ok: true, id };
   }
 
   /* ===== IMPORTAÇÃO DA PLANILHA "Calendário Engenharia" (aba Dados Estruturados) =====
