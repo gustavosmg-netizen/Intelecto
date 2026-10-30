@@ -17,3 +17,4 @@ export function receitaRecorrente(
 ): { byCc: Record<string, number>; porContrato: Record<string, { apropriado: number; naoApropriado: number; meses: number }> };
 export function proxMes(m: string): string;
 export function situacaoHoras(gastas: number, previstas: number): { situacao: "sem_contrato" | "ok" | "atencao" | "estouro"; pct: number | null };
+export function regrasLogica(T: string): Array<{ rule: string; titulo: string; sev: string; dono: string; atalho: string; sql: string; args: any[] }>;

@@ -11,7 +11,7 @@ import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./o
 import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
 import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
-import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym } from "./apropriacao.mjs";
+import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -1669,6 +1669,13 @@ function validEmail(v: string): string {
   return em;
 }
 
+/** Trava de lógica: o total de horas de UMA pessoa num dia (fora as devolvidas) não passa de 24 h.
+ *  `ignorarId` = o lançamento em edição (não conta duas vezes). Entrava dia com 30 h somadas. */
+async function checaTotalDia(slug: string, d: string, h: number, tenant: string, ignorarId = ""): Promise<void> {
+  const r = await sqlite.execute({ sql: "SELECT COALESCE(SUM(h),0) t FROM lanc WHERE tenant_id = ? AND slug = ? AND d = ? AND s <> 'DEVOLVIDO' AND id <> ?", args: [tenant, slug, d, ignorarId] });
+  const ja = Number((r.rows[0] as P).t) || 0;
+  if (ja + h > 24) throw new Error("Esse lançamento passaria de 24 h no dia " + d.split("-").reverse().join("/") + " (já há " + (Math.round(ja * 10) / 10) + " h). Confira as horas.");
+}
 function validEntry(e: P) {
   if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(String(e.d || ""))) throw new Error("Data inválida.");
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(String(e.cc || ""))) throw new Error("Centro de custo inválido.");
@@ -3703,6 +3710,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       const status = String(p.status || "");
       if (!STATUSES.includes(status)) throw new Error("Status inválido.");
       setsP.push("status = ?"); argsP.push(status);
+      // Projeto CONCLUÍDO é 100% de progresso (antes ficava com o último % lançado e o painel
+      // mostrava "concluído a 60%").
+      if (status === "CONCLUÍDO") await sqlite.execute({ sql: "UPDATE projx SET progresso = 100 WHERE cc = ? AND tenant_id = ?", args: [cc, u.tenant_id] });
     }
     if (p.inicio !== undefined) { setsP.push("inicio = ?"); argsP.push(dt(p.inicio)); }
     if (p.previsto !== undefined) { setsP.push("previsto = ?"); argsP.push(dt(p.previsto)); }
@@ -3811,7 +3821,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     // E uma amostra das ENTRADAS de caixa sem CC (para baixar uma parcela e conciliar o recebimento).
     let contratos: P[] = []; let caixaSemCc: P[] = [];
     if (podeFin) {
-      const cr = await sqlite.execute({ sql: "SELECT id, titulo, valor, assinado, status, tipo, deal_id, obs FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+      const cr = await sqlite.execute({ sql: "SELECT id, titulo, valor, assinado, status, tipo, deal_id, obs, cliente, valor_mensal, desde, ate FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
       const pcr = await sqlite.execute({ sql: "SELECT id, contrato_id, numero, valor, venc_prev, recebido_em, fluxo_id, status, obs FROM contrato_parcela WHERE tenant_id = ? AND cc = ? ORDER BY numero, venc_prev", args: [u.tenant_id, cc] });
       const byCt: Record<string, P[]> = {};
       for (const pc of pcr.rows as P[]) { (byCt[String(pc.contrato_id)] = byCt[String(pc.contrato_id)] || []).push(pc); }
@@ -3934,7 +3944,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "contratoList") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
-    const r = await sqlite.execute({ sql: "SELECT id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u, criado, atualizado FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+    const r = await sqlite.execute({ sql: "SELECT id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, cliente, valor_mensal, desde, ate, u, criado, atualizado FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
     const conf = (r.rows as P[]).filter((x) => String(x.status) === "confirmado").reduce((s, x) => s + (Number(x.valor) || 0), 0);
     return { ok: true, cc, contratos: r.rows, valorContratado: arred2(conf) };
   }
@@ -5678,6 +5688,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "add") {
     const u = await auth(p);
     const e = validEntry(p.entry);
+    await checaTotalDia(u.slug, e.d, e.h, u.tenant_id);
     const capsAdd = await capsDe({ slug: u.slug, papel: u.papel });
     const podeAprovarAdd = temCapSet(capsAdd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
     const forcadoAdd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarAdd });
@@ -5705,6 +5716,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO" && !(!aprovReq && (cur.slug === u.slug || u.coord)))
       throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
+    await checaTotalDia(cur.slug, e.d, e.h, u.tenant_id, String(p.id));
     const capsEd = await capsDe({ slug: u.slug, papel: u.papel });
     const podeAprovarEd = temCapSet(capsEd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
     const forcadoEd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarEd });
@@ -5952,6 +5964,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
         sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
       ...regrasExtra(T), // Onda 3-A: C17 (contrato sem projeto) e C18 (PROPOSTO parado)
+      ...regrasLogica(T), // varredura 2026-10-30: C19 sem contrato, C20 >16 h/dia, C21 etapa>total, C22 concluído<100%, C23 a iniciar com horas
     ];
     const out: P[] = [];
     for (const r of regras) {

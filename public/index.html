@@ -859,7 +859,7 @@ function _gutChip(g){if(!g)return '<span class="muted" style="font-size:.74rem">
   return '<span style="display:inline-block;min-width:26px;text-align:center;padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700;color:var(--chip-ink);background:'+_gutCor(g)+'" title="Prioridade 1-100 (GUT + Impacto/Esforço)">'+g+'</span>';}
 /* Barra horas gasto×previsto: cheia = previsto; preenchimento = gasto; estouro vira crítico. */
 function _horasBar(gastas,prev){
-  if(!prev){return '<span class="muted" style="font-size:.74rem">sem previsto</span>';}
+  if(!prev){return '<span class="muted" style="font-size:.74rem">sem contrato</span>';}
   var pct=prev>0?gastas/prev*100:0, estouro=gastas>prev;
   var cor=estouro?"var(--crit)":(pct>=85?"var(--warn)":"var(--chart-accent)");
   var w=Math.min(100,pct);
@@ -1155,7 +1155,10 @@ function _contratoBloco(j){
       '<button class="btn sec sm pc-add" data-cid="'+esc(c.id)+'">+ parcela</button></div>';
     return '<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:.86rem">'+esc(c.titulo||('Contrato '+c.tipo))+'</b> '+stBadge(c.status)+'<span class="muted" style="font-size:.7rem">'+esc(c.tipo||'base')+(c.assinado?' · assinado '+esc(c.assinado):'')+'</span>'+
-        '<span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">'+fmtBRL(c.valor)+'</span></div>'+
+        (c.tipo==='recorrente'
+          ?'<span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">'+fmtBRL(c.valor_mensal)+'/mês</span></div>'+
+           '<div class="muted" style="font-size:.72rem;margin-top:2px">Recorrente · cliente '+esc(c.cliente||'—')+' · '+esc(c.desde||'?')+' a '+esc(c.ate||'em aberto')+'. O valor de cada mês é distribuído entre os projetos do cliente pelas horas do mês.</div>'
+          :'<span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">'+fmtBRL(c.valor)+'</span></div>')+
       (c.status!=='confirmado'?'<div style="margin-top:4px"><button class="btn sm ct-conf" data-cid="'+esc(c.id)+'">Confirmar contrato</button> <span class="muted" style="font-size:.7rem">só contrato confirmado vira o valor do Financeiro</span></div>':'')+
       '<div style="margin-top:6px"><div class="muted" style="font-size:.72rem">Parcelas · previsto '+fmtBRL(somaP)+(Math.abs(dif)>0.01?' · <span style="color:'+(dif>0?'var(--crit)':'var(--muted)')+'">falta '+fmtBRL(dif)+'</span>':' · fecha com o contrato')+'</div>'+(plinhas||'<div class="muted" style="font-size:.78rem">Sem parcelas.</div>')+addParc+'</div>'+
     '</div>';
@@ -1163,7 +1166,11 @@ function _contratoBloco(j){
   var novo='<div style="border-top:1px dashed var(--line);margin-top:6px;padding-top:8px"><div class="row" style="gap:6px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
     '<div class="field" style="margin:0;flex:1;min-width:120px"><label style="font-size:.68rem">Novo contrato — título</label><input class="sm" id="ct-tit" maxlength="120" placeholder="ex.: Contrato base"></div>'+
     '<div class="field" style="margin:0;max-width:130px"><label style="font-size:.68rem">Valor (R$)</label><input class="sm" id="ct-val" type="number" min="0" step="0.01"></div>'+
-    '<div class="field" style="margin:0;max-width:110px"><label style="font-size:.68rem">Tipo</label><select class="sm" id="ct-tipo"><option value="base">base</option><option value="aditivo">aditivo</option></select></div>'+
+    '<div class="field" style="margin:0;max-width:130px"><label style="font-size:.68rem">Tipo</label><select class="sm" id="ct-tipo"><option value="base">base</option><option value="aditivo">aditivo</option><option value="recorrente">recorrente (mensal)</option></select></div>'+
+    '<div class="field ct-rec hidden" style="margin:0;min-width:140px"><label style="font-size:.68rem">Cliente do recorrente</label><input class="sm" id="ct-cli" maxlength="120" value="'+esc((j.proj&&j.proj.cliente)||'')+'"></div>'+
+    '<div class="field ct-rec hidden" style="margin:0;max-width:130px"><label style="font-size:.68rem">Valor mensal (R$)</label><input class="sm" id="ct-vm" type="number" min="0" step="0.01"></div>'+
+    '<div class="field ct-rec hidden" style="margin:0;max-width:140px"><label style="font-size:.68rem">Início (mês)</label><input class="sm" id="ct-de" type="month"></div>'+
+    '<div class="field ct-rec hidden" style="margin:0;max-width:140px"><label style="font-size:.68rem">Fim (mês, opcional)</label><input class="sm" id="ct-ate" type="month"></div>'+
     '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.68rem">Assinado em</label><input class="sm" id="ct-ass" type="date"></div>'+
     '<button class="btn sm ct-novo">+ contrato</button></div></div>';
   return '<div style="background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px">'+
@@ -1283,9 +1290,20 @@ function _contratoLiga(j){
   var cc=j.cc; var V=function(id){var e=$("#"+id);return e?e.value:"";};
   var msg=function(t,err){var m=$("#ct-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
   var reload=function(ok){return api("projdetalhe",{cc:cc}).then(function(nj){PJDET=nj;PJDET.edit=false;_pjRender();if(ok)toast(ok);});};
+  /* Recorrente: mostra cliente/valor mensal/vigência e esconde o valor total (o mês é distribuído pelas horas). */
+  var tp=$("#ct-tipo");if(tp)tp.onchange=function(){var rec=tp.value==="recorrente";
+    document.querySelectorAll(".ct-rec").forEach(function(e){e.classList.toggle("hidden",!rec);});
+    var vv=$("#ct-val");if(vv&&vv.parentNode)vv.parentNode.classList.toggle("hidden",rec);};
   var nv=document.querySelector(".ct-novo");if(nv)nv.onclick=function(){
+    var tipo=V("ct-tipo");
+    if(tipo==="recorrente"){
+      var vm=Number(V("ct-vm"))||0;if(!(vm>0)){msg("Informe o valor mensal.",true);return;}
+      if(!V("ct-de")){msg("Informe o mês de início.",true);return;}
+      msg("Salvando…");api("contratoSet",{cc:cc,titulo:V("ct-tit"),tipo:"recorrente",valor:0,cliente:V("ct-cli"),valor_mensal:vm,desde:V("ct-de"),ate:V("ct-ate"),assinado:V("ct-ass"),status:"rascunho"}).then(function(){return reload("Contrato recorrente criado.");}).catch(function(e){msg(e.message||"Erro",true);});
+      return;
+    }
     var val=Number(V("ct-val"))||0; if(!(val>0)){msg("Informe o valor do contrato.",true);return;}
-    msg("Salvando…");api("contratoSet",{cc:cc,titulo:V("ct-tit"),valor:val,tipo:V("ct-tipo"),assinado:V("ct-ass"),status:"rascunho"}).then(function(){return reload("Contrato criado.");}).catch(function(e){msg(e.message||"Erro",true);});
+    msg("Salvando…");api("contratoSet",{cc:cc,titulo:V("ct-tit"),valor:val,tipo:tipo,assinado:V("ct-ass"),status:"rascunho"}).then(function(){return reload("Contrato criado.");}).catch(function(e){msg(e.message||"Erro",true);});
   };
   document.querySelectorAll(".ct-conf").forEach(function(b){b.onclick=function(){
     if(!confirm("Confirmar o contrato? O valor confirmado passa a ser o valor do Financeiro deste projeto."))return;
@@ -2707,28 +2725,31 @@ function _finCustoFixo(){
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
         '<div class="field" style="margin:0;min-width:180px"><label style="font-size:.7rem">Categoria</label><select class="sm" id="cf-cat">'+opts+'</select></div>'+
         '<div class="field" style="margin:0;flex:1;min-width:180px"><label style="font-size:.7rem">Descrição</label><input class="sm" id="cf-desc" maxlength="200" placeholder="ex.: salários do comercial, aluguel da sede"></div>'+
-        '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.7rem">Valor R$ (pool)</label><input class="sm" id="cf-val" type="number" min="0" step="0.01" style="text-align:right" placeholder="0,00"></div>'+
+        '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.7rem">Valor mensal R$</label><input class="sm" id="cf-val" type="number" min="0" step="0.01" style="text-align:right" placeholder="0,00"></div>'+
+        '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.7rem">Vale desde (mês)</label><input class="sm" id="cf-de" type="month"></div>'+
+        '<div class="field" style="margin:0;max-width:150px"><label style="font-size:.7rem">Até (opcional)</label><input class="sm" id="cf-ate" type="month"></div>'+
         '<button class="btn sm" type="button" id="cf-add">Adicionar</button>'+
       '</div><div id="cf-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:6px"></div></div>';
     var td='padding:6px 10px;font-size:.84rem';
     var linhas=xs.map(function(x){
       return '<tr style="border-top:1px solid var(--line)"><td style="'+td+'">'+esc(CAT[x.categoria]||x.categoria)+'</td>'+
         '<td style="'+td+'">'+esc(x.descricao||'')+'</td>'+
-        '<td style="'+td+';text-align:right;font-variant-numeric:tabular-nums">'+fmtBRL(x.valor)+'</td>'+
+        '<td style="'+td+';text-align:right;font-variant-numeric:tabular-nums">'+fmtBRL(x.valor)+'/mês</td>'+
+        '<td style="'+td+';white-space:nowrap" class="muted">'+esc(x.desde||'sempre')+' a '+esc(x.ate||'em aberto')+'</td>'+
         '<td style="'+td+';text-align:right"><button class="linkbtn cf-del" data-id="'+esc(x.id)+'">excluir</button></td></tr>';
     }).join("");
-    var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Categoria</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor (pool)</th><th></th></tr></thead><tbody>'+linhas+'<tr style="border-top:2px solid var(--line);font-weight:700"><td style="'+td+'" colspan="2">Total do overhead</td><td style="'+td+';text-align:right">'+fmtBRL(j.total)+'</td><td></td></tr></tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum custo fixo cadastrado. Enquanto estiver vazio, a margem usa só mão de obra + consumíveis — nenhum overhead é inventado.</p></div>';
+    var tabela=xs.length?('<div class="card" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)"><th style="'+td+';text-align:left">Categoria</th><th style="'+td+';text-align:left">Descrição</th><th style="'+td+';text-align:right">Valor mensal</th><th style="'+td+';text-align:left">Vigência</th><th></th></tr></thead><tbody>'+linhas+'<tr style="border-top:2px solid var(--line);font-weight:700"><td style="'+td+'" colspan="2">Total mensal vigente neste mês</td><td style="'+td+';text-align:right">'+fmtBRL(j.total)+'</td><td colspan="2"></td></tr></tbody></table></div>'):'<div class="card"><p class="muted" style="margin:0">Nenhum custo fixo cadastrado. Enquanto estiver vazio, a margem usa só mão de obra + consumíveis — nenhum overhead é inventado.</p></div>';
     var impBox='<div class="card" style="margin-bottom:12px;padding:12px 14px"><div style="font-size:.84rem;font-weight:600;margin-bottom:4px">Imposto padrão da empresa</div>'+
       '<p class="muted" style="font-size:.72rem;margin:0 0 8px">Alíquota sobre o <b>faturamento (valor contratado)</b> — o regime tributário da casa (ex.: Simples, Presumido). Todo projeto herda este percentual; dá para ajustar caso a caso no detalhe do projeto. Não incide sobre as horas.</p>'+
       '<div style="display:flex;gap:8px;align-items:center"><input id="imp-pad" type="number" min="0" max="100" step="0.01" value="'+esc(j.impostoPadrao||0)+'" style="max-width:120px"><span class="muted" style="font-size:.8rem">% sobre o contratado</span><button id="imp-save" class="btn sec sm">Salvar</button><span id="imp-msg" class="muted" style="font-size:.78rem"></span></div></div>';
-    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). O portal rateia este total sobre os projetos contratados <b>por horas apontadas</b> — cada projeto absorve <code>total × (horas do projeto ÷ horas da carteira)</code> — somando ao custo real antes da margem. Base de horas da carteira: <b>'+fmtH(j.horasBase||0)+'</b>. Comece por onde tiver número real.</p>'+impBox+form+tabela;
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Pool de <b>custos fixos / overhead</b> da casa (comercial, financeiro, administrativo, RH, aluguel, jurídico, relações institucionais, outros). Cadastre o <b>valor mensal</b> e o mês em que passou a valer. Em cada mês, o total vigente é rateado entre os projetos faturáveis pela participação nas <b>horas daquele mês</b> e soma ao custo real antes da margem. As horas lançadas continuam como custo direto. Rateado até hoje: <b>'+fmtBRL(j.absorvido||0)+'</b>'+((j.naoAbsorvido||0)>0?' · <span style="color:var(--warn)">'+fmtBRL(j.naoAbsorvido)+' em meses sem horas faturáveis (não absorvido)</span>':'')+'.</p>'+impBox+form+tabela;
     var imps=$("#imp-save");if(imps)imps.onclick=function(){var im=$("#imp-msg");if(im)im.textContent="Salvando…";api("impostoPadraoSet",{pct:Number($("#imp-pad").value)||0}).then(function(){if(im){im.textContent="Salvo.";im.classList.remove("err");}_finResumo();_finCarteira();}).catch(function(e){if(im){im.textContent=e.message||"Erro";im.classList.add("err");}});};
     var m=$("#cf-msg");var msg=function(t,err){if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
     var add=$("#cf-add");if(add)add.onclick=function(){
       var val=Number($("#cf-val").value)||0;
       if(!(val>0)){msg("Informe um valor maior que zero.",true);return;}
       msg("Salvando…");
-      api("custoFixoSet",{categoria:$("#cf-cat").value,descricao:$("#cf-desc").value,valor:val}).then(function(){_finCustoFixo();_finResumo();_finCarteira();}).catch(function(e){msg(e.message||"Erro",true);});
+      api("custoFixoSet",{categoria:$("#cf-cat").value,descricao:$("#cf-desc").value,valor:val,desde:$("#cf-de").value,ate:$("#cf-ate").value}).then(function(){_finCustoFixo();_finResumo();_finCarteira();}).catch(function(e){msg(e.message||"Erro",true);});
     };
     box.querySelectorAll(".cf-del").forEach(function(b){b.onclick=function(){
       if(!confirm("Excluir este custo fixo? O rateio dos projetos será recalculado."))return;
@@ -4512,8 +4533,11 @@ function _execDestaques(){
 /* HORAS GASTO × PREVISTO (nível executivo, como o .pbix): comparação por projeto (top consumo)
    e total da carteira, por tokens --chart-*; estouro em crítico, demais em acento. Sem R$. */
 function _execHorasComp(){
-  var proj=_pjProj().filter(function(p){return p._prev>0;});
-  if(!proj.length)return "";
+  var todos=_pjProj();
+  var proj=todos.filter(function(p){return p._prev>0;});
+  /* Sem horas contratadas = "sem contrato", nunca estouro: ficam fora da comparação e são só contados. */
+  var semContrato=todos.filter(function(p){return !(p._prev>0)&&p._gastas>0;}).length;
+  if(!proj.length)return semContrato?'<div class="card" style="margin-top:16px"><h3 style="margin:0 0 4px;font-size:.9rem">Horas — gasto × previsto (contrato)</h3><p class="muted" style="font-size:.8rem;margin:0">Nenhum projeto com horas contratadas cadastradas. '+semContrato+' projeto(s) com horas lançadas estão sem contrato. Cadastre as horas contratadas no detalhe do projeto.</p></div>':"";
   var totP=0,totG=0; proj.forEach(function(p){totP+=p._prev;totG+=p._gastas;});
   var lista=proj.map(function(p){return {p:p,pct:p._prev>0?p._gastas/p._prev*100:0};})
     .sort(function(a,b){return b.pct-a.pct;}).slice(0,12);
@@ -4536,7 +4560,7 @@ function _execHorasComp(){
     '</div>'+
     '<div style="border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:6px">'+linha("TOTAL DA CARTEIRA ("+proj.length+" projetos com contrato)","",totG,totP)+'</div>'+
     barras+
-    '<p class="muted" style="font-size:.72rem;margin:8px 0 0">Projetos com horas de contrato cadastradas, ordenados por consumo. Clique para o detalhe.</p>'+
+    '<p class="muted" style="font-size:.72rem;margin:8px 0 0">Projetos com horas de contrato cadastradas, ordenados por consumo. Clique para o detalhe.'+(semContrato?' '+semContrato+' projeto(s) com horas lançadas estão sem contrato e não entram na comparação.':'')+'</p>'+
   '</div>';
 }
 function _execResumo(){

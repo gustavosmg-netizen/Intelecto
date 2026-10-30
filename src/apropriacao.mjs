@@ -131,3 +131,40 @@ export function situacaoHoras(gastas, previstas) {
   const pct = Math.round((g / p) * 1000) / 10;
   return { situacao: g > p ? "estouro" : pct >= 85 ? "atencao" : "ok", pct };
 }
+
+/**
+ * Regras do Painel de Consistência para os erros de lógica achados na varredura de 2026-10-30
+ * (mesmo formato de regrasExtra em src/onda3a.mjs). Contagens; o detalhe fica na tela de origem.
+ * @param {string} T tenant
+ */
+export function regrasLogica(T) {
+  return [
+    {
+      rule: "C19", titulo: "Projeto com horas lançadas e sem horas contratadas (sem contrato)", sev: "medio", dono: "Coordenação", atalho: "Projeto 360 › Visão",
+      sql: "SELECT COUNT(*) n FROM proj p WHERE p.tenant_id = ? AND p.status IN ('A INICIAR','EM ANDAMENTO','EM ESPERA') "
+        + "AND COALESCE((SELECT prev FROM projx x WHERE x.cc=p.cc AND x.tenant_id=p.tenant_id),0) <= 0 "
+        + "AND EXISTS (SELECT 1 FROM lanc l WHERE l.cc=p.cc AND l.tenant_id=p.tenant_id AND l.s IN ('APROVADO','LANÇADO'))",
+      args: [T],
+    },
+    {
+      rule: "C20", titulo: "Pessoa com mais de 16 h lançadas no mesmo dia", sev: "alto", dono: "Horas", atalho: "Apontamentos",
+      sql: "SELECT COUNT(*) n FROM (SELECT slug, d FROM lanc WHERE tenant_id = ? AND s <> 'DEVOLVIDO' GROUP BY slug, d HAVING SUM(h) > 16)",
+      args: [T],
+    },
+    {
+      rule: "C21", titulo: "Andamento com etapa maior que o total de etapas", sev: "medio", dono: "Projetos", atalho: "Projeto 360 › Andamento",
+      sql: "SELECT COUNT(*) n FROM andam WHERE tenant_id = ? AND total > 0 AND etapa > total",
+      args: [T],
+    },
+    {
+      rule: "C22", titulo: "Projeto CONCLUÍDO com progresso abaixo de 100%", sev: "medio", dono: "Projetos", atalho: "Projeto 360 › Visão",
+      sql: "SELECT COUNT(*) n FROM proj p JOIN projx x ON x.cc=p.cc AND x.tenant_id=p.tenant_id WHERE p.tenant_id = ? AND p.status='CONCLUÍDO' AND COALESCE(x.progresso,0) < 100",
+      args: [T],
+    },
+    {
+      rule: "C23", titulo: "Projeto A INICIAR que já tem horas aprovadas", sev: "medio", dono: "Projetos", atalho: "Projeto 360 › Visão",
+      sql: "SELECT COUNT(*) n FROM proj p WHERE p.tenant_id = ? AND p.status='A INICIAR' AND EXISTS (SELECT 1 FROM lanc l WHERE l.cc=p.cc AND l.tenant_id=p.tenant_id AND l.s IN ('APROVADO','LANÇADO'))",
+      args: [T],
+    },
+  ];
+}

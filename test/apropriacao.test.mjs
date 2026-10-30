@@ -65,3 +65,51 @@ test("situacaoHoras: sem previsto é 'sem contrato', nunca estouro", () => {
   assert.equal(situacaoHoras(86, 100).situacao, "atencao");
   assert.equal(situacaoHoras(10, 100).situacao, "ok");
 });
+
+// ---------- Fiação no Worker (asserts de fonte) ----------
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { regrasLogica } from "../src/apropriacao.mjs";
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ts = readFileSync(join(root, "src/index.ts"), "utf8");
+const bloco = (ini, fim) => ts.slice(ts.indexOf(ini), ts.indexOf(fim, ts.indexOf(ini) + 1));
+
+test("Worker: rateio de fixos é mensal e o recorrente entra no valor contratado (fora do CC guarda-chuva)", () => {
+  const rf = bloco("async function rateioFixosCarteira", "\n}\n");
+  assert.match(rf, /rateioFixosMensal\(/);
+  assert.doesNotMatch(rf, /SUM\(valor\)/); // não soma mais o pool inteiro contra todo o histórico
+  const vc = bloco("async function valorContratadoMap", "\n}\n");
+  assert.match(vc, /COALESCE\(tipo,'base'\) <> 'recorrente'/);
+  assert.match(vc, /receitaRecorrenteMap\(tenant\)/);
+});
+
+test("Worker: confirmar contrato não zera valor/título (edição parcial)", () => {
+  const b = bloco('if (action === "contratoSet")', 'if (action === "financeiro")');
+  assert.match(b, /const pega = \(k: string, def: any\) => \(tem\(k\) \? p\[k\] : \(atual\[k\] \?\? def\)\)/);
+  assert.match(b, /const valor = Math\.max\(0, Number\(pega\("valor", 0\)\) \|\| 0\)/);
+  assert.match(b, /const titulo = String\(pega\("titulo", ""\)\)/);
+  assert.match(b, /tipo !== "recorrente"/);
+});
+
+test("Worker: trava de 24 h por pessoa/dia no lançar e no editar; concluído = 100%", () => {
+  assert.match(bloco('if (action === "add")', 'if (action === "edit")'), /await checaTotalDia\(u\.slug, e\.d, e\.h, u\.tenant_id\)/);
+  assert.match(bloco('if (action === "edit")', 'const st = aprovReq'), /await checaTotalDia\(cur\.slug, e\.d, e\.h, u\.tenant_id, String\(p\.id\)\)/);
+  assert.match(bloco('if (action === "setproj")', 'if (setsP.length)'), /if \(status === "CONCLUÍDO"\) await sqlite\.execute\(\{ sql: "UPDATE projx SET progresso = 100/);
+});
+
+test("Painel de Consistência: regras C19–C23 com um ? por tenant e fiadas na ação", () => {
+  const r = regrasLogica("intelecto");
+  assert.deepEqual(r.map((x) => x.rule), ["C19", "C20", "C21", "C22", "C23"]);
+  for (const x of r) assert.equal((x.sql.match(/\?/g) || []).length, x.args.length, x.rule);
+  assert.match(ts, /\.\.\.regrasLogica\(T\)/);
+});
+
+test("Schema: colunas novas no ensureSchema, migração 0015 e SCHEMA_VER", () => {
+  const ver = (ts.match(/const SCHEMA_VER = "([^"]+)";/) || [])[1] || "";
+  assert.ok(ver >= "2026-10-30a", ver);
+  const mig = readFileSync(join(root, "migrations/0015_apropriacao_mensal.sql"), "utf8");
+  for (const c of ["cliente", "valor_mensal", "desde", "ate"]) assert.match(mig, new RegExp("ALTER TABLE cc_contrato ADD COLUMN " + c + " "));
+  assert.match(mig, /ALTER TABLE custo_fixo ADD COLUMN desde /);
+  assert.match(ts, /"valor_mensal REAL DEFAULT 0"/);
+});
