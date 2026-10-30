@@ -206,13 +206,15 @@ def purga_gravidade(m, tag: str, Q: float, f: rg.Bingham, nv: dict) -> dict:
 # --- Trens bombeados ---------------------------------------------------------------------------
 
 def trens(m, nv):
-    """Trens: sucção e recalque como [(linha, s_a, s_b, singulares extras)] (s em mm)."""
+    """Trens: sucção e recalque como [(linha, s_a, s_b, singulares extras)] (s em mm).
+    'imersao': (cota da boca do tubo de imersão, cota do furo quebra-sifão) da alimentação
+    pelo tampo: abaixo do nível o tubo trabalha cheio."""
     def comp(t):
         return m.linhas[t].comprimento
 
     al0, al1, al2 = m.linhas["R-101-AL"], m.linhas["R-201-AL"], m.linhas["R-202-AL"]
-    l3, ls = m.linhas["L-301R"], m.linhas["L-301S"]
-    suc201 = [("L-201S", 0, comp("L-201S"), ("entrada",))]
+    l3, ls, l3n = m.linhas["L-301R"], m.linhas["L-301S"], m.linhas["L-301N3"]
+    suc201 = [("L-101S", 0, comp("L-101S"), ("entrada",))]
     suc301 = [("L-301S", 0, comp("L-301S"), ("entrada",))]
     zb201 = m.portas["P-201.succao"].ponto.Z / 1000
     zb301 = m.portas["P-301.succao"].ponto.Z / 1000
@@ -220,73 +222,77 @@ def trens(m, nv):
 
     def crista(ln_tag):
         ln = m.linhas[ln_tag]
-        i = ln.spec["crista"]
-        el = [e for e in ln.elementos if e[0] == "reto"][i]
+        el = [e for e in ln.elementos if e[0] == "reto"][ln.spec["crista"]]
         return el[1].Z / 1000
 
+    def imersao(ln, tag):
+        z_out = ln.spec["imersao"][0] / 1000
+        return (z_out, m.equipamentos[tag]["obj"].z_tampo / 1000 - 0.25)
+
+    def topo(t):
+        return max(v.Z for v in m.linhas[t].vertices) / 1000
+
+    s_n3_201 = _s_do_te(m, l3n, "R-201-PG")
+    s_s_n3 = _s_do_te(m, ls, "L-301N3")
     return {
         "P-101 → R-101": {
-            "suc": [], "rec": [("R-101-AL", 0, comp("R-101-AL"), ("saida",))],
+            "suc": [], "rec": [("R-101-AL", 0, comp("R-101-AL"), ())],
             "crista": ("R-101-AL", _s_reto(al0, al0.spec["crista"]), crista("R-101-AL")),
+            "imersao": imersao(al0, "R-101"),
             "z_fonte": 1.20, "z_bomba": 1.20, "z_dest": nv["R-101"]["LSHH"] / 1000,
             "p_dest": P_GAS_OP, "fonte": "tie-in da P-101 a +1,20 (pressão a fornecer pela Ilha 1)",
             "destino": "R-101 no LSHH"},
         "P-201 → R-201": {
-            "suc": suc201, "rec": [("R-201-AL", 0, comp("R-201-AL"), ("saida",))],
+            "suc": suc201, "rec": [("R-201-AL", 0, comp("R-201-AL"), ())],
             "crista": ("R-201-AL", _s_reto(al1, al1.spec["crista"]), crista("R-201-AL")),
-            "z_fonte": nv["TQ-201"]["LSLL"] / 1000, "z_bomba": zb201,
+            "imersao": imersao(al1, "R-201"),
+            "z_fonte": nv["R-101"]["LSL"] / 1000, "z_bomba": zb201,
             "z_dest": nv["R-201"]["LSHH"] / 1000, "p_dest": P_GAS_OP,
-            "fonte": "TQ-201 no LSLL", "destino": "R-201 no LSHH"},
+            "fonte": "R-101 no LSL", "destino": "R-201 no LSHH"},
         "P-201 → R-202": {
             "suc": suc201, "rec": [("R-201-AL", 0, s_te202, ()),
-                                   ("R-202-AL", 0, comp("R-202-AL"), ("te_ramal", "saida"))],
+                                   ("R-202-AL", 0, comp("R-202-AL"), ("te_ramal",))],
             "crista": ("R-202-AL", _s_reto(al2, al2.spec["crista"]), crista("R-202-AL")),
-            "z_fonte": nv["TQ-201"]["LSLL"] / 1000, "z_bomba": zb201,
+            "imersao": imersao(al2, "R-202"),
+            "z_fonte": nv["R-101"]["LSL"] / 1000, "z_bomba": zb201,
             "z_dest": nv["R-202"]["LSHH"] / 1000, "p_dest": P_GAS_OP,
-            "fonte": "TQ-201 no LSLL", "destino": "R-202 no LSHH"},
+            "fonte": "R-101 no LSL", "destino": "R-202 no LSHH"},
         "P-301 → TQ-301 (transferência)": {
             "suc": suc301, "rec": [("L-301R", 0, comp("L-301R"), ("saida",))],
             "z_fonte": nv["CS-301"]["LSLL"] / 1000, "z_bomba": zb301,
-            "z_dest": max(v.Z for v in l3.vertices) / 1000, "p_dest": 0.0,
+            "z_dest": topo("L-301R"), "p_dest": 0.0,
             "fonte": "CS-301 no LSLL", "destino": "ponto alto da L-301R (descarga livre no TQ-301)"},
-        "P-301 → TQ-201 (RL-05)": {
+        "P-301 → sucção da P-201 (RL-05)": {
             "suc": suc301, "rec": [("L-301R", 0, _s_do_te(m, l3, "L-RL05"), ()),
-                                   ("L-RL05", 0, comp("L-RL05"), ("te_ramal", "saida"))],
+                                   ("L-RL05", 0, comp("L-RL05"), ("te_ramal",))],
             "z_fonte": nv["CS-301"]["LSLL"] / 1000, "z_bomba": zb301,
-            "z_dest": max(v.Z for v in m.linhas["L-RL05"].vertices) / 1000, "p_dest": 0.0,
-            "fonte": "CS-301 no LSLL", "destino": "ponto alto da L-RL05 (descarga livre)"},
+            "z_dest": max(topo("L-RL05"), nv["R-101"]["LSH"] / 1000), "p_dest": 0.0,
+            "fonte": "CS-301 no LSLL", "destino": "sucção da P-201 (≈ nível do R-101)"},
         "P-301 ← TQ-301 (recirculação/expedição)": {
-            "suc": [("L-301N3", 0, comp("L-301N3"), ("entrada", "te_ramal")),
-                    ("L-301S", _s_do_te(m, ls, "L-301N3"), comp("L-301S"), ())],
+            "suc": [("L-301N3", 0, comp("L-301N3"), ("entrada",)),
+                    ("L-301S", s_s_n3, comp("L-301S"), ("te_ramal",))],
             "rec": [("L-301R", 0, comp("L-301R"), ("saida",))],
             "z_fonte": nv["TQ-301"]["LSL"] / 1000, "z_bomba": zb301,
-            "z_dest": max(v.Z for v in l3.vertices) / 1000, "p_dest": 0.0,
+            "z_dest": topo("L-301R"), "p_dest": 0.0,
             "fonte": "TQ-301 no LSL (pelo N3)", "destino": "TQ-301 (recirculação)"},
-        "Purga R-101 → P-201 → TQ-201": {
-            "suc": [("R-101-PG", 0, comp("R-101-PG"), ("entrada", "te_ramal")),
-                    ("L-201S", _s_do_te(m, m.linhas["L-201S"], "R-101-PG"), comp("L-201S"), ())],
-            "rec": [("R-201-AL", 0, _s_do_te(m, al1, "L-201RC"), ()),
-                    ("L-201RC", 0, comp("L-201RC"), ("te_ramal", "saida"))],
-            "z_fonte": nv["R-101"]["LSL"] / 1000 if "LSL" in nv["R-101"] else
-            nv["R-101"]["crista"] / 1000 - 0.5, "p_fonte": 0.0, "z_bomba": zb201,
-            "z_dest": max(v.Z for v in m.linhas["L-201RC"].vertices) / 1000, "p_dest": 0.0,
-            "fonte": "R-101 0,5 m abaixo da soleira", "destino": "TQ-201 (neutralização)"},
-        "Purga R-201 → P-302 → CS-301": {
-            "suc": [("R-201-PG", 0, comp("R-201-PG"), ("entrada",))],
-            "rec": [("L-302R", 0, comp("L-302R"), ("saida",))],
-            "z_fonte": nv["R-201"]["crista"] / 1000 - 0.5, "p_fonte": 0.0,
-            "z_bomba": m.portas["P-302.succao"].ponto.Z / 1000,
-            "z_dest": max(v.Z for v in m.linhas["L-302R"].vertices) / 1000, "p_dest": 0.0,
-            "fonte": "R-201 0,5 m abaixo da soleira", "destino": "CS-301 (descarga livre)"},
-        "Purga R-202 → P-302 → CS-301": {
-            "suc": [("R-202-PG", 0, comp("R-202-PG"), ("entrada", "te_ramal")),
+        "Purga R-201 → P-301 → TQ-301": {
+            "suc": [("R-201-PG", 0, comp("R-201-PG"), ("entrada",)),
+                    ("L-301N3", s_n3_201, comp("L-301N3"), ("te_ramal",)),
+                    ("L-301S", s_s_n3, comp("L-301S"), ("te_ramal",))],
+            "rec": [("L-301R", 0, comp("L-301R"), ("saida",))],
+            "z_fonte": nv["R-201"]["crista"] / 1000 - 0.5, "p_fonte": 0.0, "z_bomba": zb301,
+            "z_dest": topo("L-301R"), "p_dest": 0.0,
+            "fonte": "R-201 0,5 m abaixo da soleira", "destino": "TQ-301"},
+        "Purga R-202 → P-301 → TQ-301": {
+            "suc": [("R-202-PG", 0, comp("R-202-PG"), ("entrada",)),
                     ("R-201-PG", _s_do_te(m, m.linhas["R-201-PG"], "R-202-PG"),
-                     comp("R-201-PG"), ())],
-            "rec": [("L-302R", 0, comp("L-302R"), ("saida",))],
-            "z_fonte": nv["R-202"]["crista"] / 1000 - 0.5, "p_fonte": 0.0,
-            "z_bomba": m.portas["P-302.succao"].ponto.Z / 1000,
-            "z_dest": max(v.Z for v in m.linhas["L-302R"].vertices) / 1000, "p_dest": 0.0,
-            "fonte": "R-202 0,5 m abaixo da soleira", "destino": "CS-301 (descarga livre)"},
+                     comp("R-201-PG"), ("te_ramal",)),
+                    ("L-301N3", s_n3_201, comp("L-301N3"), ("te_ramal",)),
+                    ("L-301S", s_s_n3, comp("L-301S"), ("te_ramal",))],
+            "rec": [("L-301R", 0, comp("L-301R"), ("saida",))],
+            "z_fonte": nv["R-202"]["crista"] / 1000 - 0.5, "p_fonte": 0.0, "z_bomba": zb301,
+            "z_dest": topo("L-301R"), "p_dest": 0.0,
+            "fonte": "R-202 0,5 m abaixo da soleira", "destino": "TQ-301"},
     }
 
 
@@ -300,6 +306,17 @@ def bombeado(m, tr, Q, f) -> dict:
     p_f = tr.get("p_fonte", 0.0) * mca
     pd = tr["p_dest"] * mca
     hgl_suc = tr["z_fonte"] + p_f - h_s
+    h_im = z_surf_im = None
+    if "imersao" in tr:                   # tubo de imersão DE160 cheio abaixo do nível
+        z_out, z_furo = tr["imersao"]
+        D = 0.1412
+        L_im = max(tr["z_dest"] - z_out, 0.0)
+        p = rg.perda_tubo(Q, D, L_im, f)
+        re_mr = 8 * f.rho * p["v"] ** 2 / p["tau_w"]
+        h_im = max(p["hf"], rg.carga_partida(D, L_im, f)) + \
+            _k("saida", re_mr, D) * p["v"] ** 2 / (2 * G)
+        z_surf_im = tr["z_dest"] + h_im
+        tr = {**tr, "z_dest": z_surf_im, "folga_furo": z_furo - z_surf_im}
     hgl_rec = tr["z_dest"] + pd + h_r
     p_crista = None
     if "crista" in tr:                    # alça: a ventosa garante LP ≥ crista + gás na crista
@@ -323,30 +340,25 @@ def bombeado(m, tr, Q, f) -> dict:
             "p_succao_m": hgl_suc - tr["z_bomba"] if tr["suc"] else None,
             "p_recalque_bar": (hgl_rec - tr["z_bomba"]) * f.rho * G / 1e5,
             "p_crista_m": p_crista, "NPSHd": npsh if tr["suc"] else None,
+            "h_imersao": h_im, "folga_furo": tr.get("folga_furo"),
             "suc": suc, "rec": rec}
 
 
-def tq201(nv, Di=1.8, z_fundo=0.45, Q=Q_PROJ) -> dict:
-    A = math.pi * Di ** 2 / 4
-    vol = {k: (v / 1000 - z_fundo) * A for k, v in nv["TQ-201"].items()}
-    return {"A": A, "vol": vol, "util": vol["LSH"] - vol["LSL"],
-            "TDH_min_LSH": vol["LSH"] / Q * 60,
-            "pulmao_LSH_LSHH_min": (vol["LSHH"] - vol["LSH"]) / Q * 60,
-            "vol_LSHH_EXT": vol["extravasor"] - vol["LSHH"]}
-
-
 def residuo_pos_trip(m, nv, res, tq) -> dict:
-    """Volume que ainda chega aos tanques depois do trip da alimentação (o reator escoa até a
-    soleira), contra o volume entre o LSHH e o extravasor do tanque de destino."""
+    """Volume que ainda chega à CS-301 depois do corte da alimentação (o reator escoa até a
+    soleira), contra o volume entre o LSHH e o extravasor da caixa."""
     out = {}
-    for tag, dest in (("R-101", "TQ-201"), ("R-201", "CS-301"), ("R-202", "CS-301")):
+    for tag in ("R-201", "R-202"):
         A = math.pi * (tq[tag].Di / 1000) ** 2 / 4
         r = res["saida"][(tag, "otimista", Q_PROJ)]   # pior caso: τy alto retém volume em repouso
-        out[tag] = {"dest": dest, "vol_m3": (r["nivel_max"] - r["crista"]) * A}
+        out[tag] = {"dest": "CS-301", "vol_m3": (r["nivel_max"] - r["crista"]) * A}
     cs = tq["CS-301"]
     Ac = math.pi * (cs.Di / 1000) ** 2 / 4
     out["CS-301"] = (nv["CS-301"]["extravasor"] - nv["CS-301"]["LSHH"]) / 1000 * Ac
-    out["TQ-201"] = res["tq201"]["vol_LSHH_EXT"]
+    r1 = tq["R-101"]
+    A1 = math.pi * (r1.Di / 1000) ** 2 / 4
+    out["R-101"] = {"pulmao_m3": (nv["R-101"]["op"] - nv["R-101"]["LSL"]) / 1000 * A1,
+                    "A": A1}
     return out
 
 
@@ -354,11 +366,10 @@ def calcular(m, nv, tq=None):
     out = {"saida": {}, "bomb": {}}
     for f in rg.CASOS_8ST:
         for Q in (Q_PROJ, Q_MAX):
-            for tag in ("R-101", "R-201", "R-202"):
+            for tag in ("R-201", "R-202"):
                 out["saida"][(tag, f.nome, Q)] = saida(m, tag, Q, f, nv)
         for nome, tr in trens(m, nv).items():
             out["bomb"][(nome, f.nome)] = bombeado(m, tr, Q_PROJ, f)
-    out["tq201"] = tq201(nv)
     # sem limite físico, a purga por gravidade passaria de 100 m³/h (por isso foi descartada)
     out["purga_grav"] = {(t, f.nome): purga_gravidade(m, t, Q_PROJ, f, nv)
                          for t in ("R-201", "R-202") for f in rg.CASOS_8ST}
@@ -460,8 +471,7 @@ def perfil_gravidade(m, tag, Q, f, nv, nv_dest):
 
 COR = {"otimista": "#1baf7a", "central": "#2a78d6", "pessimista": "#eb6834"}
 TRACO = {"otimista": ":", "central": "--", "pessimista": "-"}
-DESTINO_GRAV = {"R-101": ("TQ-201", "LSH"), "R-201": ("CS-301", "LSH"),
-                "R-202": ("CS-301", "LSH")}
+DESTINO_GRAV = {"R-201": ("CS-301", "LSH"), "R-202": ("CS-301", "LSH")}
 
 
 def grafico(m, nv, arquivo, Q=Q_PROJ):
@@ -470,7 +480,7 @@ def grafico(m, nv, arquivo, Q=Q_PROJ):
     import matplotlib.pyplot as plt
 
     trs = {k: v for k, v in trens(m, nv).items() if not k.startswith("Purga")}
-    paineis = [("grav", t) for t in ("R-101", "R-201", "R-202")] + [("bomb", k) for k in trs]
+    paineis = [("grav", t) for t in ("R-201", "R-202")] + [("bomb", k) for k in trs]
     fig, axs = plt.subplots(4, 2, figsize=(15, 17), constrained_layout=True)
     for ax, (tipo, chave) in zip(axs.flat, paineis):
         eixo = None
@@ -523,50 +533,64 @@ def _f(x, n=2):
 def memoria(m, nv, res, arquivo_md, figura):
     L = []
     w = L.append
-    w("# Memória hidráulica — cascata Gen E com polpa de 8% ST (documento de trabalho)\n")
-    w("Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 4 (coleta no chão, bombas "
-      "reposicionadas, purgas por gravidade). Precisa passar pelo Crivo A–F independente. Cotas "
-      "na base comum z = 0 (premissa de S5). Sem valores monetários.\n")
+    w("# Memória hidráulica — Gen E rev. 5, polpa de 8% ST (documento de trabalho)\n")
+    w("Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 5: planta enxuta, sem tanque "
+      "de neutralização, alinhada à F02 Rev. B (C1) do chat de fluxogramas. Precisa do Crivo "
+      "A–F independente. Cotas na base comum z = 0 (premissa de S5). Sem valores monetários.\n")
     w("## 1. Premissas e método\n")
-    w(f"- **Vazão de projeto das saídas: {Q_PROJ:.0f} m³/h.** É a vazão máxima das PCP de "
-      "alimentação; em regime, o que entra sai. A linha de "
-      f"{Q_MAX:.0f} m³/h só mostra folga.")
+    w(f"- **Vazão de projeto: {Q_PROJ:.0f} m³/h** (máximo das PCP; pulsos). A linha de "
+      f"{Q_MAX:.0f} m³/h nas saídas só mostra folga.")
     w("- **Reologia:** plástico de Bingham.")
     w("  - Tubo cheio: Buckingham–Reiner e Darby–Mun–Boger.")
     w("  - Partida: 4·τy·L/(ρ·g·D).")
     w("  - Lâmina livre: sen θ ≥ τy/(ρ·g·0,304·D).")
-    w("  - Singulares pelo 2-K de Hooper com o Re de Metzner–Reed (8ρv²/τw). Com τy alto, uma "
-      "curva cheia custa ≈ 0,5 m. Por isso **as saídas não têm curvas cheias.**")
-    w("- **Três casos de reologia** (HIPÓTESE até a reometria da polpa real, LAC-041):\n")
+    w("  - Singulares pelo 2-K de Hooper com o Re de Metzner–Reed.")
+    w("- **Três casos de reologia**, hipótese até a reometria (LAC-041):\n")
     w("| caso | τy (Pa) | μp (Pa·s) | ρ (kg/m³) |\n|---|---|---|---|")
     for f in rg.CASOS_8ST:
         w(f"| {f.nome} | {f.tau_y:.0f} | {_f(f.mu_p)} | {f.rho:.0f} |")
-    w(f"\n- **Espaço de gás:** opera de ≈ 0 a +2 mbar, ligado ao gasômetro GH-1 que estiver "
-      f"recebendo (memória de gás). As verificações de nível usam 0 mbar e o gráfico usa "
-      f"+{_f(P_GAS_OP, 1)} mbar (envelope de operação, conservador para a LP).")
-    w(f"- **NPSH:** P_atm {_f(P_ATM_KPA, 1)} kPa (sítio de referência Congonhas/MG, ≈ 870 m; "
-      f"RES-001 §5.5 e LAC-027). P_vapor {_f(P_VAP_KPA, 1)} kPa (35 °C).")
-    w(f"- **Copo de selagem:** a virada de 180° no fundo foi modelada como {TURNO_POTE:.2f} m "
-      "de caminho equivalente no ânulo (estimativa a confirmar na LAC-041).\n")
-    w("## 2. Saídas por gravidade: reator → copo de selagem interno no tanque do chão\n")
-    w("Arranjo de cada saída:")
-    w("- **N-SAI:** bocal novo DN150 com a soleira interna no N.A., seguido de registro LO "
-      "(faca) e do tê do respiro de equalização R-xxx-RS, que vai a um N1 do tampo.")
-    w("- **Descida:** lâmina livre, sen θ ≥ 0,64 (mínimo exigido no caso pessimista: 0,23), "
-      "até um bocal do tanque de destino **no nível do chão**:")
-    w("  - R-101 → TQ-201, bocal de costado com curva interna;")
-    w("  - R-201/R-202 → caixa CS-301, bocais de tampo.")
-    w("- **Copo de selagem interno** (CP-101, CP-201, CP-202): dentro do tanque novo, a "
-      "descida continua como tubo mergulhado num copo aberto.")
-    w("  - A borda do copo fica acima do extravasor do tanque (TQ-201: +1,95 contra +1,85; "
-      "CS-301: +1,50 contra +1,36). O fecho é a submersão do tubo dentro do copo e não depende "
-      "do nível do tanque. Se o tanque subir acima da borda, o copo só fica mais afogado.")
-    w("  - Limpeza: boca de inspeção DN200 sobre o CP-101 (TQ-201). Na CS-301, os copos saem "
-      "pela tampa aparafusada da caixa.")
-    w("  - **O fecho de 330 mm não depende do nível do tanque.** O copo é laminado no tanque "
-      "novo; nenhum tanque existente recebe vertedor.")
-    w("- **Quebra-sifão:** o respiro RS mantém a descida à pressão do gás mesmo com o N-SAI "
-      "afogado. Nada abaixo da soleira escoa por gravidade.\n")
+    w(f"\n- **Espaço de gás:** ≈ 0 a +2 mbar (ligado à bolsa GH-1 que recebe). Nas "
+      f"verificações de nível usei 0 mbar e no gráfico +{_f(P_GAS_OP, 1)} mbar.")
+    w(f"- **NPSH:** P_atm {_f(P_ATM_KPA, 1)} kPa (Congonhas/MG, ≈ 870 m; LAC-027) e "
+      f"P_vapor {_f(P_VAP_KPA, 1)} kPa.\n")
+    w("## 2. Arranjo da rev. 5\n")
+    w("**R-101 (acidogênico).**")
+    w("- Recebe da P-101 pelo tampo, com tubo de imersão até +1,20 m.")
+    w("- Sai pelo fundo (N2-135) para a P-201. O nível é variável, com controle por LT, e não "
+      "há saída por transbordo.")
+    rr = res.get("residuo", {})
+    if "R-101" in rr:
+        w(f"- Pulmão entre LSL (+{_f(nv['R-101']['LSL'] / 1000)}) e o nível de operação "
+          f"(+{_f(nv['R-101']['op'] / 1000)}): ≈ {_f(rr['R-101']['pulmao_m3'], 1)} m³. Isso "
+          "cobre o pulmão que o TQ-201 fazia (≈ 1 m³).")
+    w("\n**Neutralização em linha, sem TQ-201:**")
+    w("- **Na sucção da P-201** entra o retorno alcalino do digestato (RL-05). A mistura "
+      "acontece na própria PCP.")
+    w("- **Na descarga** entra a dosagem de NaOH ou bicarbonato (DOS-201), antes do misturador "
+      "estático MX-201.")
+    w("- **Medição:** pH/ORP em linha (AIT-201) na entrada dos metanogênicos e pH/ORP no copo "
+      "de saída de cada metanogênico (AIT-212/222 na CS-301). O AIC-201 comanda a dosadora "
+      "e a razão do RL-05.")
+    w("- **Por que funciona sem tanque:** cada pulso tem ≈ 0,6 m³, cerca de 0,7% do volume de "
+      "um metanogênico de 85 m³. O reator dilui e tampona o pulso, e a dosagem em linha "
+      "corrige o pH antes da entrada.")
+    w("- **Riscos registrados:**")
+    w("  - falha da dosagem durante um pulso: o pulso é intertravado com o pH em linha dentro "
+      "da faixa;")
+    w("  - item FINEP \"tanques de neutralização\" (LAC-054).")
+    w("\n**Alimentação dos R-201/202 pelo tampo com tubo de imersão** (C1 da F02 Rev. B):")
+    w("- Pulsos alternados pela XV-211 e pela XV-221, com volume por pulso no FQIT-201.")
+    w("- Quebra-sifão passivo pelo furo do tubo no espaço de gás, sem ventosa em lodo.")
+    w("\n**Saídas dos R-201/202 sem mudança:** bocal N-SAI no nível, respiro de equalização, "
+      "descida livre e copos de selagem na CS-301 no chão. A saída por coluna a partir do N2 "
+      "(C1) não foi adotada: deixa ≈ 7 m de tubo cheio de polpa e, com τy alto, o nível "
+      "passaria do tampo.")
+    w("\n**Purgas dos R-201/202 pela P-301:**")
+    w("- Manifold de sucção com chave presa, uma sucção por vez: CS-301, N3 do TQ-301, purga "
+      "do R-201 ou purga do R-202.")
+    w("- A vazão fica limitada pela bomba, e a purga só abre com reposição de gás pela bolsa "
+      "GH-1 que recebe.\n")
+    w("## 3. Saídas por gravidade (R-201/202 → copos na CS-301)\n")
     w("| reator | caso | Q (m³/h) | subida na soleira (m) | nível máx. (m) | folga até LSH (m) "
       "| carga no copo (m) | folga na soleira (m) | sen θ mín. exigido | sen θ adotado | selo (mm / mbar) |")
     w("|---|---|---|---|---|---|---|---|---|---|---|")
@@ -576,121 +600,52 @@ def memoria(m, nv, res, arquivo_md, figura):
           f"{_f(r['folga_lsh'])}{alerta} | {_f(r['h_pote'])} | {_f(r['folga_crista'])} | "
           f"{_f(r['s_min'], 3)} | {_f(r['decl_min'])} | {r['selo_mm']:.0f} / "
           f"{_f(r['selo_mbar'], 0)} |")
-    piores = {t: min((r for (tt, _, Q), r in res["saida"].items() if tt == t and Q == Q_PROJ),
-                     key=lambda r: r["folga_crista"]) for t in ("R-101", "R-201", "R-202")}
-    w("\nConclusões:\n")
-    w(f"1. A saída por gravidade funciona a {Q_PROJ:.0f} m³/h nos três casos, com folga "
-      "grande entre a superfície no copo e a soleira do reator: " + "; ".join(
-          f"{t} {_f(r['folga_crista'])} m" for t, r in piores.items()) + ".")
-    w("   - Na revisão 3, com potes elevados, essa folga era de 0,35 a 0,6 m.")
-    w("   - O limite passa a ser só a subida do nível sobre a soleira do N-SAI (até 0,53 m "
-      "no caso pessimista), coberta pelo LSH.")
-    w("2. **Selo de 330 mm (≈ 33 mbar)** contra emergência de +12 mbar e envelope de −8 mbar "
-      "(R-101: −6). A LAC-046 registra a divergência dos 500 mmCA da proposta.")
-    w("3. **O biogás arrastado pelos copos vai aos tanques do chão.** TQ-201 e CS-301 têm "
-      "respiro tratado (FCA-201, FCA-301). O interior do TQ-201 vira zona classificada e o "
-      "AG-200 precisa ser ATEX; ver LAC-049.\n")
-    w("## 3. Purgas: só por bomba volumétrica, com reposição de gás\n")
-    w("Por gravidade, com a carga do reator (≈ 6,4 m), a purga dos R-201/202 passaria de "
-      "100 m³/h com a válvula aberta. Isso fica muito acima do Q_máx de 20 m³/h, que a "
-      "RES-001 §5.6 exige limitado fisicamente. Orifício não serve para polpa: com 17 mm "
-      "entope. Por isso:\n")
-    w("- **R-201/R-202 → P-302 → CS-301.** A P-302 é uma PCP dedicada às purgas. A vazão "
-      "fica limitada pelo deslocamento da bomba (≤ 6 m³/h), com descarga livre no tampo da "
-      "CS-301.")
-    w("  - Barreiras: LC + XV falha-fecha no N2 (abre só com a bomba em marcha, fecha com "
-      "ela) e chave presa única V-201PG × V-202PG (um reator por vez).")
-    w("  - A PCP parada e a XV fechada são dois elementos independentes contra o escoamento "
-      "por gravidade.")
-    w("  - Com τy baixo a AMT da P-302 fica negativa (tabela da seção 4): a carga do reator "
-      "empurra e a PCP trabalha como **freio volumétrico**.")
-    w("  - Especificar inversor com frenagem e PCP de 2 estágios, para conter a carga do "
-      "reator com escorregamento baixo.")
-    w("  - O FIT confere a vazão real. Se ela passar do comando, a XV fecha.")
-    w("- **R-101 → P-201 → TQ-201.** A P-201 aspira o R-101 pela purga, com chave presa com a "
-      "V-201S, e descarrega pela recirculação L-201RC no TQ-201, que neutraliza o lodo "
-      "ácido antes de qualquer alimentação dos metanogênicos.")
-    w("- **Reposição de gás:** o reator só perde volume ligado à bolsa GH-1 que recebe (V-xGAS "
-      "aberta, ZSO; bolsa ≥ 70%). A 6 m³/h a reposição pelo ramal custa centésimos de mbar.")
-    w("- **Lavagem:** engates de água nas linhas de purga, que ficam cheias de polpa parada.\n")
-    w("## 4. Trens bombeados (Q = 6 m³/h)\n")
-    w("Bombas e localização:")
-    w("- **P-201**, junto ao TQ-201: sucção reta, sem curvas. Alimenta R-201/R-202 "
-      "alternadamente pelas alças pressurizadas com ventosa ligada ao gás.")
-    w("- **P-302** (purgas), junto à CS-301, em poço raso de 0,15 m para a sucção ficar na "
-      "cota dos N2.")
-    w("- **Reserva:** bomba PCP móvel sobre skid, com engate na CS-301 (N-BYP) e "
-      "mobilização ≤ 30 min, para P-301 e P-302. Estatores sobressalentes em almoxarifado.")
-    w("  - A CS-301 tem ≈ 6 min entre LSL e LSH a 6 m³/h. Se a P-301 falhar, o LSHH corta "
-      "a P-201 e a alimentação para, sem extravasar.")
-    w("  - Recirculação ou expedição pelo N3 do TQ-301 só com a alimentação dos "
-      "metanogênicos parada (a V-301S fica fechada por chave).")
-    w("- **P-301**, junto à CS-301 no chão: sucção curta e reta.")
-    w("  - Transfere o digestato ao TQ-301 (armazenamento), faz o retorno alcalino RL-05 e a "
-      "expedição. O RL-05 tem XV com FIT e fecha no LSHH do TQ-201 sem parar a transferência.")
-    w("  - Por chave presa, aspira o TQ-301 pelo N3 para recirculação ou expedição.")
-    w("  - By-pass por engate rápido de bomba móvel na CS-301.\n")
+    if rr:
+        w(f"\n- **Volume que ainda chega à CS-301 depois de um corte** (um reator por vez): "
+          f"{_f(max(rr['R-201']['vol_m3'], rr['R-202']['vol_m3']))} m³, contra "
+          f"{_f(rr['CS-301'])} m³ entre LSHH e extravasor.")
+    w("\n## 4. Trens bombeados (Q = 6 m³/h)\n")
+    w("A coluna **folga no furo** é a cota do furo quebra-sifão menos a superfície da polpa "
+      "dentro do tubo de imersão. Precisa ser positiva: a polpa não pode subir até o furo e "
+      "derramar por ele no espaço de gás.\n")
     w("| trem | caso | perda sucção (m) | perda recalque (m) | AMT (m) | AMT (bar) | "
-      "pressão na crista (m) | p. sucção no flange (m) | NPSHd (m) |")
-    w("|---|---|---|---|---|---|---|---|---|")
+      "pressão na crista (m) | folga no furo (m) | p. sucção no flange (m) | NPSHd (m) |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
     for (nome, caso), r in res["bomb"].items():
         w(f"| {nome} | {caso} | {_f(r['h_suc'])} | {_f(r['h_rec'])} | {_f(r['AMT'])} | "
-          f"{_f(r['bar'])} | {_f(r['p_crista_m'])} | {_f(r['p_succao_m'])} | "
-          f"{_f(r['NPSHd'])} |")
+          f"{_f(r['bar'])} | {_f(r['p_crista_m'])} | {_f(r['folga_furo'])} | "
+          f"{_f(r['p_succao_m'])} | {_f(r['NPSHd'])} |")
     pior = max(res["bomb"].items(), key=lambda kv: kv[1]["bar"])
     neg = [(k, r) for k, r in res["bomb"].items() if r["p_succao_m"] is not None]
-    pmin = min(neg, key=lambda kv: kv[1]["p_succao_m"])
     nmin = min(neg, key=lambda kv: kv[1]["NPSHd"])
+    furo = [(k, r) for k, r in res["bomb"].items() if r["folga_furo"] is not None]
+    fmin = min(furo, key=lambda kv: kv[1]["folga_furo"])
     w("\nLeitura da tabela:\n")
     w(f"- **Maior AMT:** {pior[0][0]} ({pior[0][1]}), {_f(pior[1]['bar'])} bar.")
     w("  - PCP de ≥ 2 estágios.")
-    w("  - PSV ou disco de ruptura com retorno ao tanque de origem e PSHH com trip na "
-      "descarga, antes de qualquer válvula.")
-    w(f"- **Pior pressão de sucção:** {_f(pmin[1]['p_succao_m'])} m ({pmin[0][0]}, "
-      f"{pmin[0][1]}). **Menor NPSHd:** {_f(nmin[1]['NPSHd'])} m.")
-    w("  - PCP com NPSHr ≤ 3 m.")
-    w("  - Sucção soldada e selo com flush, porque vácuo na sucção admite ar.")
-    w("- **Purgas:** ver seção 3.")
-    t = res["tq201"]
-    w("\n## 5. TQ-201 (neutralização) e CS-301 (coleta do digestato)\n")
-    w("| TQ-201: nível | cota (m) | volume (m³) |\n|---|---|---|")
-    for k, v in nv["TQ-201"].items():
-        if k in t["vol"]:
-            w(f"| {k} | {_f(v / 1000)} | {_f(t['vol'][k])} |")
-    w(f"\n- **TQ-201:** volume útil LSL→LSH {_f(t['util'])} m³. Detenção até o LSH a "
-      f"6 m³/h: {_f(t['TDH_min_LSH'], 0)} min.")
-    cs = nv["CS-301"]
-    w("- **CS-301:** Ø2,0 m, fundo a +0,15 e tampa estanque com respiro ao FCA-301.")
-    w(f"  - Níveis: LSLL +{_f(cs['LSLL'] / 1000)}, LSL +{_f(cs['LSL'] / 1000)}, "
-      f"LSH +{_f(cs['LSH'] / 1000)}, LSHH +{_f(cs['LSHH'] / 1000)}, extravasor "
-      f"+{_f(cs['extravasor'] / 1000)}, borda dos copos +{_f(cs['copo'] / 1000)}.")
-    w("  - A P-301 trabalha com inversor, controlada pelo LT da CS-301.")
-    if "residuo" in res:
-        rr = res["residuo"]
-        w("- **Volume que ainda chega depois de um corte da alimentação** (caso otimista, o "
-          "pior), contra o volume entre LSHH e extravasor:")
-        w(f"  - R-101 → TQ-201: {_f(rr['R-101']['vol_m3'])} contra {_f(rr['TQ-201'])} m³;")
-        w(f"  - R-201 ou R-202 → CS-301 (um por vez): "
-          f"{_f(max(rr['R-201']['vol_m3'], rr['R-202']['vol_m3']))} contra "
-          f"{_f(rr['CS-301'])} m³.")
-        w("  - Mesmo com a P-301 parada, nenhum dos dois extravasa num corte normal.")
-        w("  - O volume vale para um metanogênico por vez. A alternância R-201/R-202 deve "
-          "durar mais que o esvaziamento até a soleira (dezenas de minutos); se os dois "
-          "escoarem juntos, são ≈ 1,4 m³ e o excedente vai ao extravasor e à contenção "
-          "(LAC-044).")
-    w("\n## 6. Linhas de energia e piezométricas\n")
+    w("  - PSV com retorno, PSHH e PSL.")
+    w(f"- **Menor NPSHd:** {_f(nmin[1]['NPSHd'])} m ({nmin[0][0]}, {nmin[0][1]}). "
+      "Especificar NPSHr ≤ 3 m.")
+    w(f"- **Menor folga no furo do tubo de imersão:** {_f(fmin[1]['folga_furo'])} m "
+      f"({fmin[0][0]}, {fmin[0][1]}).")
+    w("- **AMT negativa nas purgas:** com τy baixo a AMT fica negativa e a P-301 trabalha como "
+      "freio volumétrico.")
+    w("  - Inversor com frenagem.")
+    w("  - A XV de purga abre só com a bomba em marcha e fecha com ela.\n")
+    w("## 5. Linhas de energia e piezométricas\n")
     w(f"![LE e LP]({figura})\n")
     w("- **Lâmina livre:** a LP é a superfície da polpa.")
-    w("- **No copo:** a LP cai pelo tubo mergulhado e pelo ânulo até a borda; depois a "
-      "polpa cai livre no tanque.")
-    w("- **Velocidade:** v²/2g < 1 cm, então a LE se sobrepõe à LP.")
-    w("- **Bombas:** a LP sobe na bomba (AMT) e cai com o atrito.\n")
-    w("## 7. Lacunas\n")
-    w("Ver `LACUNAS_PROPOSTAS.md`. As que decidem este cálculo:")
-    w("- LAC-041: reometria e ensaio do copo.")
-    w("- LAC-027/045: sítio e base z = 0.")
+    w("- **No copo:** a LP cai pelo tubo mergulhado e pelo ânulo.")
+    w("- **Alimentação pelo tampo:** a LP fica no mínimo na crista da travessia mais o gás. "
+      "O furo do tubo de imersão admite gás quando ela cai abaixo disso.")
+    w("- **Velocidade:** v²/2g < 1 cm, então a LE se sobrepõe à LP.\n")
+    w("## 6. Lacunas\n")
+    w("Ver `LACUNAS_PROPOSTAS.md`. As que decidem esta memória:")
+    w("- LAC-041: reometria.")
     w("- LAC-046: selo de 330 mm.")
-    w("- LAC-049: biogás nos respiros.")
+    w("- LAC-047: tubo de imersão e estruturas (Fibrais).")
+    w("- LAC-054: FINEP e tanque de neutralização.")
+    w("- LAC-055: dados de alcalinidade e AGV para a dosagem.")
     open(arquivo_md, "w").write("\n".join(L) + "\n")
 
 

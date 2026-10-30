@@ -449,3 +449,49 @@ def copo_selagem(m, tag: str, tq: TanquePRFV, xy, z_vertedor: float, selo: float
     m.item("Copo de selagem interno com tubo mergulhado (laminado no tanque novo)",
            f"{tag} em {tq.tag}: Ø{Di:.0f} mm, borda +{z_vertedor / 1000:.2f}, selo {selo:.0f} mm",
            "un", 1)
+
+
+def tubo_imersao(m, tq: TanquePRFV, tag_bocal: str, z_saida: float, z_furo: float,
+                 de: float = 160.0):
+    """Tubo de imersão interno de alimentação pelo tampo (configuração C1): desce do bocal N1
+    até z_saida (≈ 1/3 da altura útil) e tem furo quebra-sifão em z_furo, no espaço de gás:
+    ao parar a bomba, o gás entra pelo furo e a linha não sifona o reator. Carga no tampo e
+    folga para o misturador: verificação da Fibrais (SP-12)."""
+    b = tq.bocal(tag_bocal)
+    cx, cy = tq.centro
+    off = direcao(b.az) * b.raio
+    x, y = cx + off.X, cy + off.Y
+    di = normas.tubo("pead", int(de)).di
+    z1 = tq.z_tampo - 20
+    tubo = Pos(x, y, z_saida) * (Cylinder(de / 2, z1 - z_saida, align=g.BASE)
+                                 - Cylinder(di / 2, z1 - z_saida, align=g.BASE))
+    tubo -= g.posicionar(Cylinder(25, de, align=g.BASE), Vector(x, y, z_furo) - direcao(b.az) * de,
+                         direcao(b.az))                       # furo quebra-sifão Ø50
+    m.add(f"TI-{b.tag}-{tq.tag}", tubo, COR["usar"])
+    b.nota = (b.nota + "; " if b.nota else "") + (f"tubo de imersão interno DN{int(de) - 10} até "
+                                                  f"+{z_saida / 1000:.2f}, furo quebra-sifão a "
+                                                  f"+{z_furo / 1000:.2f}")
+    m.item("Tubo de imersão interno (PRFV/PEAD) com furo quebra-sifão e flange no N1",
+           f"{tq.tag} {tag_bocal}: de +{z_saida / 1000:.2f} a +{z1 / 1000:.2f}", "un", 1)
+
+
+def skid_dosagem(m, tag: str, centro, porta_nome: str):
+    """Skid de dosagem de alcalinizante (NaOH, bicarbonato ou outro): tanque/IBC de 1 m³ em
+    bacia de contenção + bomba dosadora com inversor; descarga DN25 a leste."""
+    from .montagem import Porta
+    x, y = centro
+    v = Pos(x, y, 0) * Box(1600, 1400, 150, align=g.BASE)                  # bacia
+    v += Pos(x - 250, y, 150) * Box(1000, 1100, 1150, align=g.BASE)        # IBC
+    v += Pos(x + 550, y, 150) * Box(400, 350, 450, align=g.BASE)           # bomba dosadora
+    m.add(tag, v, (0.85, 0.85, 0.2, 1))
+    fl = normas.flange(32, normas.CLASSE_ANSI)
+    face = Vector(x + 800 + 150, y, 400)
+    m.add(tag, g.posicionar(Cylinder(16, 150, align=g.BASE), Vector(x + 800, y, 400),
+                            Vector(1, 0, 0)), (0.85, 0.85, 0.2, 1))
+    m.add(tag, g.posicionar(g.flange_peca(fl, 26), face - Vector(fl.t, 0, 0), Vector(1, 0, 0)),
+          COR["usar"])
+    m.portas[porta_nome] = Porta(porta_nome, face, Vector(1, 0, 0), 32, normas.CLASSE_ANSI,
+                                 "flange", "recalque", tag)
+    m.equipamentos[tag] = {"tipo": "dosagem", "solido": v}
+    m.item("Skid de dosagem de alcalinizante (IBC 1 m³ em bacia, bomba dosadora com inversor, "
+           "controlada pelo pH em linha)", tag, "cj", 1)

@@ -90,7 +90,7 @@ def escrever_bocais(linhas, pasta: Path):
     novos = Counter((l["equipamento"], l["dn"]) for l in linhas if l["estado"] == "novo")
     cegos = Counter((l["equipamento"], l["dn"]) for l in linhas
                     if l["estado"] in ("tamponar", "converter"))
-    fib = [l for l in linhas if l["equipamento"] not in ("CS-301", "TQ-201")]   # itens CSTR
+    fib = [l for l in linhas if l["equipamento"] not in ("CS-301",)]   # item novo CSTR
     tot_n = Counter(l["dn"] for l in fib if l["estado"] == "novo")
     tot_c = Counter(l["dn"] for l in fib if l["estado"] in ("tamponar", "converter"))
     L.append("| equipamento | bocais novos (qtd × DN) | flanges cegos (qtd × DN) |")
@@ -111,8 +111,14 @@ def escrever_bocais(linhas, pasta: Path):
              "radar.")
     L.append("- **A4 (8\"):** é convertido em flange com cego multitomada. É o candidato ao "
              "transbordo dedicado (LAC-038) e às tomadas independentes de PSLL/PAHH (LAC-048).")
-    L.append("- **TQ-201 e CS-301 (novos, especificação CSTR):** todos os bocais são novos e "
-             "cada um leva copo de selagem interno laminado (CP-101 no TQ-201; CP-201 e CP-202 "
+    L.append("- **R-101:** sem saída por transbordo na rev. 5; o único bocal novo é o LSHH. "
+             "A retirada sai pelo N2-135 (fundo) à P-201.")
+    L.append("- **Alimentação de todos os reatores pelo tampo (N1)** com tubo de imersão interno "
+             "e furo quebra-sifão. A Fibrais precisa confirmar a carga no tampo e a folga para o "
+             "misturador (LAC-047). Se não for possível, a alternativa é descarregar direto no "
+             "N1, sem tubo: ver ESTUDO_ALTERNATIVAS.")
+    L.append("- **CS-301 (nova, especificação CSTR):** todos os bocais são novos e "
+             "leva copos de selagem internos laminados (CP-201 e CP-202 "
              "na CS-301). Não entram no total dos tanques existentes.\n")
     L.append("## O que a Fibrais precisa confirmar ou fornecer antes de furar\n")
     for t in (
@@ -121,11 +127,10 @@ def escrever_bocais(linhas, pasta: Path):
             "(LAC-047), não no bocal. A Fibrais informa as "
             "cargas admissíveis (forças e momentos) e o reforço (repad) de cada abertura nova, "
             "com a FEA da LAC-006.",
-            "**Distância mínima de bocal à junta fundo-costado** (N-SUC a 250 mm e N-DRE a "
-            "200 mm do fundo do TQ-201).",
-            "**Detalhes internos dos tanques novos:** copos de selagem (CP-101 no TQ-201, "
-            "CP-201/202 na CS-301) com borda acima do nível máximo; quebra-vórtice nos N-SUC; "
-            "tubos de imersão no N-DOS e no N-RL05.",
+            "**Tubos de imersão no N1:** carga no tampo (≈ 30–60 kg cheios), fixação no flange, "
+            "folga para pás e chicanas do misturador (SP-12).",
+            "**Detalhes internos da CS-301 (nova):** copos de selagem CP-201/202 com borda acima "
+            "do nível máximo, sondas de pH/ORP nos copos e quebra-vórtice no N-SUC.",
             "**Dilatação do PEAD** entre o piso e os bocais altos (até ≈ 60 mm a ΔT 30 K). "
             "Prever liras ou mangote flexível junto ao bocal, sem carregar o PRFV.",
             "**Acessos e plataformas** (projeto CSTR, LAC proposta): V-201SAI e V-202SAI a "
@@ -153,8 +158,8 @@ LACUNAS_PROPOSTAS = [
     ("LAC-041", "Reometria da polpa real (τy e μp a 35 °C, 6–9% ST) e ensaio de bancada do copo "
      "de selagem", "Fecha as margens das saídas por gravidade e as AMT (caso pessimista)",
      "CSTR – S2", "Gate 3"),
-    ("LAC-042", "Especificação do FCA-201 e do FCA-301 (carvão, perda de carga, saturação por H₂S)",
-     "A perda de carga do FCA define o vácuo no TQ-201 atmosférico", "CSTR – S4", "Gate 4"),
+    ("LAC-042", "Especificação do FCA-301 (carvão, perda de carga, saturação por H₂S)",
+     "A perda de carga do FCA define o vácuo na CS-301", "CSTR – S4", "Gate 4"),
     ("LAC-043", "Posição radial real do N3 (2\") no tampo dos reatores", "Locação das linhas "
      "de gás e do PT", "Fibrais (as-built)", "Gate 1"),
     ("LAC-044", "Caixa de contenção dos extravasores: destino e volume (falha da P-201/P-301 "
@@ -170,10 +175,10 @@ LACUNAS_PROPOSTAS = [
      "bocais PRFV e operação segura", "CSTR (S5) + Fibrais (cargas)", "Gate 3"),
     ("LAC-048", "Instrumentação complementar da RES-001 §5.6: tomadas independentes de "
      "PSLL/PAHH (A4 multitomada), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC "
-     "no V-xGAS, LSLL do TQ-201 como SIF dedicada", "Barreiras contra vácuo e entrada de ar",
+     "no V-xGAS, LSLL do R-101 como SIF dedicada", "Barreiras contra vácuo e entrada de ar",
      "CSTR – S4", "Gate 4"),
-    ("LAC-049", "Biogás arrastado pelos copos de selagem ao TQ-201 e à CS-301 (respiros aos "
-     "FCA-201/301) e residual do digestato no TQ-301 (A7 sem tratamento): "
+    ("LAC-049", "Biogás arrastado pelos copos de selagem à CS-301 (respiro ao FCA-301) e "
+     "residual do digestato no TQ-301 (A7 sem tratamento): "
      "vazão estimada, tratamento dos respiros e "
      "classificação de área (ver LAC-009)", "Odor, H₂S e área classificada", "CSTR – S4",
      "Gate 4"),
@@ -190,6 +195,12 @@ LACUNAS_PROPOSTAS = [
      "+3); alternância GH-1A/B no lugar de gasômetro único com retirada simultânea; válvula "
      "mantenedora a montante ajustada em ≈ +0,3 mbar", "Coerência com a resolução de processo",
      "CSTR – processo", "Gate 1"),
+    ("LAC-054", "Rev. 5 sem tanque de neutralização: enquadramento do item FINEP \"tanques de "
+     "neutralização\" (consulta à FINEP; LAC-008) e aceite do RT", "Aderência contratual",
+     "CSTR – RT/Diretoria", "Gate 1"),
+    ("LAC-055", "Dados para a neutralização em linha: alcalinidade, AGV e pH da saída do "
+     "R-101; dose e reagente (NaOH, bicarbonato, cal); capacidade da DOS-201; faixa de pH e "
+     "razão do RL-05", "Dimensionamento da dosagem e do controle", "CSTR – S1", "Gate 3"),
     ("LAC-052", "Consumidores a jusante do GH-2 (SK-501, GE-601, caldeira): vazões e pressões "
      "de tie-in para fechar o volume do GH-2 e a pressão de descarga dos S-501",
      "Dimensionamento do GH-2 e dos sopradores", "CSTR – S3", "Gate 3"),

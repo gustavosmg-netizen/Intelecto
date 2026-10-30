@@ -7,16 +7,21 @@ Base: RES-001 §5.6 e as regras do cliente (retiradas só por linha exclusiva, c
 | LSHH de reator (R-101/201/202) | +4,35 / +8,35 m | Para a alimentação daquele reator (P-101 ou P-201, com a XV de alternância); alarme | SIF / hardwired |
 | LSH de reator | +4,20 / +8,20 m | Alarme (saída obstruída?) | alarme |
 | PAH / PAHH do reator | +5 / +6 mbar | PAHH: para a alimentação; parte S-501B e abre a XV-FL; último recurso: alívio conduzido do GH-1 | SIF a definir no HAZOP |
-| PALL do reator | 0 mbar | Fecha as XV de purga, para P-201 (purga do R-101), P-302 e o S-501, e fecha as saídas dos GH-1 | hardwired |
+| PALL do reator | 0 mbar | Fecha as XV de purga e a XV-101S, para P-201, P-301 em purga e o S-501, e fecha as saídas dos GH-1 | hardwired |
 | ZSC da V-xSAI / V-xRS ou da V-xGAS fechada | — | Bloqueia a alimentação do reator (saída ou gás isolados) | permissivo |
-| LSLL do TQ-201 | +0,92 m | Para a P-201 | SIF |
-| LSHH do TQ-201 | +1,60 m | Para a P-101 e fecha a XV-RL05 | hardwired |
+| LSLL do R-101 | +2,40 m | Para a P-201 e fecha a XV-101S (não esvazia o acidogênico) | SIF |
+| LSL do R-101 | +2,80 m | Bloqueia novo pulso da P-201 | permissivo |
+| pH em linha fora da faixa (AIT-201) | a definir (≈ 6,5–7,5) | Interrompe o pulso (fecha XV-211/221, para a P-201); alarme | CLP |
+| pH/ORP na saída de um metanogênico (AIT-212/222) | a definir | Alarme; reduz a carga daquele reator (menos pulsos) | CLP |
+| Falha da dosadora DOS-201 (sem vazão) | — | Interrompe o pulso | CLP |
+| XV-RL05 (retorno alcalino à sucção da P-201) | — | Só abre com a P-201 em marcha, com vazão em razão (FIT) | intertravamento |
+| Misturador do reator de destino parado | — | Bloqueia o pulso para aquele reator (curto-circuito) | permissivo |
 | LSLL da CS-301 | +0,70 m | Para a P-301 | hardwired |
-| LSHH da CS-301 | +1,10 m | Para a P-201 e a P-302 e fecha as XV de purga | hardwired |
+| LSHH da CS-301 | +1,10 m | Para a P-201 e a P-301 em purga e fecha as XV de purga | hardwired |
 | LSHH do TQ-301 | +3,85 m | Para a P-301 na transferência (a CS-301 sobe até o LSHH e corta a P-201) | hardwired |
 | PSHH na descarga das PCP | abaixo da classe do PEAD | Trip da bomba (a PSV alivia antes de qualquer válvula) | hardwired |
 | PSL na sucção das PCP | — | Trip da bomba (marcha a seco) | hardwired |
-| Permissivo de purga (P-302, P-201) | — | V-xGAS aberta (ZSO), bolsa que recebe ≥ 70%, destino < LSH, nenhuma outra retirada; a XV abre só com a bomba em marcha e fecha com ela | permissivo |
+| Permissivo de purga (P-301) e de retirada do R-101 (P-201) | — | V-xGAS aberta (ZSO), bolsa que recebe ≥ 70%, destino < LSH, nenhuma outra retirada; a XV abre só com a bomba em marcha e fecha com ela | permissivo |
 | Permissivo de entrada de uma bolsa GH-1 | — | Saída da mesma bolsa fechada (ZSC) e S-501 parado | intertravamento |
 | Permissivo de saída de uma bolsa GH-1 | — | Entrada da mesma bolsa fechada (ZSC), entrada da outra aberta (ZSO) e bolsa ≥ LSL | intertravamento |
 | Parada do S-501 (qualquer causa) | — | Fecha as duas saídas dos GH-1 | hardwired |
@@ -40,12 +45,13 @@ Base: RES-001 §5.6 e as regras do cliente (retiradas só por linha exclusiva, c
 
 | grandeza | onde | para quê |
 |---|---|---|
-| Nível (radar) | R-101/201/202, TQ-201, CS-301, TQ-301 | Controle das PCP (inversor), balanço de massa, detecção de saída obstruída |
+| Nível (radar) | R-101/201/202, CS-301, TQ-301 | Controle das PCP (inversor), balanço de massa, detecção de saída obstruída |
 | Pressão do espaço de gás (PT) | cada reator | Envelope ±, PAH/PAL; tendência de obstrução de ramal |
 | Volume das bolsas (LT) | GH-1A/B, GH-2 | Alternância, produção de biogás (ΔV/Δt) |
 | Vazão de gás (FT) | descarga S-501, tie-in, flare | Produção, consumo, queima |
 | CH₄/CO₂/O₂/H₂S (AT-501) | coletor COL-501 | Qualidade, entrada de ar, dessulfurização |
-| pH/ORP (PHIT-201) | TQ-201 | Dosagem de NaOH (DOS-201) e retorno RL-05 |
+| pH/ORP em linha (AIT-201) | entrada dos metanogênicos | Dosagem (DOS-201) e razão do RL-05 |
+| pH/ORP (AIT-212/222) | copo de saída de cada metanogênico na CS-301 | Estabilidade da metanogênese |
 | Vazão de lodo (FIT) | purgas, P-201, P-301 | Q ≤ Q_máx; balanço de sólidos |
 | Corrente e pressão das PCP | P-201, P-301 | Desgaste do estator, entupimento |
 | ΔP e temperatura dos corta-chamas | FA-501/502/503 | Entupimento e chama retida |

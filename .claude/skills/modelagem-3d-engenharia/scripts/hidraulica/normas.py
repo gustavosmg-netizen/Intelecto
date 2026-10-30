@@ -132,7 +132,8 @@ class Flange:
 # metálico). Os flanges PRFV dos desenhos Fibrais têm D maior (6": 290; 2": 161) e a mesma
 # furação; o D e a espessura PRFV ficam em FLANGE_PRFV.
 FLANGE_ANSI150 = {
-    25: (108, 79.4, 4, 15.9, "M14", 14), 50: (152, 120.7, 4, 19.0, "M16", 17),
+    25: (108, 79.4, 4, 15.9, "M14", 14), 32: (117, 88.9, 4, 15.9, "M14", 16),
+    50: (152, 120.7, 4, 19.0, "M16", 17),
     80: (190, 152.4, 4, 19.0, "M16", 21), 100: (229, 190.5, 8, 19.0, "M16", 22),
     150: (279, 241.3, 8, 22.2, "M20", 24), 200: (343, 298.5, 8, 22.2, "M20", 27),
     250: (406, 362.0, 12, 25.4, "M22", 29), 300: (483, 431.8, 12, 25.4, "M22", 30),
@@ -160,14 +161,14 @@ def flange(dn: int, pn: int = 10) -> Flange:
 
 
 # --- Válvulas e conexões flangeadas (EN 558, face a face, mm) -------------------------
-FF_GAVETA = {40: 140, 50: 150, 65: 170, 80: 180, 100: 190, 125: 200, 150: 210, 200: 230,
+FF_GAVETA = {32: 130, 40: 140, 50: 150, 65: 170, 80: 180, 100: 190, 125: 200, 150: 210, 200: 230,
              250: 250, 300: 270, 350: 290, 400: 310, 500: 350, 600: 390}      # série 14
 FF_BORBOLETA = {50: 43, 65: 46, 80: 46, 100: 52, 125: 56, 150: 56, 200: 60, 250: 68,
                 300: 78, 350: 78, 400: 102, 500: 127, 600: 154}               # série 20
-FF_RETENCAO = {40: 180, 50: 200, 65: 240, 80: 260, 100: 300, 125: 350, 150: 400, 200: 500,
+FF_RETENCAO = {32: 160, 40: 180, 50: 200, 65: 240, 80: 260, 100: 300, 125: 350, 150: 400, 200: 500,
                250: 600, 300: 700, 350: 800, 400: 900}                        # série 48
 FF_ESFERA = {40: 165, 50: 178, 65: 190, 80: 203, 100: 229, 125: 356, 150: 394}  # série 27
-FF_JUNTA_DESMONTAGEM = {50: 200, 65: 200, 80: 200, 100: 200, 125: 200, 150: 200, 200: 220,
+FF_JUNTA_DESMONTAGEM = {32: 150, 50: 200, 65: 200, 80: 200, 100: 200, 125: 200, 150: 200, 200: 220,
                         250: 220, 300: 250, 350: 250, 400: 250, 500: 300, 600: 300}
 
 
@@ -175,12 +176,17 @@ FF_JUNTA_DESMONTAGEM = {50: 200, 65: 200, 80: 200, 100: 200, 125: 200, 150: 200,
 # de catálogo (biogás; grupo IIC quando há H₂, como no gás de reator acidogênico), a
 # confirmar com o fabricante
 FF_CORTA_CHAMAS = {50: 300, 80: 360, 100: 420, 150: 520, 200: 620}
+# misturador estático em linha (≈ 6–8 D de elementos) e carretel de medição (vazão
+# eletromagnética ou sonda de pH/ORP em linha): comprimentos típicos de catálogo
+FF_MISTURADOR = {25: 250, 50: 400, 80: 560, 100: 700, 150: 1000}
+FF_MEDIDOR = {25: 200, 50: 250, 80: 300, 100: 350, 150: 450}
 
 
 def face_a_face(tipo: str, dn: int) -> float:
     tab = {"gaveta": FF_GAVETA, "borboleta": FF_BORBOLETA, "retencao": FF_RETENCAO,
            "esfera": FF_ESFERA, "junta_desmontagem": FF_JUNTA_DESMONTAGEM,
-           "corta_chamas": FF_CORTA_CHAMAS}[tipo]
+           "corta_chamas": FF_CORTA_CHAMAS, "misturador_estatico": FF_MISTURADOR,
+           "medidor": FF_MEDIDOR}[tipo]
     if dn not in tab:
         raise ValueError(f"{tipo} sem face a face tabelado para DN{dn}")
     return float(tab[dn])

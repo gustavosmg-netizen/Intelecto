@@ -24,7 +24,8 @@ CORES = {"agua": (0.10, 0.45, 0.80, 1), "agua_bruta": (0.10, 0.55, 0.35, 1),
          "metal": (0.58, 0.60, 0.63, 1), "valvula": (0.70, 0.08, 0.06, 1),
          "bomba": (0.10, 0.30, 0.60, 1), "pead": (0.08, 0.08, 0.08, 1),
          "biogas": (0.93, 0.72, 0.08, 1)}
-FLANGEADOS = {"gaveta", "borboleta", "retencao", "esfera", "junta_desmontagem", "corta_chamas"}
+FLANGEADOS = {"gaveta", "borboleta", "retencao", "esfera", "junta_desmontagem", "corta_chamas",
+              "misturador_estatico", "medidor"}
 
 
 @dataclass
@@ -570,7 +571,9 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                     "retencao": lambda: g.valvula_retencao(fl, L, di),
                     "esfera": lambda: g.valvula_esfera(fl, L, di),
                     "junta_desmontagem": lambda: g.junta_desmontagem(fl, L, tb.de, di),
-                    "corta_chamas": lambda: g.corta_chamas(fl, L, di)}[c.tipo]()
+                    "corta_chamas": lambda: g.corta_chamas(fl, L, di),
+                    "misturador_estatico": lambda: g.misturador_estatico(fl, L, di),
+                    "medidor": lambda: g.medidor_linha(fl, L, di)}[c.tipo]()
             grupo = f"{c.tag}-DN{c.dn}" if c.tipo != "junta_desmontagem" else nome
             m.add(grupo, g.posicionar(peca, P, d, cima),
                   CORES["valvula"] if c.tipo != "junta_desmontagem" else CORES["metal"])
@@ -579,7 +582,9 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                       "retencao": "Válvula de retenção portinhola flangeada",
                       "esfera": "Válvula esfera flangeada",
                       "junta_desmontagem": "Junta de desmontagem travada",
-                      "corta_chamas": "Corta-chamas em linha certificado (grupo de gás da classificação; IIC se houver H₂)"}[c.tipo]
+                      "corta_chamas": "Corta-chamas em linha certificado (grupo de gás da classificação; IIC se houver H₂)",
+                      "misturador_estatico": "Misturador estático em linha flangeado",
+                      "medidor": "Carretel de medição em linha (vazão ou pH/ORP)"}[c.tipo]
             rotulo = c.extra.get("rotulo", rotulo)
             m.item(rotulo, f"DN{c.dn} {normas.classe_txt(int(linha.spec.get('pn', 10)))} F-F {L:.0f} mm", "un", 1)
             # vizinhos: componente flangeado colado -> só parafusos; senão adaptador no tubo
@@ -595,11 +600,11 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                 m.item("Jogo de parafusos, porcas e junta", f"{fl.n}×{fl.parafuso} DN{fl.dn}", "jg", 1)
             else:
                 junta_flange(c.s0, fl, tb, -1, fl.t)
-                ta = _adaptador_comprimento(linha, Porta("", P, d, c.dn), tb)
+                ta = _adaptador_comprimento(linha, Porta("", P, d, c.dn, int(linha.spec.get("pn", 10))), tb)
                 ocupados.append((c.s0 - ta, c.s0, "adaptador"))
             if not colado_prox:
                 junta_flange(c.s1, fl, linha.tubo_em(c.s1 + 0.5), 1, fl.t)
-                ta = _adaptador_comprimento(linha, Porta("", P, d, c.dn), linha.tubo_em(c.s1 + 0.5))
+                ta = _adaptador_comprimento(linha, Porta("", P, d, c.dn, int(linha.spec.get("pn", 10))), linha.tubo_em(c.s1 + 0.5))
                 ocupados.append((c.s1, c.s1 + ta, "adaptador"))
         elif c.tipo == "reducao":
             t2 = linha.tubo_em(c.s1 + 0.5)

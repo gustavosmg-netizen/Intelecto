@@ -212,6 +212,28 @@ def corta_chamas(fl: normas.Flange, L: float, di: float) -> Part:
     return v - Cylinder(di / 2, L, align=BASE)
 
 
+def misturador_estatico(fl: normas.Flange, L: float, di: float) -> Part:
+    """Misturador estático em linha: carretel com anéis marcando os elementos helicoidais e
+    a injeção lateral do reagente (cima = +Y)."""
+    r = fl.D / 2
+    corpo = Pos(0, 0, fl.t) * Cylinder(0.62 * r, L - 2 * fl.t, align=BASE)
+    for i in range(1, 5):
+        corpo += Pos(0, 0, L * i / 5) * Cylinder(0.68 * r, 0.03 * L, align=(Align.CENTER,) * 3)
+    corpo += posicionar(Cylinder(0.07 * r, 0.5 * r, align=BASE), (0, 0.6 * r, L * 0.12), (0, 1, 0))
+    v = corpo + _flanges_extremos(fl, L, di)
+    return v - Cylinder(di / 2, L, align=BASE)
+
+
+def medidor_linha(fl: normas.Flange, L: float, di: float) -> Part:
+    """Carretel de medição (vazão eletromagnética ou sonda pH/ORP) com transmissor (cima=+Y)."""
+    r = fl.D / 2
+    corpo = Pos(0, 0, fl.t) * Cylinder(0.66 * r, L - 2 * fl.t, align=BASE)
+    corpo += posicionar(Cylinder(0.12 * r, 0.7 * r, align=BASE), (0, 0.6 * r, L / 2), (0, 1, 0))
+    corpo += Pos(0, 1.45 * r, L / 2) * Box(0.7 * r, 0.4 * r, 0.7 * r)
+    v = corpo + _flanges_extremos(fl, L, di)
+    return v - Cylinder(di / 2, L, align=BASE)
+
+
 def ventosa(fl_ramal: normas.Flange, altura: float) -> Part:
     """Ventosa de duplo efeito sobre flange do ramal (local: base em z=0, para cima +Z)."""
     r = fl_ramal.D / 2
