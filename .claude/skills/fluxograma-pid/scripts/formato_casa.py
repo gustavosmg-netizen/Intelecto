@@ -360,7 +360,11 @@ def desenhar_linhas_casa(doc, linhas: list[dict], servicos: dict) -> set[str]:
     usados = set()
     for ln in linhas:
         cod = servico_de(ln.get("numero"), servicos) or ln.get("servico")
-        if cod == "SINAL":
+        if cod == "INTERNO":  # elemento interno ao vaso (tubo de imersão, chicana): tracejado fino
+            if "CASA-INTERNO" not in doc.layers:
+                doc.layers.add("CASA-INTERNO", color=8, linetype="TRACO")
+            camada = "CASA-INTERNO"
+        elif cod == "SINAL":
             if CAMADA_SINAL not in doc.layers:
                 doc.layers.add(CAMADA_SINAL, color=3, linetype="TRACO")
             camada = CAMADA_SINAL

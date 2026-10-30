@@ -244,16 +244,9 @@
     "scale": 1.0
    },
    {
-    "simbolo": "respiro",
-    "x": 40,
-    "y": 355.0,
-    "tag": "",
-    "scale": 1.0
-   },
-   {
     "simbolo": "triturador",
     "x": 40,
-    "y": 342.0,
+    "y": 355.0,
     "tag": "",
     "scale": 1.0
    }
@@ -616,15 +609,9 @@
     "altura": 2.5
    },
    {
-    "texto": "Respiro / descarga para local seguro",
-    "x": 60,
-    "y": 354.0,
-    "altura": 2.5
-   },
-   {
     "texto": "Triturador de dois eixos com moega",
     "x": 60,
-    "y": 341.0,
+    "y": 354.0,
     "altura": 2.5
    },
    {
@@ -1079,13 +1066,6 @@
       "F02",
       "PRFV - Fibrais 315E-25; Øint 3,20 x Hcil 4,70 m; Misturador AG-R101; Gás com H2 (IIC)",
       "Biodigestores (5)"
-     ],
-     [
-      "AG-R101",
-      "Misturador vertical de topo do R-101",
-      "F02",
-      "",
-      "Sem item próprio (LAC-008)"
      ]
     ]
    },
@@ -1118,6 +1098,13 @@
     ],
     "linhas": [
      [
+      "AG-R101",
+      "Misturador vertical de topo do R-101",
+      "F02",
+      "",
+      "Sem item próprio (LAC-008)"
+     ],
+     [
       "SH-101",
       "",
       "F02",
@@ -1128,7 +1115,7 @@
       "TQ-201",
       "Tanque de neutralização",
       "F02",
-      "Atmosférico 2,5-3,6 m3 (proposta); H2S / NR-15 (LAC-009)",
+      "Fechado, equalizado c/ R-101 (IIC); 2,5-3,6 m3 (LAC-010)",
       "Tanques (3) - neutralização (Formulário)"
      ],
      [
@@ -1137,13 +1124,6 @@
       "F02",
       "",
       "Sem item próprio"
-     ],
-     [
-      "FCA-201",
-      "Carvão ativado",
-      "F02",
-      "",
-      "Contrapartida"
      ],
      [
       "DOS-201",

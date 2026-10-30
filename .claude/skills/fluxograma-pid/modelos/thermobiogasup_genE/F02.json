@@ -2,7 +2,7 @@
  "folha": {
   "titulo": "FLUXOGRAMA DE ENGENHARIA - CASCATA ANAERÓBIA, NEUTRALIZAÇÃO E BIOFERTILIZANTE",
   "numero": "TBU-GENE-PID-F02",
-  "revisao": "A",
+  "revisao": "B",
   "folha": "3/3",
   "projeto": "THERMOBIOGASUP - CSTR / FINEP 0786/23 - GEN E",
   "unidade": "ILHA 2 - DIGESTÃO",
@@ -22,6 +22,15 @@
     "-",
     "-",
     "30/10/26"
+   ],
+   [
+    "B",
+    "A",
+    "CONFIGURAÇÃO C1 (PARECER_F02)",
+    "IA",
+    "-",
+    "-",
+    "30/10/26"
    ]
   ],
   "documentos": [
@@ -32,7 +41,8 @@
    "RES-001 REV03 - Envelope de pressões e vazões de alívio (aguarda RT)",
    "Fibrais 315C/315E/315D/315A/315B-25 Rev. A (as-built tanques)",
    "Engecontrol 0618/2026 - relatório da caldeira CL-101",
-   "TBU-GENE-PID-F00 - Legenda, simbologia e notas gerais"
+   "TBU-GENE-PID-F00 - Legenda, simbologia e notas gerais",
+   "PARECER_F02 (30/10/2026) - configuração C1"
   ],
   "rodape": "Exemplo da skill fluxograma-pid - não emitido pelo projeto"
  },
@@ -66,24 +76,29 @@
     "roof": "flat",
     "nozzles": [
      {
+      "name": "NF",
+      "side": "top",
+      "fraction": 0.06
+     },
+     {
       "name": "NG",
       "side": "top",
-      "fraction": 0.08
+      "fraction": 0.18
      },
      {
       "name": "NS",
       "side": "top",
-      "fraction": 0.3
+      "fraction": 0.32
      },
      {
       "name": "NN",
       "side": "top",
-      "fraction": 0.72
+      "fraction": 0.66
      },
      {
-      "name": "NA",
-      "side": "left",
-      "fraction": 0.03
+      "name": "NQ",
+      "side": "top",
+      "fraction": 0.95
      },
      {
       "name": "NB",
@@ -113,11 +128,11 @@
   {
    "id": "SH-101",
    "symbol": "vertical_vessel",
-   "x": 108.0,
+   "x": 109.2,
    "y": 270,
    "desc": null,
    "rotulo": {
-    "x": 108.0,
+    "x": 109.2,
     "y": 326,
     "alinh": "C"
    },
@@ -142,7 +157,7 @@
   {
    "id": "RS-101",
    "symbol": "drain_vent",
-   "x": 108.0,
+   "x": 109.2,
    "y": 304,
    "desc": null,
    "rotation": 180
@@ -154,8 +169,8 @@
    "y": 168,
    "desc": "TANQUE DE NEUTRALIZAÇÃO",
    "dados": [
-    "Atmosférico 2,5-3,6 m3 (proposta)",
-    "H2S / NR-15 (LAC-009)"
+    "Fechado, equalizado c/ R-101 (IIC)",
+    "2,5-3,6 m3 (LAC-010)"
    ],
    "rotulo": {
     "x": 229,
@@ -173,12 +188,12 @@
       "fraction": 0.3
      },
      {
-      "name": "N2",
+      "name": "N3",
       "side": "top",
       "fraction": 0.65
      },
      {
-      "name": "N3",
+      "name": "N2",
       "side": "top",
       "fraction": 0.88
      },
@@ -208,20 +223,6 @@
     "alinh": "R"
    },
    "tag": "AG-200"
-  },
-  {
-   "id": "FCA-201",
-   "symbol": "filter",
-   "x": 253.24,
-   "y": 216,
-   "desc": "CARVÃO ATIVADO",
-   "rotation": 90,
-   "rotulo": {
-    "x": 259,
-    "y": 220,
-    "alinh": "L"
-   },
-   "tag": "FCA-201"
   },
   {
    "id": "DOS-201",
@@ -279,24 +280,29 @@
     "roof": "flat",
     "nozzles": [
      {
+      "name": "NF",
+      "side": "top",
+      "fraction": 0.06
+     },
+     {
       "name": "NG",
       "side": "top",
-      "fraction": 0.08
+      "fraction": 0.18
      },
      {
       "name": "NS",
       "side": "top",
-      "fraction": 0.3
+      "fraction": 0.32
      },
      {
       "name": "NN",
       "side": "top",
-      "fraction": 0.72
+      "fraction": 0.66
      },
      {
-      "name": "NA",
-      "side": "left",
-      "fraction": 0.03
+      "name": "NQ",
+      "side": "top",
+      "fraction": 0.95
      },
      {
       "name": "NB",
@@ -326,11 +332,11 @@
   {
    "id": "SH-201",
    "symbol": "vertical_vessel",
-   "x": 407.2,
+   "x": 408.48,
    "y": 344,
    "desc": null,
    "rotulo": {
-    "x": 407.2,
+    "x": 408.48,
     "y": 400,
     "alinh": "C"
    },
@@ -355,7 +361,7 @@
   {
    "id": "RS-201",
    "symbol": "drain_vent",
-   "x": 407.2,
+   "x": 408.48,
    "y": 378,
    "desc": null,
    "rotation": 180
@@ -383,24 +389,29 @@
     "roof": "flat",
     "nozzles": [
      {
+      "name": "NF",
+      "side": "top",
+      "fraction": 0.06
+     },
+     {
       "name": "NG",
       "side": "top",
-      "fraction": 0.08
+      "fraction": 0.18
      },
      {
       "name": "NS",
       "side": "top",
-      "fraction": 0.3
+      "fraction": 0.32
      },
      {
       "name": "NN",
       "side": "top",
-      "fraction": 0.72
+      "fraction": 0.66
      },
      {
-      "name": "NA",
-      "side": "left",
-      "fraction": 0.03
+      "name": "NQ",
+      "side": "top",
+      "fraction": 0.95
      },
      {
       "name": "NB",
@@ -430,11 +441,11 @@
   {
    "id": "SH-202",
    "symbol": "vertical_vessel",
-   "x": 567.2,
+   "x": 568.48,
    "y": 344,
    "desc": null,
    "rotulo": {
-    "x": 567.2,
+    "x": 568.48,
     "y": 400,
     "alinh": "C"
    },
@@ -459,7 +470,7 @@
   {
    "id": "RS-202",
    "symbol": "drain_vent",
-   "x": 567.2,
+   "x": 568.48,
    "y": 378,
    "desc": null,
    "rotation": 180
@@ -540,7 +551,7 @@
   {
    "id": "HV-115",
    "symbol": "gate",
-   "x": 94.8,
+   "x": 100.8,
    "y": 252,
    "tag": "HV-115",
    "desc": "LO",
@@ -550,7 +561,7 @@
   {
    "id": "HV-117",
    "symbol": "gate",
-   "x": 133.2,
+   "x": 129.6,
    "y": 266,
    "tag": "HV-117",
    "desc": "LC",
@@ -580,11 +591,14 @@
    "scale": 0.6
   },
   {
-   "id": "VR-111",
-   "symbol": "check",
+   "id": "XV-111",
+   "symbol": "ball",
    "x": 64,
    "y": 120,
-   "tag": "VR-111",
+   "tag": "XV-111",
+   "desc": "ALIM. R-101",
+   "actuator": "piston",
+   "fail": "FC",
    "rotation": 90
   },
   {
@@ -597,7 +611,7 @@
   {
    "id": "HV-215",
    "symbol": "gate",
-   "x": 393.12,
+   "x": 399.52,
    "y": 326,
    "tag": "HV-215",
    "desc": "LO",
@@ -607,7 +621,7 @@
   {
    "id": "HV-217",
    "symbol": "gate",
-   "x": 434.08,
+   "x": 430.24,
    "y": 340,
    "tag": "HV-217",
    "desc": "LC",
@@ -639,7 +653,7 @@
   {
    "id": "HV-225",
    "symbol": "gate",
-   "x": 553.12,
+   "x": 559.52,
    "y": 326,
    "tag": "HV-225",
    "desc": "LO",
@@ -649,7 +663,7 @@
   {
    "id": "HV-227",
    "symbol": "gate",
-   "x": 594.08,
+   "x": 590.24,
    "y": 340,
    "tag": "HV-227",
    "desc": "LC",
@@ -679,26 +693,42 @@
    "scale": 0.6
   },
   {
-   "id": "VR-211",
-   "symbol": "check",
+   "id": "XV-211",
+   "symbol": "ball",
    "x": 364,
    "y": 128,
-   "tag": "VR-211",
-   "rotation": 90
+   "tag": "XV-211",
+   "desc": "PULSO R-201",
+   "actuator": "piston",
+   "fail": "FC",
+   "rotation": 90,
+   "rotulo": {
+    "x": 370,
+    "y": 133,
+    "alinh": "L"
+   }
   },
   {
-   "id": "VR-221",
-   "symbol": "check",
+   "id": "XV-221",
+   "symbol": "ball",
    "x": 524,
    "y": 128,
-   "tag": "VR-221",
-   "rotation": 90
+   "tag": "XV-221",
+   "desc": "PULSO R-202",
+   "actuator": "piston",
+   "fail": "FC",
+   "rotation": 90,
+   "rotulo": {
+    "x": 530,
+    "y": 133,
+    "alinh": "L"
+   }
   },
   {
    "id": "HV-202",
    "symbol": "gate",
-   "x": 340,
-   "y": 128,
+   "x": 332,
+   "y": 143,
    "tag": "HV-202",
    "desc": "RL-07",
    "actuator": "hand"
@@ -727,7 +757,7 @@
    "id": "HV-116",
    "symbol": "gate",
    "x": 135,
-   "y": 495,
+   "y": 485,
    "tag": "HV-116",
    "desc": "RG-01 / LC",
    "actuator": "hand"
@@ -759,11 +789,19 @@
    "tag": "AIT-111"
   },
   {
+   "id": "TIT-111",
+   "type": "plc",
+   "location": "field",
+   "x": 150,
+   "y": 112,
+   "tag": "TIT-111"
+  },
+  {
    "id": "AIC-201",
    "type": "plc",
    "location": "field",
    "x": 300,
-   "y": 182,
+   "y": 194,
    "tag": "AIC-201"
   },
   {
@@ -771,16 +809,16 @@
    "type": "plc",
    "location": "field",
    "x": 300,
-   "y": 156,
+   "y": 168,
    "tag": "LIT-201"
   },
   {
-   "id": "FIT-201",
+   "id": "FQIT-201",
    "type": "plc",
    "location": "field",
    "x": 495,
    "y": 126,
-   "tag": "FIT-201"
+   "tag": "FQIT-201"
   },
   {
    "id": "PIT-211",
@@ -799,6 +837,14 @@
    "tag": "LIT-211"
   },
   {
+   "id": "TIT-211",
+   "type": "plc",
+   "location": "field",
+   "x": 505,
+   "y": 322,
+   "tag": "TIT-211"
+  },
+  {
    "id": "PIT-221",
    "type": "plc",
    "location": "field",
@@ -813,6 +859,14 @@
    "x": 652,
    "y": 352,
    "tag": "LIT-221"
+  },
+  {
+   "id": "TIT-221",
+   "type": "plc",
+   "location": "field",
+   "x": 652,
+   "y": 322,
+   "tag": "TIT-221"
   },
   {
    "id": "LIT-301",
@@ -867,22 +921,18 @@
    "label": false
   },
   {
-   "from": "VR-111.out",
-   "to": "R-101.NA",
+   "from": "XV-111.out",
+   "to": "R-101.NF",
    "class": "process_major",
    "number": "LODO-2101",
    "route": [
     [
      64,
-     244
+     240
     ],
     [
-     74,
-     244
-    ],
-    [
-     74,
-     152.3
+     93.6,
+     240
     ]
    ]
   },
@@ -901,33 +951,10 @@
      206.6
     ],
     [
-     172,
-     206.6
-    ],
-    [
-     172,
-     190
-    ],
-    [
-     182,
-     190
-    ],
-    [
-     182,
-     212
-    ],
-    [
      225.4,
-     212
+     206.6
     ]
    ]
-  },
-  {
-   "from": "TQ-201.N3",
-   "to": "FCA-201.in",
-   "class": "utility",
-   "number": "ALIV-2103",
-   "label": false
   },
   {
    "from": "DOS-201.out",
@@ -936,7 +963,7 @@
    "number": "QUIM-2104",
    "route": [
     [
-     242.2,
+     253.24,
      242
     ]
    ]
@@ -1045,7 +1072,7 @@
   },
   {
    "from": "VR-201.out",
-   "to": "VR-221.in",
+   "to": "XV-221.in",
    "class": "process_major",
    "number": "LODO-2106",
    "route": [
@@ -1056,42 +1083,34 @@
    ]
   },
   {
-   "from": "VR-211.out",
-   "to": "R-201.NA",
+   "from": "XV-211.out",
+   "to": "R-201.NF",
    "class": "process_major",
    "number": "LODO-2107",
    "route": [
     [
      364,
-     318
+     314
     ],
     [
-     374,
-     318
-    ],
-    [
-     374,
-     154.5
+     391.84,
+     314
     ]
    ]
   },
   {
-   "from": "VR-221.out",
-   "to": "R-202.NA",
+   "from": "XV-221.out",
+   "to": "R-202.NF",
    "class": "process_major",
    "number": "LODO-2108",
    "route": [
     [
      524,
-     318
+     314
     ],
     [
-     534,
-     318
-    ],
-    [
-     534,
-     154.5
+     551.84,
+     314
     ]
    ]
   },
@@ -1230,7 +1249,7 @@
   {
    "id": "N2101",
    "direction": "in",
-   "x": 163.2,
+   "x": 159.6,
    "y": 350,
    "tag": "N2",
    "link": "PARTIDA/PURGA",
@@ -1258,7 +1277,7 @@
    "y": 94,
    "tag": "F01",
    "link": "DE P-101",
-   "to": "VR-111.in",
+   "to": "XV-111.in",
    "class": "process_major",
    "number": "LODO-2101"
   },
@@ -1277,7 +1296,7 @@
   {
    "id": "N2201",
    "direction": "in",
-   "x": 464.08,
+   "x": 460.24,
    "y": 424,
    "tag": "N2",
    "link": "PARTIDA/PURGA",
@@ -1301,7 +1320,7 @@
   {
    "id": "N2202",
    "direction": "in",
-   "x": 624.08,
+   "x": 620.24,
    "y": 424,
    "tag": "N2",
    "link": "PARTIDA/PURGA",
@@ -1325,8 +1344,8 @@
   {
    "id": "F01B",
    "direction": "in",
-   "x": 300,
-   "y": 128,
+   "x": 292,
+   "y": 143,
    "tag": "F01",
    "link": "DE P-102",
    "to": "HV-202.in",
@@ -1360,7 +1379,7 @@
    "id": "G1",
    "direction": "out",
    "x": 800,
-   "y": 525,
+   "y": 505,
    "tag": "F03",
    "link": "GAS-01 (IIC)",
    "from": "HV-115.out",
@@ -1371,7 +1390,7 @@
    "id": "G2",
    "direction": "out",
    "x": 190,
-   "y": 495,
+   "y": 485,
    "tag": "F03",
    "link": "RG-01 GÁS ÁCIDO",
    "from": "HV-116.out",
@@ -1381,11 +1400,45 @@
  ],
  "derivacoes": [
   {
+   "from": "R-101.NQ",
+   "to": [
+    164,
+    206.6
+   ],
+   "route": [
+    [
+     147.0,
+     240
+    ],
+    [
+     164,
+     240
+    ]
+   ],
+   "class": "utility",
+   "number": "ACID-2111"
+  },
+  {
+   "from": "TQ-201.N3",
+   "to": [
+    164,
+    225
+   ],
+   "route": [
+    [
+     242.2,
+     225
+    ]
+   ],
+   "class": "utility",
+   "number": "ACID-2112"
+  },
+  {
    "from": [
     364,
     108
    ],
-   "to": "VR-211.in",
+   "to": "XV-211.in",
    "class": "process_major",
    "number": "LODO-2107"
   },
@@ -1398,11 +1451,49 @@
    "route": [
     [
      384,
-     128
+     143
     ]
    ],
    "class": "process_major",
    "number": "LODO-2109"
+  },
+  {
+   "from": "R-201.NQ",
+   "to": [
+    464,
+    270.9
+   ],
+   "route": [
+    [
+     448.8,
+     314
+    ],
+    [
+     464,
+     314
+    ]
+   ],
+   "class": "utility",
+   "number": "BRUTO-2241"
+  },
+  {
+   "from": "R-202.NQ",
+   "to": [
+    624,
+    270.9
+   ],
+   "route": [
+    [
+     608.8,
+     314
+    ],
+    [
+     624,
+     314
+    ]
+   ],
+   "class": "utility",
+   "number": "BRUTO-2242"
   },
   {
    "from": [
@@ -1416,8 +1507,8 @@
   {
    "from": "HV-215.out",
    "to": [
-    393.12,
-    525
+    399.52,
+    505
    ],
    "class": "utility",
    "number": "BRUTO-2221"
@@ -1425,16 +1516,16 @@
   {
    "from": "HV-225.out",
    "to": [
-    553.12,
-    525
+    559.52,
+    505
    ],
    "class": "utility",
    "number": "BRUTO-2231"
   },
   {
    "from": [
-    94.8,
-    495
+    100.8,
+    485
    ],
    "to": "HV-116.in",
    "class": "utility",
@@ -1468,11 +1559,11 @@
   "simbolos": [
    {
     "simbolo": "emergencia",
-    "x": 145.2,
+    "x": 136.8,
     "y": 244,
     "tag": "PVSV-111",
     "rotulo": {
-     "x": 151.2,
+     "x": 142.8,
      "y": 252,
      "alinh": "L"
     }
@@ -1484,25 +1575,12 @@
     "rotation": 180
    },
    {
-    "simbolo": "respiro",
-    "x": 69,
-    "y": 249,
-    "tag": "",
-    "desc": "QUEBRA-VÁCUO"
-   },
-   {
-    "simbolo": "respiro",
-    "x": 253.24,
-    "y": 229,
-    "tag": ""
-   },
-   {
     "simbolo": "emergencia",
-    "x": 446.88,
+    "x": 437.92,
     "y": 318,
     "tag": "PVSV-211",
     "rotulo": {
-     "x": 452.88,
+     "x": 443.92,
      "y": 326,
      "alinh": "L"
     }
@@ -1515,11 +1593,11 @@
    },
    {
     "simbolo": "emergencia",
-    "x": 606.88,
+    "x": 597.92,
     "y": 318,
     "tag": "PVSV-221",
     "rotulo": {
-     "x": 612.88,
+     "x": 603.92,
      "y": 326,
      "alinh": "L"
     }
@@ -1529,36 +1607,38 @@
     "x": 560.8,
     "y": 123,
     "rotation": 180
-   },
-   {
-    "simbolo": "respiro",
-    "x": 369,
-    "y": 323,
-    "tag": "",
-    "desc": "QUEBRA-VÁCUO"
-   },
-   {
-    "simbolo": "respiro",
-    "x": 529,
-    "y": 323,
-    "tag": "",
-    "desc": "QUEBRA-VÁCUO"
    }
   ],
   "textos": [
    {
-    "texto": "SIFÃO U",
-    "x": 177,
-    "y": 183,
-    "altura": 2.0,
-    "alinh": "C"
+    "texto": "TUBO DE IMERSÃO",
+    "x": 95.1,
+    "y": 177.33333333333334,
+    "altura": 1.8
    },
    {
-    "texto": "500 mmCA",
-    "x": 177,
-    "y": 170,
-    "altura": 2.0,
-    "alinh": "C"
+    "texto": "TUBO DE IMERSÃO",
+    "x": 393.34,
+    "y": 202.0,
+    "altura": 1.8
+   },
+   {
+    "texto": "TUBO DE IMERSÃO",
+    "x": 553.34,
+    "y": 202.0,
+    "altura": 1.8
+   },
+   {
+    "texto": "EQUALIZAÇÃO DE GÁS TQ-201 / R-101 (LO)",
+    "x": 168,
+    "y": 228,
+    "altura": 1.9
+   },
+   {
+    "texto": "SAÍDA NIVELADA",
+    "x": 167,
+    "y": 190,
+    "altura": 1.9
    },
    {
     "texto": "SIFÃO U",
@@ -1579,6 +1659,50 @@
     "x": 300,
     "y": 529,
     "altura": 2.5
+   }
+  ],
+  "linhas": [
+   {
+    "pontos": [
+     [
+      93.6,
+      226
+     ],
+     [
+      93.6,
+      175.33333333333334
+     ]
+    ],
+    "servico": "INTERNO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      391.84,
+      300
+     ],
+     [
+      391.84,
+      200.0
+     ]
+    ],
+    "servico": "INTERNO",
+    "seta": false
+   },
+   {
+    "pontos": [
+     [
+      551.84,
+      300
+     ],
+     [
+      551.84,
+      200.0
+     ]
+    ],
+    "servico": "INTERNO",
+    "seta": false
    }
   ],
   "conexoes": [
@@ -1607,21 +1731,42 @@
     "de": "AIC-201",
     "ate": [
      259,
-     182
+     180
     ]
    },
    {
     "de": "LIT-201",
     "ate": [
      259,
-     160
+     168
     ]
    },
    {
-    "de": "FIT-201",
+    "de": "FQIT-201",
     "ate": [
      495,
      108
+    ]
+   },
+   {
+    "de": "TIT-111",
+    "ate": [
+     150,
+     144
+    ]
+   },
+   {
+    "de": "TIT-211",
+    "ate": [
+     452,
+     322
+    ]
+   },
+   {
+    "de": "TIT-221",
+    "ate": [
+     612,
+     322
     ]
    },
    {
@@ -1670,7 +1815,7 @@
     "via": [
      [
       312,
-      182
+      194
      ],
      [
       312,
@@ -1701,15 +1846,18 @@
   ],
   "sem_rotulo": [
    "LODO-216",
+   "ACID-2112",
    "LODO-226",
-   "LODO-236"
+   "LODO-236",
+   "BRUTO-2241",
+   "BRUTO-2242"
   ],
   "quadros": [
    {
     "titulo": "SET POINTS DE PRESSÃO - CASCATA B (RES-001 REV03, PROPOSTA - AGUARDA RT)",
     "x": 108,
-    "y": 486,
-    "altura": 2.2,
+    "y": 468,
+    "altura": 2.0,
     "colunas": [
      [
       "ITEM",
@@ -1755,6 +1903,60 @@
      ]
     ],
     "fonte": "Fonte: RES-001 REV03 §8; Bases REV00 critério 10. LAC-031/032/033."
+   },
+   {
+    "titulo": "ALOCAÇÃO DE BOCAIS POR REATOR (C1)",
+    "x": 698,
+    "y": 568,
+    "altura": 1.8,
+    "colunas": [
+     [
+      "BOCAL",
+      17
+     ],
+     [
+      "USO",
+      111
+     ]
+    ],
+    "linhas": [
+     [
+      "N1-A",
+      "Alimentação c/ tubo de imersão (furo quebra-sifão no gás)"
+     ],
+     [
+      "N1-B",
+      "Selo hidráulico SH (+8/-3)"
+     ],
+     [
+      "N1-C",
+      "N2 de partida/purga (LC)"
+     ],
+     [
+      "N1-D",
+      "Quebra-sifão da coluna de saída / equalização"
+     ],
+     [
+      "N2-A",
+      "Saída nivelada (coluna externa)"
+     ],
+     [
+      "N2-B / D",
+      "Amostragem / expurgo LC + chave presa"
+     ],
+     [
+      "N2-C",
+      "Reserva: retirada por bomba (LAC-039)"
+     ],
+     [
+      "N3 2x2\"",
+      "Gás ao coletor / transbordo (LAC-038)"
+     ],
+     [
+      "M2 / A4",
+      "Emergência bidirecional / A4 TAMPONAR"
+     ]
+    ]
    }
   ]
  },
@@ -1762,9 +1964,9 @@
   "1. EMISSÃO PRELIMINAR (T.E. A): a S3 (P&ID executivo) da Gen E não foi iniciada e a S1 está bloqueada no Gate 0; premissas D1-D6 [A VERIFICAR] (CLAUDE.md §4). Diâmetros das linhas pela S1. Não usar para construção.",
   "2. Cascata B (RES-001 REV03, aguarda RT - LAC-033), em mbar: operação +1,5 a +3,5; PIT-x11 com PAH/PAHH +5/+6, PAL +1 e PALL 0 hardwired (desliga sopradores e retirada); selo SH +8/-3; emergência bidirecional na M2 +12/-6 (R-101 -4/-5); envelope requerido à Fibrais +15/-8 (R-101 -6). Sem PVRV.",
   "3. Topo de todos os reatores em grupo IIC (coletor comum, LAC-037). Isolamentos do gás travados abertos (LO), sem bloqueio automático entre reator e alívio. RG-01: desvio do gás ácido do R-101 (LC).",
-  "4. Entradas pelos bocais N2 6\" do costado (+0,30 m) com alça quebra-sifão e retenção; saídas niveladas por coluna externa (N.A. +3,50 / +7,50 m, LAC-005/006) e sifão U 500 mmCA; 2ª cascata por gravidade ao TQ-301 (N1 +4,66 m, LAC-011).",
+  "4. Configuração C1 (PARECER_F02): alimentação pelo tampo (N1-A) com tubo de imersão e furo quebra-sifão no espaço de gás, sem alça nem retenção na entrada; saída nivelada por coluna externa a partir do N2 (+0,30 m) com quebra-sifão ao espaço de gás (N1-D); N.A. +3,50 / +7,50 m (LAC-005/006). 2ª cascata por gravidade ao TQ-301 com sifão U 500 mmCA, dreno e lavagem (LAC-011).",
   "5. Retirada por bomba admitida com Q máx. 20 m3/h por reator (proposta), permissivos, trips hardwired e chave presa (KL) nos expurgos N2-D (RES-001 REV03 §5.6). N2 só na partida e na purga pós-evento (LC). N2-C/N2-D ficam no costado (+0,30 m).",
-  "6. TQ-201 de neutralização (Formulário FINEP: 'tanques de neutralização de pH'); FCA-201 no respiro; AIC-201 (pHIC-201) comanda a DOS-201. H2S e NR-15: LAC-009/010. RL-05: retorno alcalino TQ-301 > TQ-201/TQ-101 pela P-301.",
+  "6. TQ-201 de neutralização FECHADO e equalizado com o R-101 (LO, grupo IIC): sem stripping de H2S no solo (LAC-009). AIC-201 (pHIC-201) comanda a DOS-201. P-201 em pulsos alternados (XV-211/XV-221 falha-fechada, FQIT-201), só com o misturador do reator de destino em operação. RL-05: retorno alcalino TQ-301 > TQ-201/TQ-101 pela P-301.",
   "7. Misturadores verticais de topo (D1) com VFD, selo duplo e motor Ex db IIC T3: potência e flambagem do tampo a verificar (LAC-007/008/028); a Fibrais mantém 15/10 CV (reunião de 29/10/2026)."
  ]
 }
