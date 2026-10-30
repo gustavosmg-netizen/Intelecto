@@ -195,8 +195,8 @@ def figura(ga, gb, tqb, arquivo):
     a.plot([tq[0], tq[0], 20500], [tq[1], tq[1] + 2600, tq[1] + 2600], color="#2a78d6", lw=2,
            ls="--")
     a.text(17200, tq[1] + 2750, "LE-301 → PC-301 → COL-501", fontsize=8, color="#2a78d6")
-    a.plot(tq[0] + 700, tq[1] - 900, "^", color="#2a78d6", ms=9)
-    a.text(tq[0], tq[1] - 1150, "A7 → PVRV + corta-chamas;  M1 → tampa nova com\n"
+    a.plot(tq[0] + 900, tq[1] - 700, "^", color="#2a78d6", ms=9)
+    a.text(tq[0], tq[1] - 1600, "A7 → PVRV + corta-chamas;  M1 → tampa nova com\n"
            "bocais (LE-301 e retorno da P-301)", fontsize=8, ha="center", va="top")
     a.text(9200, -8900, "— rampa livre (N-SAI afogado no pulso)    ● chegada pelo N1\n"
            "- - equalização de gás ao coletor", fontsize=8, va="top")
@@ -283,11 +283,11 @@ def estudo(ga, gb, bg, topo, tqb, eq, se):
       "TQ-301 | não existe |")
     w("| Bomba | P-301 contínua (CS-301 → TQ-301), mais purgas, RL-05 e expedição | P-301 "
       "só para purgas, RL-05 e expedição; sem transferência contínua |")
-    w(f"| TQ-301 | aberto: respiro A7 com chapéu chinês | fechado:\n"
-      f"- A7 com PVRV e corta-chamas;\n"
-      f"- M1 com tampa nova, estanque, com bocais para a LE-301 e o retorno da P-301;\n"
-      f"- extravasor com selo de emergência SO-301 de {SELO_EXT:.0f} mm;\n"
-      f"- N1-270 (sai da P-301) e N1-90 (hoje tamponado) passam a receber as rampas. |")
+    w(f"| TQ-301 | aberto: respiro A7 com chapéu chinês | fechado:<br>"
+      f"• A7 com PVRV e corta-chamas;<br>"
+      f"• M1 com tampa nova, estanque, com bocais para a LE-301 e o retorno da P-301;<br>"
+      f"• extravasor com selo de emergência SO-301 de {SELO_EXT:.0f} mm;<br>"
+      f"• N1-270 (sai da P-301) e N1-90 (hoje tamponado) passam a receber as rampas |")
     w("| pH/ORP na saída | nos copos (AIT-212/222), como na rev. 5 | bocal novo DN50 no "
       "costado de cada reator, abaixo da soleira, com haste retrátil (LAC-061). Em CSTR o pH "
       "do reator é o da saída. O A4 fica reservado (LAC-038/048) |")
@@ -305,7 +305,7 @@ def estudo(ga, gb, bg, topo, tqb, eq, se):
     w("\nA alternativa adotada gera uma revisão do BOCAIS_FIBRAIS.\n")
     w("## 3. Hidráulica com polpa de Bingham (6 m³/h de pulso)\n")
     w("| caso | τy (Pa) | subida na soleira (m) | nível máx. (m) | folga até LSH (m) | N-SAI "
-      "afogado? | sen θ mín. exigido | sen θ B | lâmina parada na rampa B (mm) |")
+      "afogado? | sen θ mín. exigido | sen θ B | raio hidráulico da lâmina parada na rampa B (mm) |")
     w("|---|---|---|---|---|---|---|---|---|")
     for r in bg:
         w(f"| {r['caso']} | {r['tau_y']:.0f} | {_f(r['h_sol'])} | {_f(r['nivel'])} | "
@@ -324,7 +324,7 @@ def estudo(ga, gb, bg, topo, tqb, eq, se):
     w("- O trecho horizontal do N-SAI retém alguns litros.")
     w("- O tê de lavagem no início da rampa limpa as duas coisas nas paradas longas.\n")
     w(f"**Gás no B.** O enchimento do TQ-301 por um pulso (6 m³/h) e a expedição pela P-301 "
-      f"(6 m³/h) trocam gás com o coletor pela LE-301. Com {_f(eq['Q'], 0)} m³/h, a "
+      f"(6 m³/h, máximo das PCP adotado na MEMORIA_HIDRAULICA) trocam gás com o coletor pela LE-301. Com {_f(eq['Q'], 0)} m³/h, a "
       f"velocidade é {_f(eq['v'], 2)} m/s e a perda {_f(eq['dp'], 3)} mbar, desprezível "
       "diante do permissivo de −0,5 mbar.\n")
     w(f"**Corte da alimentação (B).** Os dois reatores escoam ao TQ-301 até a soleira, ≈ "

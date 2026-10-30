@@ -31,11 +31,7 @@ A CS-301 fica a ≈ 5 m dos reatores e pede:
 | Gás do tubo de saída | respiro curto por bocal novo DN80 de costado a +8,9 m, ≈ 1,6 m (**A′1**), ou pelo N1-225 existente, longo como na rev. 5 (**A′2**) | o tubo descarrega no espaço de gás do TQ-301, que se equaliza pela linha dedicada **LE-301** DE110 (≈ 25 m, estudo) até o COL-501, com pote de condensado PC-301 |
 | Caixa | CS-301 ao sul do vão entre os reatores (estudo). Folga ≈ 1,2 m até cada reator e ≈ 0,9 m até o TQ-301 | não existe |
 | Bomba | P-301 contínua (CS-301 → TQ-301), mais purgas, RL-05 e expedição | P-301 só para purgas, RL-05 e expedição; sem transferência contínua |
-| TQ-301 | aberto: respiro A7 com chapéu chinês | fechado:
-- A7 com PVRV e corta-chamas;
-- M1 com tampa nova, estanque, com bocais para a LE-301 e o retorno da P-301;
-- extravasor com selo de emergência SO-301 de 450 mm;
-- N1-270 (sai da P-301) e N1-90 (hoje tamponado) passam a receber as rampas. |
+| TQ-301 | aberto: respiro A7 com chapéu chinês | fechado:<br>• A7 com PVRV e corta-chamas;<br>• M1 com tampa nova, estanque, com bocais para a LE-301 e o retorno da P-301;<br>• extravasor com selo de emergência SO-301 de 450 mm;<br>• N1-270 (sai da P-301) e N1-90 (hoje tamponado) passam a receber as rampas |
 | pH/ORP na saída | nos copos (AIT-212/222), como na rev. 5 | bocal novo DN50 no costado de cada reator, abaixo da soleira, com haste retrátil (LAC-061). Em CSTR o pH do reator é o da saída. O A4 fica reservado (LAC-038/048) |
 | Gás do digestato | arrastado e residual vão à atmosfera (FCA-301 e A7; LAC-049) | recuperado no GH-1 |
 | Bocais novos nos R-201/202 | 2× N-SAI DN150 (+ 2× DN80 na A′1) | 2× N-SAI DN150 + 2× DN50 |
@@ -52,7 +48,7 @@ A alternativa adotada gera uma revisão do BOCAIS_FIBRAIS.
 
 ## 3. Hidráulica com polpa de Bingham (6 m³/h de pulso)
 
-| caso | τy (Pa) | subida na soleira (m) | nível máx. (m) | folga até LSH (m) | N-SAI afogado? | sen θ mín. exigido | sen θ B | lâmina parada na rampa B (mm) |
+| caso | τy (Pa) | subida na soleira (m) | nível máx. (m) | folga até LSH (m) | N-SAI afogado? | sen θ mín. exigido | sen θ B | raio hidráulico da lâmina parada na rampa B (mm) |
 |---|---|---|---|---|---|---|---|---|
 | otimista | 5 | 0,06 | 7,56 | 0,64 | não | 0,012 | 0,56 | 1 |
 | central | 30 | 0,19 | 7,69 | 0,51 | sim | 0,069 | 0,56 | 5 |
@@ -68,7 +64,7 @@ A alternativa adotada gera uma revisão do BOCAIS_FIBRAIS.
 - O trecho horizontal do N-SAI retém alguns litros.
 - O tê de lavagem no início da rampa limpa as duas coisas nas paradas longas.
 
-**Gás no B.** O enchimento do TQ-301 por um pulso (6 m³/h) e a expedição pela P-301 (6 m³/h) trocam gás com o coletor pela LE-301. Com 12 m³/h, a velocidade é 0,45 m/s e a perda 0,014 mbar, desprezível diante do permissivo de −0,5 mbar.
+**Gás no B.** O enchimento do TQ-301 por um pulso (6 m³/h) e a expedição pela P-301 (6 m³/h, máximo das PCP adotado na MEMORIA_HIDRAULICA) trocam gás com o coletor pela LE-301. Com 12 m³/h, a velocidade é 0,45 m/s e a perda 0,014 mbar, desprezível diante do permissivo de −0,5 mbar.
 
 **Corte da alimentação (B).** Os dois reatores escoam ao TQ-301 até a soleira, ≈ 1,42 m³ no caso que mais escoa (otimista). Entre o LSHH atual (+3,85) e o extravasor (+4,00) cabem 1,06 m³.
 - O LSHH desce para +3,70 e o N-LSHH, bocal novo, é posicionado nessa cota.
