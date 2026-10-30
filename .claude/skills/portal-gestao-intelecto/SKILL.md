@@ -68,7 +68,7 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 - `ensureSchema()` cria/ajusta tabelas em runtime no 1º request após mudança de `SCHEMA_VER`
   (`src/index.ts`, `const SCHEMA_VER`). **Toda mudança de schema exige bump de `SCHEMA_VER`** — sem o
   bump o D1 existente pula o setup e a tabela nunca nasce em produção.
-- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0014 `fin_tags`). Toda
+- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0016 `membro_saida`). Toda
   tabela nova ganha migração própria, idempotente (`IF NOT EXISTS`, sem `DROP`/`DELETE`). Numerar em
   sequência e checar se outro PR aberto já usou o número.
 - D1 `--remote` rejeita `BEGIN/COMMIT/PRAGMA`; `DELETE` em massa é feito pelo dono no terminal dele.
@@ -163,6 +163,16 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
   Reabrir/cancelar entrada que baixou parcela desfaz a baixa da parcela. Tags por pessoa
   (`fin_tag`/`fluxo_tag`); categoria é da casa; filtros salvos em `filtro_salvo` (módulo
   `financeiro`). Regra única em `src/fin.mjs`. Gate: `financeiro.ver` / `financeiro.editar`.
+- **Portal clássico (o que a equipe usa)** também tem: CRM com filtros/filtros salvos, arrastar
+  entre fases, tags e atividades no modal (`_crmFiltrados`, `_crmDealExtra`); Financeiro ›
+  "Contas a pagar/receber" (`_finContas`); Cadastro › "Importar planilha" (lê a aba Dados
+  Estruturados do .xlsx no navegador; `planilhaPrevia`/`planilhaImportar`, idempotente); RH com
+  **data de saída** (`membro.saida`; cron diário efetiva o desligamento).
+- **Apropriação (src/apropriacao.mjs)**: custos fixos mensais com vigência rateados por horas do
+  mês; contrato recorrente (cliente + valor mensal) distribuído pelas horas do mês entre os
+  projetos do cliente; projeto sem horas contratadas = "sem contrato", nunca estouro.
+- **Planilha "Calendário Engenharia"** (Google Sheets, alimentada por Forms): fonte = aba
+  "Dados Estruturados"; o orçado da planilha é modelo por tipo de projeto em heq (horas ÷ 10,5).
 - O wrapper `sqlite.execute` devolve `rowsAffected` — **nunca** checar `r.meta` (é sempre undefined).
 
 ### Confidencialidade e privacidade (crítico)

@@ -23,3 +23,14 @@ test("CRM clássico: painel do negócio com subetapa, minhas tags e atividades",
   assert.match(html, /api\("crmAtividadeSet",pay\)/);
   assert.match(html, /api\("crmAtividades",\{deal:d\.id\}\)/);
 });
+
+test("Financeiro clássico: contas a pagar/receber com arrastar, filtros salvos, lote e tags", () => {
+  assert.match(html, /data-tab="fin-tab-contas"/);
+  assert.match(html, /function _fincSit\(x,hj\)/);
+  assert.match(html, /function _fincTrans\(de,para\)/);
+  assert.match(html, /api\("fluxoLote",Object\.assign\(\{op:op,ids:ids\}/);
+  assert.match(html, /api\("fluxoCc",\{ids:FINC\.sel\.slice\(\)/);
+  assert.match(html, /api\("fluxoTag",\{tag:t,ids:FINC\.sel\.slice\(\)/);
+  assert.match(html, /api\("filtroSet",\{modulo:"financeiro"/);
+  assert.match(html, /_finResumo\(\);_finContas\(\);_finCarteira\(\)/);
+});
