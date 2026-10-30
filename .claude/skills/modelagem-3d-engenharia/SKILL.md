@@ -78,6 +78,24 @@ Referência: `exemplos/reator_mistura.yaml` (tanque cilíndrico de mistura/reaç
 - Válvulas com face a face EN 558, volante/haste para cima (`cima: [x, y, z]` muda), retenção com seta de fluxo; junta de desmontagem com tirantes.
 - Tubo de parede com anel de vedação (puddle flange) nos bocais de concreto; apoios de concreto com sela e abraçadeira; setas amarelas de sentido de escoamento.
 
+## Tanques PRFV existentes, reatores fechados e polpa (uso via Python)
+
+Para tanques já fabricados (ex.: Fibrais), monte o modelo em Python. O YAML não cobre este caso.
+
+- `prfv.TanquePRFV` + `prfv.Bocal` descrevem o tanque e cada bocal: costado, tampo ou fundo, com azimute horário a partir do norte e estado `usar`, `tamponar`, `converter` ou `novo`.
+- `prfv.construir` desenha o casco, os bocais e os flanges ANSI 150 cegos. Ele marca os bocais novos em verde, com reforço do laminado, e os tamponados em laranja. Também registra `m.tabela_bocais`, de onde sai a lista De→Para para o fabricante.
+- Dispositivos de reator fechado:
+  - `selo_hidraulico` e `emergencia_m2`: sobre/subpressão (selo e emergência);
+  - `instrumento`: radar, garfo, PT ou boia;
+  - `agitador_topo`, `bomba_pcp` e `filtro_carvao`.
+- Saída de reator fechado: bocal no nível, depois standpipe que segue como respiro ligado ao gás (quebra-sifão). Na crista sai um tê, a descida é a 45° e um U de fecho hídrico leva à descarga livre. Use `regime: selada` e `fecho: {...}` na linha. Exemplo completo: `projetos/thermobiogasup_gene/planta_gene.py`.
+- `reologia.py` trata a polpa como plástico de Bingham:
+  - escoamento cheio por Buckingham–Reiner e Darby–Mun–Boger;
+  - carga de partida 4·τy·L/(ρgD);
+  - declividade mínima de lâmina livre;
+  - casos de 8% ST.
+- A memória com LE/LP fica no projeto (`hidraulica_gene.py`). `nao_newtoniano: true` na linha amplia a faixa de velocidade aceita.
+
 ## Arquivos
 
 - `scripts/hidraulica/normas.py`: tabelas (DE e furação normativos; espessuras, face a face e vãos típicos de catálogo: conferir fabricante para compra).
@@ -88,5 +106,5 @@ Referência: `exemplos/reator_mistura.yaml` (tanque cilíndrico de mistura/reaç
 
 - Traçado por vértices informados (não há roteamento automático); componentes só em trechos retos.
 - Bombas e válvulas são representativas (envelope, flanges e bocais corretos); para fabricante específico, importar o STEP dele no lugar.
-- Não verifica NPSH, golpe de aríete nem tensão trativa: são cálculos do memorial.
+- A verificação genérica não calcula NPSH, golpe de aríete nem tensão trativa: isso fica no memorial (para polpa, ver `reologia.py` e o exemplo Gen E).
 - Os MCPs FreeCAD e Blender executam Python arbitrário na aplicação: salvar antes e manter só em `localhost`.

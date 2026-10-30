@@ -92,6 +92,8 @@ def _validar_linha(m: Modelo, ln: Linha, add) -> None:
                 f"(90/45/22,5/11,25°). Ajuste o traçado ou especifique peça especial.")
     if ln.regime == "gravidade":
         _validar_gravidade(ln, segs, add)
+    elif ln.regime == "selada":
+        pass        # saída de reator com gás: verificada por hidráulica não newtoniana do projeto
     else:
         _validar_pressao(ln, segs, add)
     # H09: velocidade
@@ -100,7 +102,10 @@ def _validar_linha(m: Modelo, ln: Linha, add) -> None:
         tb = ln.tubo_em(ln.comprimento / 2)          # tubo do trecho corrente
         v = q / 1000 / (math.pi * (tb.di / 1000) ** 2 / 4)
         papel_d = ln.destino.papel
-        lim = (0.0, 1.5) if papel_d == "succao" else (0.6, 3.0) if ln.regime == "pressao" else (0.6, 5.0)
+        if ln.spec.get("nao_newtoniano"):
+            lim = (0.0, 3.0)    # lodo: velocidade baixa é admitida; verificar sedimentação no projeto
+        else:
+            lim = (0.0, 1.5) if papel_d == "succao" else (0.6, 3.0) if ln.regime == "pressao" else (0.6, 5.0)
         if not lim[0] <= v <= lim[1]:
             add("H09", "AVISO", tag, f"Velocidade {v:.2f} m/s fora da faixa {lim[0]}–{lim[1]} m/s "
                 f"({'sucção' if papel_d == 'succao' else ln.regime}).")
@@ -213,7 +218,7 @@ def _validar_pressao(ln: Linha, segs, add) -> None:
         if b > a + 1 and all(p.Z <= b + 1 for p in ln.vertices[i:]):
             # descarga livre (ponto livre ou entrada de tanque) expulsa o ar sozinha
             livre = ln.destino.junta == "livre" or ln.destino.papel == "entrada"
-            if not livre and "ventosa" not in tipos:
+            if not livre and "ventosa" not in tipos and not ln.spec.get("ponto_alto"):
                 add("H10", "AVISO", tag, f"Ponto alto em {_fmt(ln.vertices[i])} sem ventosa: "
                     "ar acumulado reduz a seção e causa golpes.")
                 break
@@ -265,6 +270,8 @@ def _validar_vaos(m: Modelo, ln: Linha, segs, add) -> None:
         tb = ln.tubo_em(s0 + 0.5)
         if min(A.Z, B.Z) - tb.de / 2 - float(ln.spec.get("z_piso", m.piso)) < 60:
             continue
+        if min(A.Z, B.Z) > float(ln.spec.get("z_max_apoio", 2500)):
+            continue            # trecho elevado: apoio em pipe-rack/estrutura (S6), fora deste modelo
         apoios = sorted([0.0, (B - A).length] + [
             (p - A).dot(d) for p in ln.suportes if 0 <= (p - A).dot(d) <= (B - A).length + 1
             and ((p - A) - d * (p - A).dot(d)).length < 5])
@@ -278,6 +285,12 @@ def _validar_vaos(m: Modelo, ln: Linha, segs, add) -> None:
 def _dono(m: Modelo, grupo: str) -> str:
     if grupo.endswith("-ROTOR"):          # eixo+rotor pertence ao próprio misturador
         return grupo[: -len("-ROTOR")]
+    for ln in m.linhas.values():          # linhas primeiro (tags de linha não contêm tags de tanque)
+        if grupo.startswith(ln.tag + "-") or grupo == f"S-{ln.tag}":
+            return ln.tag
+    for eq in m.equipamentos:             # bocais, instrumentos e acessórios do equipamento
+        if grupo == eq or f"-{eq}-" in grupo or grupo.endswith(f"-{eq}"):
+            return eq
     for ln in m.linhas.values():
         if grupo.startswith(ln.tag + "-") or grupo == f"S-{ln.tag}":
             return ln.tag

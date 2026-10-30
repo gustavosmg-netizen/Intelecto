@@ -127,7 +127,27 @@ class Flange:
         return float(self.parafuso[1:])
 
 
+# ASME/ANSI B16.5 classe 150 (furação dos bocais PRFV Fibrais: "FiberGlass ANSI B16.5").
+# DN: (D externo, círculo de furação, n furos, Ø furo, parafuso, espessura do flange solto
+# metálico). Os flanges PRFV dos desenhos Fibrais têm D maior (6": 290; 2": 161) e a mesma
+# furação; o D e a espessura PRFV ficam em FLANGE_PRFV.
+FLANGE_ANSI150 = {
+    25: (108, 79.4, 4, 15.9, "M14", 14), 50: (152, 120.7, 4, 19.0, "M16", 17),
+    80: (190, 152.4, 4, 19.0, "M16", 21), 100: (229, 190.5, 8, 19.0, "M16", 22),
+    150: (279, 241.3, 8, 22.2, "M20", 24), 200: (343, 298.5, 8, 22.2, "M20", 27),
+    250: (406, 362.0, 12, 25.4, "M22", 29), 300: (483, 431.8, 12, 25.4, "M22", 30),
+    600: (813, 749.3, 20, 34.9, "M30", 48),
+}
+# Flanges PRFV Fibrais medidos nos desenhos 315A/D/E-25 (D externo, espessura adotada)
+FLANGE_PRFV = {50: (161, 25), 150: (290, 30), 200: (343, 32), 600: (813, 40)}
+CLASSE_ANSI = 150   # usar pn=150 nas linhas e portas para furação ANSI B16.5 classe 150
+
+
 def flange(dn: int, pn: int = 10) -> Flange:
+    if pn == CLASSE_ANSI:
+        if dn not in FLANGE_ANSI150:
+            raise ValueError(f"Sem flange ANSI 150# tabelado para DN{dn}")
+        return Flange(dn, pn, *FLANGE_ANSI150[dn])
     if dn not in FLANGE_PN10:
         raise ValueError(f"Sem flange tabelado para DN{dn}")
     dados = FLANGE_PN16_DIF.get(dn) if pn == 16 else None

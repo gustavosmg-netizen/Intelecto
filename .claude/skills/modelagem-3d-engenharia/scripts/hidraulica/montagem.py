@@ -501,6 +501,9 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
         """Adaptador do tubo + parafusos numa junta flangeada em s. sentido=+1: tubo segue
         a jusante de s (flange em s..s+t); -1: tubo chega de montante."""
         P, d, _ = ponto_em(linha, s)
+        if P is None:
+            linha.erros_montagem.append(f"junta flangeada em s={s:.0f} mm fora de trecho reto")
+            return
         dd = d * sentido
         if tubo.material == "pead":
             t_c = max(0.12 * tubo.de, 12)
@@ -607,6 +610,10 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
         peca = g.te(tb.de, tb.di, t["L"], tr.de, tr.di, t["h"])
         m.add(nome, g.posicionar(peca, P, d, t["n"]), cor)
         m.item("Tê / junção", f"{tb.descricao} × {tr.descricao}", "un", 1)
+        for c in linha.componentes:
+            if c.tipo != "te" and c.s0 < t["s"] + t["L"] and t["s"] < c.s1:
+                linha.erros_montagem.append(f"tê do ramal {t['ramal']} (s={t['s']:.0f}) "
+                                            f"sobreposto a {c.tag} ({c.s0:.0f}–{c.s1:.0f} mm)")
         linha.componentes.append(Componente("te", f"TE-{t['ramal']}", t["s"], t["s"] + t["L"],
                                             tb.dn_flange, {"ramal": t["ramal"]}))
         ocupados.append((t["s"], t["s"] + t["L"], "te"))
@@ -666,6 +673,8 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
             continue
         m.item("Tubo", f"{desc} ({math.ceil(L / barra)} barra(s) de {barra / 1000:g} m)", "m",
                round(L / 1000, 2))
+    if linha.spec.get("ponto_alto"):
+        m.item("Respiro manual no ponto alto (DN25, válvula esfera)", linha.tag, "un", 1)
     if linha.regime == "ventilacao":
         tb = linha.tubo_em(linha.comprimento)
         m.add(nome, dv.respiro_topo(tb.de, tb.di, linha.destino.ponto), CORES["metal"])
@@ -704,7 +713,9 @@ def _suportes(m: Modelo, linha: Linha, ocupados) -> None:
             if o0 - 30 < s < o1 + 30 and t not in FLANGEADOS:
                 s = o1 + 60 if o1 + 60 < linha.comprimento else o0 - 60
         P, d, _ = ponto_em(linha, s)
-        if P is None or abs(d.Z) > 0.1 or _dentro_de_tanque(m, P):
+        if P is None or abs(d.Z) > 0.1 or _dentro_de_tanque(m, P, folga=900):
+            continue
+        if P.Z > float(linha.spec.get("z_max_apoio", 2500)):   # acima disso: pipe-rack (S6)
             continue
         tb = linha.tubo_em(s)
         if P.Z - tb.de / 2 - piso < 60:
@@ -719,15 +730,15 @@ def _suportes(m: Modelo, linha: Linha, ocupados) -> None:
         m.item("Apoio de concreto c/ sela e abraçadeira", f"{linha.tag}", "un", len(linha.suportes))
 
 
-def _dentro_de_tanque(m: Modelo, P: Vector) -> bool:
+def _dentro_de_tanque(m: Modelo, P: Vector, folga: float = 0.0) -> bool:
     for eq in m.equipamentos.values():
-        if eq["tipo"] != "tanque":
+        if eq.get("tipo") not in ("tanque", "reator_prfv", "tanque_prfv"):
             continue
         cx, cy = eq["centro"]
         a, b = eq["dim"]
         t = eq["parede"]
         if eq["cil"]:
-            if math.hypot(P.X - cx, P.Y - cy) <= a / 2 + t and P.Z <= eq["borda"]:
+            if math.hypot(P.X - cx, P.Y - cy) <= a / 2 + t + folga and P.Z <= eq["borda"] + 2000:
                 return True
         elif abs(P.X - cx) <= a / 2 + t and abs(P.Y - cy) <= b / 2 + t and P.Z <= eq["borda"]:
             return True
