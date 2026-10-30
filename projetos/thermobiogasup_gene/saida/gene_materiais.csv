@@ -18,7 +18,7 @@ Colarinho PEAD + flange solto;DE110 / DN150 ASME B16.5 Classe 150;cj;1
 Colarinho PEAD + flange solto;DE160 / DN150 ASME B16.5 Classe 150;cj;39
 Colarinho PEAD + flange solto;DE32 / DN32 ASME B16.5 Classe 150;cj;3
 Colarinho PEAD + flange solto;DE63 / DN50 ASME B16.5 Classe 150;cj;12
-Colarinho PEAD + flange solto;DE90 / DN80 ASME B16.5 Classe 150;cj;17
+Colarinho PEAD + flange solto;DE90 / DN80 ASME B16.5 Classe 150;cj;19
 Conexões de lavagem com água (engate rápido) nas linhas de purga e de retirada;R-201/202-PG, L-101S;un;3
 Copo de selagem interno com tubo mergulhado (laminado no tanque novo);CP-201 em CS-301: Ø560 mm, borda +1.50, selo 330 mm;un;1
 Copo de selagem interno com tubo mergulhado (laminado no tanque novo);CP-202 em CS-301: Ø560 mm, borda +1.50, selo 330 mm;un;1
@@ -41,6 +41,7 @@ Dispositivo de alívio de emergência bidirecional (pressão e vácuo) na M2;R-1
 Dispositivo de alívio de emergência bidirecional (pressão e vácuo) na M2;R-201: dimensionado e garantido pela Fibrais (RES-001 §7);un;1
 Dispositivo de alívio de emergência bidirecional (pressão e vácuo) na M2;R-202: dimensionado e garantido pela Fibrais (RES-001 §7);un;1
 Energia de emergência (UPS/gerador) para S-501, flare e intertravamentos;gás;cj;1
+Engate de by-pass na sucção da P-201 (R-101 fora de operação: RL-03/P-102);L-101S;un;1
 "Estrutura metálica leve de apoio (subidas de alimentação ao tampo, rack a +1,2 m e descidas SAI; sem carga horizontal no PRFV)";ver LAC-047;cj;1
 Filtro de carvão ativado do respiro (FCA-201);"envelope; especificar (LAC-042)";un;1
 Flare (queimador) com skid: soprador de reforço, bloqueio duplo, corta-chamas de detonação, ignição piloto e detector de chama;FL-501: ≥ pico da planta com folga;cj;1
@@ -51,16 +52,18 @@ Intertravamento XV-211 × XV-221 (pulsos alternados, nunca as duas abertas);alim
 Intertravamento por chave presa (V-xSAI × V-xRS: isolamento da saída);R-201;cj;1
 Intertravamento por chave presa (V-xSAI × V-xRS: isolamento da saída);R-202;cj;1
 Intertravamento por chave presa (uma sucção por vez na P-301: V-301S × V-301N3 × V-201PG × V-202PG);P-301;cj;1
-Jogo de parafusos, porcas e junta;4×M14 DN32;jg;5
+Jogo de parafusos, porcas e junta;4×M14 DN32;jg;6
 Jogo de parafusos, porcas e junta;4×M16 DN50;jg;12
-Jogo de parafusos, porcas e junta;4×M16 DN80;jg;23
+Jogo de parafusos, porcas e junta;4×M16 DN80;jg;28
 Jogo de parafusos, porcas e junta;8×M16 DN100;jg;54
-Jogo de parafusos, porcas e junta;8×M20 DN150;jg;43
+Jogo de parafusos, porcas e junta;8×M20 DN150;jg;45
 Junta de desmontagem travada;DN100 ASME B16.5 Classe 150 F-F 200 mm;un;1
 Junta de desmontagem travada;DN32 ASME B16.5 Classe 150 F-F 150 mm;un;1
 Junta de desmontagem travada;DN80 ASME B16.5 Classe 150 F-F 200 mm;un;2
 Lógica de alternância GH-1A/GH-1B (entradas falha-abre, saídas falha-fecha, ZSO/ZSC em todas as XV);CLP + intertravamento hardwired;cj;1
+Medidor de vazão da dosagem (confirma injeção);DN32 ASME B16.5 Classe 150 F-F 200 mm;un;1
 Medidor eletromagnético de vazão com totalizador (volume por pulso);DN80 ASME B16.5 Classe 150 F-F 300 mm;un;1
+Medidor eletromagnético de vazão do RL-05;DN80 ASME B16.5 Classe 150 F-F 300 mm;un;1
 Misturador estático em linha (neutralização);DN80 ASME B16.5 Classe 150 F-F 560 mm;un;1
 PSHH com trip da bomba + PSL na sucção (marcha a seco) + inversor;P-201;cj;1
 PSHH com trip da bomba + PSL na sucção (marcha a seco) + inversor;P-301;cj;1
@@ -68,11 +71,13 @@ PSHH no coletor junto ao tie-in (SP-09);TI-501;un;1
 PSLL na bolsa que transfere (≤ +0,5 mbar), PSLL de sucção (−5 mbar) e TSHH nos corta-chamas;S-501;cj;1
 PSV (ou disco de ruptura) com retorno à origem, antes de qualquer válvula;"descarga da P-201 (PCP); ajuste abaixo da classe do PEAD SDR17";un;1
 PSV (ou disco de ruptura) com retorno à origem, antes de qualquer válvula;"descarga da P-301 (PCP); ajuste abaixo da classe do PEAD SDR17";un;1
+PT independente por reator para PALL/PALLL (separado do PT de controle);R-101/201/202;un;3
 Pote de condensado com dreno em selo hidráulico e visor;PC-101;un;1
 Pote de condensado com dreno em selo hidráulico e visor;PC-201;un;1
 Pote de condensado com dreno em selo hidráulico e visor;PC-202;un;1
 Potes de dreno de condensado com selo ≥ 250 mm e controle de nível;pontos baixos do COL-501 (entradas dos GH-1) e da TR-501 (antes do S-501);un;3
 Respiro manual no ponto alto (DN25, válvula esfera);L-301N3;un;1
+Respiro manual no ponto alto (DN25, válvula esfera);L-301R;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);L-DOS201;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);L-RL05;un;1
 Respiro manual no ponto alto (DN25, válvula esfera);R-101-AL;un;1
@@ -83,40 +88,42 @@ Respiro manual no ponto alto (DN25, válvula esfera);R-202-PG;un;1
 Rotor/estator sobressalente em almoxarifado (reserva da PCP);P-201;cj;1
 Rotor/estator sobressalente em almoxarifado (reserva da PCP);P-301;cj;1
 Segunda retenção de gás (SP-09: refluxo do SK-501);DN100 ASME B16.5 Classe 150 F-F 300 mm;un;1
+Segundo pH em linha (2oo2 com o AIT-201, para o intertravamento do pulso);DN80 ASME B16.5 Classe 150 F-F 300 mm;un;1
 Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-101 sobre N1-135 6""";un;1
 Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-201 sobre N1-45 6""";un;1
 Selo hidráulico bidirecional (alívio normal, dimensionado pela Fibrais);"R-202 sobre N1-45 6""";un;1
 Skid de dosagem de alcalinizante (IBC 1 m³ em bacia, bomba dosadora com inversor, controlada pelo pH em linha);DOS-201;cj;1
 Skid de sopradores de canal lateral ATEX IIC (A opera, B reserva com partida automática), 60 m³/h × ≈ 30 mbar;S-501;cj;1
+Sonda pH/ORP no copo de saída (AIT-212/222) com transmissor;R-201;un;1
+Sonda pH/ORP no copo de saída (AIT-212/222) com transmissor;R-202;un;1
 Transmissor de temperatura TIT por reator (sem aquecimento, D5);R-101;un;1
 Transmissor de temperatura TIT por reator (sem aquecimento, D5);R-201;un;1
 Transmissor de temperatura TIT por reator (sem aquecimento, D5);R-202;un;1
-Tubo;PEAD DE110 SDR17 (1 barra(s) de 12 m);m;21,63
+Tubo;PEAD DE110 SDR17 (1 barra(s) de 12 m);m;21,87
 Tubo;PEAD DE110 SDR17 (2 barra(s) de 12 m);m;67,72
-Tubo;PEAD DE160 SDR17 (1 barra(s) de 12 m);m;38,55
-Tubo;PEAD DE32 SDR17 (1 barra(s) de 12 m);m;2,31
+Tubo;PEAD DE160 SDR17 (1 barra(s) de 12 m);m;38,13
+Tubo;PEAD DE32 SDR17 (1 barra(s) de 12 m);m;2,11
 Tubo;PEAD DE63 SDR17 (1 barra(s) de 12 m);m;0,31
 Tubo;PEAD DE63 SDR17 (2 barra(s) de 12 m);m;39,48
-Tubo;PEAD DE90 SDR17 (1 barra(s) de 12 m);m;18,54
-Tubo;PEAD DE90 SDR17 (2 barra(s) de 12 m);m;57,71
-Tubo de imersão interno (PRFV/PEAD) com furo quebra-sifão e flange no N1;R-101 N1-225: de +1.20 a +4.68;un;1
-Tubo de imersão interno (PRFV/PEAD) com furo quebra-sifão e flange no N1;R-201 N1-135: de +2.50 a +9.28;un;1
-Tubo de imersão interno (PRFV/PEAD) com furo quebra-sifão e flange no N1;R-202 N1-135: de +2.50 a +9.28;un;1
-Tê + ventosa de esgoto (corpo longo), quebra-vácuo a ar;PEAD DE110 SDR17 × DN50;cj;1
+Tubo;PEAD DE90 SDR17 (1 barra(s) de 12 m);m;18,36
+Tubo;PEAD DE90 SDR17 (2 barra(s) de 12 m);m;56,82
+Tubo de imersão interno (PRFV/PEAD) com furo quebra-sifão e flange no N1;R-201 N1-135: de +6.10 a +9.28;un;1
+Tubo de imersão interno (PRFV/PEAD) com furo quebra-sifão e flange no N1;R-202 N1-135: de +6.10 a +9.28;un;1
 Tê / junção;PEAD DE110 SDR17 × PEAD DE110 SDR17;un;8
 Tê / junção;PEAD DE110 SDR17 × PEAD DE90 SDR17;un;1
 Tê / junção;PEAD DE160 SDR17 × PEAD DE160 SDR17;un;3
 Tê / junção;PEAD DE160 SDR17 × PEAD DE90 SDR17;un;3
 Tê / junção;PEAD DE90 SDR17 × PEAD DE32 SDR17;un;1
 Tê / junção;PEAD DE90 SDR17 × PEAD DE90 SDR17;un;1
+Válvula anti-sifão / bloqueio da injeção;DN32 ASME B16.5 Classe 150 F-F 130 mm;un;1
 "Válvula autoatuada mantenedora de pressão a montante (≈ +0,3 mbar na bolsa; mecânica, sem energia)";DN100 ASME B16.5 Classe 150 F-F 52 mm;un;1
 Válvula borboleta atuada falha-ABRE (entrada GH-1A);DN100 ASME B16.5 Classe 150 F-F 52 mm;un;1
 Válvula borboleta atuada falha-ABRE (entrada GH-1B);DN100 ASME B16.5 Classe 150 F-F 52 mm;un;1
 Válvula borboleta atuada falha-FECHA (flare);DN100 ASME B16.5 Classe 150 F-F 52 mm;un;1
 Válvula borboleta atuada falha-FECHA (saída GH-1A);DN100 ASME B16.5 Classe 150 F-F 52 mm;un;1
 Válvula borboleta atuada falha-FECHA (saída GH-1B);DN100 ASME B16.5 Classe 150 F-F 52 mm;un;1
-Válvula de bloqueio da injeção;DN32 ASME B16.5 Classe 150 F-F 130 mm;un;1
 Válvula de retenção (anti-retorno) de gás;DN100 ASME B16.5 Classe 150 F-F 300 mm;un;3
+Válvula de retenção de esfera (anti-refluxo ao R-101);DN80 ASME B16.5 Classe 150 F-F 260 mm;un;1
 Válvula de retenção de esfera flangeada;DN100 ASME B16.5 Classe 150 F-F 300 mm;un;1
 Válvula de retenção de esfera flangeada;DN80 ASME B16.5 Classe 150 F-F 260 mm;un;2
 Válvula de retenção de injeção (química);DN32 ASME B16.5 Classe 150 F-F 160 mm;un;1
@@ -124,11 +131,12 @@ Válvula de retenção portinhola flangeada;DN100 ASME B16.5 Classe 150 F-F 300 
 Válvula esfera/gaveta LO com ZSC (ramal de gás);DN50 ASME B16.5 Classe 150 F-F 150 mm;un;3
 Válvula gaveta (registro) flangeada;DN100 ASME B16.5 Classe 150 F-F 190 mm;un;6
 Válvula gaveta (registro) flangeada;DN50 ASME B16.5 Classe 150 F-F 150 mm;un;1
+Válvula guilhotina (faca) atuada falha-fecha;DN80 ASME B16.5 Classe 150 F-F 180 mm;un;2
 Válvula guilhotina (faca) atuada falha-fecha (pulso ao R-201);DN80 ASME B16.5 Classe 150 F-F 180 mm;un;1
 Válvula guilhotina (faca) atuada falha-fecha (pulso ao R-202);DN80 ASME B16.5 Classe 150 F-F 180 mm;un;1
+Válvula guilhotina (faca) atuada falha-fecha (segundo bloqueio);DN150 ASME B16.5 Classe 150 F-F 210 mm;un;2
 Válvula guilhotina (faca) flangeada;DN100 ASME B16.5 Classe 150 F-F 190 mm;un;1
 Válvula guilhotina (faca) flangeada;DN150 ASME B16.5 Classe 150 F-F 210 mm;un;10
 Válvula guilhotina (faca) flangeada;DN80 ASME B16.5 Classe 150 F-F 180 mm;un;4
-Válvula guilhotina (faca) flangeada, atuada com FIT;DN80 ASME B16.5 Classe 150 F-F 180 mm;un;1
 Válvula guilhotina (faca) flangeada, atuada falha-fecha;DN150 ASME B16.5 Classe 150 F-F 210 mm;un;3
-pH/ORP em linha na entrada dos metanogênicos (AIC-201 comanda a dosagem);DN80 ASME B16.5 Classe 150 F-F 300 mm;un;1
+"pH/ORP em linha na entrada dos metanogênicos (AIC-201 comanda a dosagem; ≥ 10 D após o MX-201)";DN80 ASME B16.5 Classe 150 F-F 300 mm;un;1

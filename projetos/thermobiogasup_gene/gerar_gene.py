@@ -23,7 +23,7 @@ ESTADO = {"usar": "USAR (existente)", "tamponar": "TAMPONAR (flange cego)",
 
 
 SERVICO = {"-RS": "respiro de equalização da descida da saída (quebra-sifão, gás)",
-           "-VQ": "descarga da ventosa da crista da alça de entrada (gás, quebra-sifão)",
+           "-AL": "alimentação pelo tampo (tubo de imersão nos R-201/202; descarga direta no R-101)",
            "SH": "selo hidráulico de sobre/subpressão (+8/−3 mbar)",
            "LT": "transmissor de nível (radar)"}
 
@@ -71,8 +71,9 @@ def escrever_bocais(linhas, pasta: Path):
         w.writeheader()
         w.writerows(linhas)
     L = ["# Lista de bocais De→Para — reatores e tanques PRFV (Gen E)\n",
-         "Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 4 (coleta "
-         "no chão e sistema de biogás), revisada pelo Crivo A–F independente e corrigida. "
+         "Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 5 (planta "
+         "enxuta: sem tanque de neutralização, alimentação pelo tampo), revisada pelo Crivo A–F "
+         "independente e corrigida. "
          "**Não furar antes de fechar a LAC-006** (arranjo "
          "de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). "
          "Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.\n",
@@ -107,8 +108,8 @@ def escrever_bocais(linhas, pasta: Path):
     L.append("- **TQ-301 (já fabricado):** passa a ser só armazenamento do digestato. Recebe "
              "pela P-301 no N1-270; N1-0 e N1-90 ficam cegos; novos só o extravasor e o LSHH.")
     L.append("- **Reatores, flanges cegos:** dois N2, o M1 e o A4. Os quatro N1 ficam em uso: "
-             "respiro de equalização da saída, descarga da ventosa da alça, selo hidráulico e "
-             "radar.")
+             "alimentação, respiro de equalização da saída (R-201/202), selo hidráulico e radar; "
+             "no R-101 sobra um N1 cego de reserva.")
     L.append("- **A4 (8\"):** é convertido em flange com cego multitomada. É o candidato ao "
              "transbordo dedicado (LAC-038) e às tomadas independentes de PSLL/PAHH (LAC-048).")
     L.append("- **R-101:** sem saída por transbordo na rev. 5; o único bocal novo é o LSHH. "
@@ -134,7 +135,7 @@ def escrever_bocais(linhas, pasta: Path):
             "**Dilatação do PEAD** entre o piso e os bocais altos (até ≈ 60 mm a ΔT 30 K). "
             "Prever liras ou mangote flexível junto ao bocal, sem carregar o PRFV.",
             "**Acessos e plataformas** (projeto CSTR, LAC proposta): V-201SAI e V-202SAI a "
-            "+7,6 m, LSHH a +8,35 m e ventosas das alças a +5,35/+9,35 m. As caixas e bombas "
+            "+7,6 m, LSHH a +8,35 m e válvulas de entrada no tampo (+4,85/+9,45). As caixas e bombas "
             "ficam no chão.",
             "**Tampa de visita M1:** aparafusada e removível, estanque a gás (LAC-029). Não "
             "é um cego definitivo.",
@@ -171,7 +172,9 @@ LACUNAS_PROPOSTAS = [
     ("LAC-046", "Selo das saídas: 330 mm de polpa (≈ 33 mbar) em vez dos 500 mmCA da proposta",
      "Decisão do responsável de processo", "CSTR – processo", "Gate 1"),
     ("LAC-047", "Estruturas de apoio das descidas; cargas admissíveis nos bocais novos; "
-     "plataformas de acesso às válvulas altas (V-xSAI, ventosas)", "Integridade dos "
+     "plataformas de acesso às válvulas altas (V-xSAI, V-xENT no tampo); tubo de imersão: "
+     "esforço lateral do misturador (guia inferior ou cálculo), inspeção e lavagem do furo",
+     "Integridade dos "
      "bocais PRFV e operação segura", "CSTR (S5) + Fibrais (cargas)", "Gate 3"),
     ("LAC-048", "Instrumentação complementar da RES-001 §5.6: tomadas independentes de "
      "PSLL/PAHH (A4 multitomada), LSL/LSLL do reator, analisador de O₂ no gás (SP-08), ZSC "
@@ -201,6 +204,9 @@ LACUNAS_PROPOSTAS = [
     ("LAC-055", "Dados para a neutralização em linha: alcalinidade, AGV e pH da saída do "
      "R-101; dose e reagente (NaOH, bicarbonato, cal); capacidade da DOS-201; faixa de pH e "
      "razão do RL-05", "Dimensionamento da dosagem e do controle", "CSTR – S1", "Gate 3"),
+    ("LAC-056", "R-101 fora de operação (inclusive pela LAC-031): by-pass RL-03 pela P-102 "
+     "direto à sucção da P-201 (engate previsto) e regra operacional", "Disponibilidade da "
+     "cascata sem o acidogênico", "CSTR – S1/S5", "Gate 3"),
     ("LAC-052", "Consumidores a jusante do GH-2 (SK-501, GE-601, caldeira): vazões e pressões "
      "de tie-in para fechar o volume do GH-2 e a pressão de descarga dos S-501",
      "Dimensionamento do GH-2 e dos sopradores", "CSTR – S3", "Gate 3"),

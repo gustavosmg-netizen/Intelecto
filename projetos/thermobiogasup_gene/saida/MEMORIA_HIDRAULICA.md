@@ -24,7 +24,7 @@ Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 5: planta enxuta, 
 ## 2. Arranjo da rev. 5
 
 **R-101 (acidogênico).**
-- Recebe da P-101 pelo tampo, com tubo de imersão até +1,20 m.
+- Recebe da P-101 pelo tampo, em **descarga direta** no N1, sem tubo de imersão. A saída é pelo fundo, então não há curto-circuito, e o quebra-sifão é inerente.
 - Sai pelo fundo (N2-135) para a P-201. O nível é variável, com controle por LT, e não há saída por transbordo.
 - Pulmão entre LSL (+2,80) e o nível de operação (+3,50): ≈ 5,6 m³. Isso cobre o pulmão que o TQ-201 fazia (≈ 1 m³).
 
@@ -40,6 +40,9 @@ Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA.** Revisão 5: planta enxuta, 
 **Alimentação dos R-201/202 pelo tampo com tubo de imersão** (C1 da F02 Rev. B):
 - Pulsos alternados pela XV-211 e pela XV-221, com volume por pulso no FQIT-201.
 - Quebra-sifão passivo pelo furo do tubo no espaço de gás, sem ventosa em lodo.
+- **Boca do tubo de imersão a +6,1 m.** A imersão fica limitada a ≈ 2,25 m abaixo do LSHH, para que, mesmo com τy = 100 Pa, a polpa dentro do tubo não suba até o furo quebra-sifão (+9,05).
+  - Com isso a entrada fica 1,4 m abaixo do N.A. O curto-circuito até o N-SAI é controlado pelo pulso pequeno e pelo intertravamento com o misturador.
+  - Ensaio de traçador na partida (LAC-047).
 
 **Saídas dos R-201/202 sem mudança:** bocal N-SAI no nível, respiro de equalização, descida livre e copos de selagem na CS-301 no chão. A saída por coluna a partir do N2 (C1) não foi adotada: deixa ≈ 7 m de tubo cheio de polpa e, com τy alto, o nível passaria do tampo.
 
@@ -72,38 +75,38 @@ A coluna **folga no furo** é a cota do furo quebra-sifão menos a superfície d
 
 | trem | caso | perda sucção (m) | perda recalque (m) | AMT (m) | AMT (bar) | pressão na crista (m) | folga no furo (m) | p. sucção no flange (m) | NPSHd (m) |
 |---|---|---|---|---|---|---|---|---|---|
-| P-101 → R-101 | otimista | 0,00 | 0,59 | 4,93 | 0,50 | 0,03 | 0,05 | — | — |
-| P-201 → R-201 | otimista | 0,12 | 1,07 | 8,53 | 0,86 | 0,03 | 0,61 | 2,38 | 10,87 |
-| P-201 → R-202 | otimista | 0,12 | 1,41 | 8,82 | 0,89 | 0,03 | 0,61 | 2,38 | 10,87 |
-| P-301 → TQ-301 (transferência) | otimista | 0,03 | 0,54 | 5,72 | 0,58 | — | — | 0,22 | 8,70 |
-| P-301 → sucção da P-201 (RL-05) | otimista | 0,03 | 1,11 | 4,64 | 0,47 | — | — | 0,22 | 8,70 |
+| P-101 → R-101 | otimista | 0,00 | 0,60 | 4,94 | 0,50 | 0,03 | — | — | — |
+| P-201 → R-201 | otimista | 0,12 | 1,07 | 8,53 | 0,86 | 0,03 | 0,66 | 2,38 | 10,87 |
+| P-201 → R-202 | otimista | 0,12 | 1,41 | 8,82 | 0,89 | 0,03 | 0,66 | 2,38 | 10,87 |
+| P-301 → TQ-301 (transferência) | otimista | 0,03 | 0,54 | 5,71 | 0,58 | — | — | 0,22 | 8,70 |
+| P-301 → sucção da P-201 (RL-05) | otimista | 0,03 | 1,18 | 4,71 | 0,48 | — | — | 0,22 | 8,70 |
 | P-301 ← TQ-301 (recirculação/expedição) | otimista | 0,28 | 0,54 | 5,46 | 0,55 | — | — | 0,47 | 8,95 |
-| Purga R-201 → P-301 → TQ-301 | otimista | 0,42 | 0,54 | -0,20 | -0,02 | — | — | 6,13 | 14,61 |
-| Purga R-202 → P-301 → TQ-301 | otimista | 0,52 | 0,54 | -0,10 | -0,01 | — | — | 6,03 | 14,51 |
-| P-101 → R-101 | central | 0,00 | 3,15 | 7,09 | 0,72 | 0,03 | -0,19 | — | — |
-| P-201 → R-201 | central | 0,67 | 5,78 | 13,39 | 1,35 | 0,03 | 0,17 | 1,83 | 10,31 |
-| P-201 → R-202 | central | 0,67 | 7,57 | 14,99 | 1,51 | 0,03 | 0,17 | 1,83 | 10,31 |
-| P-301 → TQ-301 (transferência) | central | 0,19 | 3,00 | 8,32 | 0,84 | — | — | 0,06 | 8,54 |
-| P-301 → sucção da P-201 (RL-05) | central | 0,19 | 6,05 | 9,74 | 0,98 | — | — | 0,06 | 8,54 |
-| P-301 ← TQ-301 (recirculação/expedição) | central | 1,63 | 3,00 | 9,26 | 0,94 | — | — | -0,88 | 7,61 |
-| Purga R-201 → P-301 → TQ-301 | central | 2,43 | 3,00 | 4,27 | 0,43 | — | — | 4,12 | 12,60 |
-| Purga R-202 → P-301 → TQ-301 | central | 2,98 | 3,00 | 4,82 | 0,49 | — | — | 3,57 | 12,05 |
-| P-101 → R-101 | pessimista | 0,00 | 10,46 | 14,60 | 1,48 | 1,39 | -0,86 | — | — |
-| P-201 → R-201 | pessimista | 2,23 | 19,21 | 28,79 | 2,91 | 1,62 | -1,08 | 0,27 | 8,76 |
-| P-201 → R-202 | pessimista | 2,23 | 25,15 | 34,74 | 3,51 | 2,22 | -1,08 | 0,27 | 8,76 |
-| P-301 → TQ-301 (transferência) | pessimista | 0,62 | 9,95 | 15,71 | 1,59 | — | — | -0,37 | 8,11 |
-| P-301 → sucção da P-201 (RL-05) | pessimista | 0,62 | 20,12 | 24,24 | 2,45 | — | — | -0,37 | 8,11 |
-| P-301 ← TQ-301 (recirculação/expedição) | pessimista | 5,41 | 9,95 | 20,01 | 2,02 | — | — | -4,66 | 3,82 |
-| Purga R-201 → P-301 → TQ-301 | pessimista | 8,10 | 9,95 | 16,89 | 1,71 | — | — | -1,55 | 6,93 |
-| Purga R-202 → P-301 → TQ-301 | pessimista | 9,93 | 9,95 | 18,72 | 1,89 | — | — | -3,38 | 5,10 |
+| Purga R-201 → P-301 → TQ-301 | otimista | 0,43 | 0,54 | -0,19 | -0,02 | — | — | 6,12 | 14,60 |
+| Purga R-202 → P-301 → TQ-301 | otimista | 0,53 | 0,54 | -0,10 | -0,01 | — | — | 6,02 | 14,50 |
+| P-101 → R-101 | central | 0,00 | 3,22 | 7,16 | 0,72 | 0,03 | — | — | — |
+| P-201 → R-201 | central | 0,67 | 5,78 | 13,39 | 1,35 | 0,03 | 0,49 | 1,83 | 10,31 |
+| P-201 → R-202 | central | 0,67 | 7,57 | 14,99 | 1,51 | 0,03 | 0,49 | 1,83 | 10,31 |
+| P-301 → TQ-301 (transferência) | central | 0,19 | 2,96 | 8,29 | 0,84 | — | — | 0,06 | 8,54 |
+| P-301 → sucção da P-201 (RL-05) | central | 0,19 | 6,40 | 10,09 | 1,02 | — | — | 0,06 | 8,54 |
+| P-301 ← TQ-301 (recirculação/expedição) | central | 1,63 | 2,96 | 9,23 | 0,93 | — | — | -0,88 | 7,61 |
+| Purga R-201 → P-301 → TQ-301 | central | 2,49 | 2,96 | 4,29 | 0,43 | — | — | 4,06 | 12,54 |
+| Purga R-202 → P-301 → TQ-301 | central | 3,04 | 2,96 | 4,85 | 0,49 | — | — | 3,51 | 11,99 |
+| P-101 → R-101 | pessimista | 0,00 | 10,68 | 13,87 | 1,40 | 0,43 | — | — | — |
+| P-201 → R-201 | pessimista | 2,23 | 19,21 | 27,70 | 2,80 | 0,52 | 0,02 | 0,27 | 8,76 |
+| P-201 → R-202 | pessimista | 2,23 | 25,15 | 33,64 | 3,40 | 1,13 | 0,02 | 0,27 | 8,76 |
+| P-301 → TQ-301 (transferência) | pessimista | 0,62 | 9,84 | 15,61 | 1,58 | — | — | -0,37 | 8,11 |
+| P-301 → sucção da P-201 (RL-05) | pessimista | 0,62 | 21,26 | 25,38 | 2,56 | — | — | -0,37 | 8,11 |
+| P-301 ← TQ-301 (recirculação/expedição) | pessimista | 5,41 | 9,84 | 19,90 | 2,01 | — | — | -4,66 | 3,82 |
+| Purga R-201 → P-301 → TQ-301 | pessimista | 8,30 | 9,84 | 16,98 | 1,72 | — | — | -1,75 | 6,73 |
+| Purga R-202 → P-301 → TQ-301 | pessimista | 10,13 | 9,84 | 18,82 | 1,90 | — | — | -3,58 | 4,90 |
 
 Leitura da tabela:
 
-- **Maior AMT:** P-201 → R-202 (pessimista), 3,51 bar.
+- **Maior AMT:** P-201 → R-202 (pessimista), 3,40 bar.
   - PCP de ≥ 2 estágios.
   - PSV com retorno, PSHH e PSL.
 - **Menor NPSHd:** 3,82 m (P-301 ← TQ-301 (recirculação/expedição), pessimista). Especificar NPSHr ≤ 3 m.
-- **Menor folga no furo do tubo de imersão:** -1,08 m (P-201 → R-201, pessimista).
+- **Menor folga no furo do tubo de imersão:** 0,02 m (P-201 → R-201, pessimista).
 - **AMT negativa nas purgas:** com τy baixo a AMT fica negativa e a P-301 trabalha como freio volumétrico.
   - Inversor com frenagem.
   - A XV de purga abre só com a bomba em marcha e fecha com ela.

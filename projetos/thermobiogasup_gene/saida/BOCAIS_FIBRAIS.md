@@ -1,6 +1,6 @@
 # Lista de bocais De→Para — reatores e tanques PRFV (Gen E)
 
-Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 4 (coleta no chão e sistema de biogás), revisada pelo Crivo A–F independente e corrigida. **Não furar antes de fechar a LAC-006** (arranjo de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.
+Situação: **DOCUMENTO DE TRABALHO — não liberado para emissão.** Revisão 5 (planta enxuta: sem tanque de neutralização, alimentação pelo tampo), revisada pelo Crivo A–F independente e corrigida. **Não furar antes de fechar a LAC-006** (arranjo de bocais e saída nivelada, FEA da modificação) **e a LAC-031** (envelope garantido). Estanqueidade a gás de M1/A4/flanges cegos: LAC-029.
 
 Convenções:
 - Flanges com furação ASME B16.5 Classe 150, face plana (FF) no PRFV. Válvulas FF e junta full-face.
@@ -23,7 +23,7 @@ Legenda: **NOVO** = furar, laminar o pescoço com reforço (repad) e flangear. *
 Leitura do resumo:
 - **Reatores (já fabricados):** os bocais novos são só a saída N-SAI DN150, com a soleira interna no N.A. (+3,50 / +7,50), e o LSHH DN50.
 - **TQ-301 (já fabricado):** passa a ser só armazenamento do digestato. Recebe pela P-301 no N1-270; N1-0 e N1-90 ficam cegos; novos só o extravasor e o LSHH.
-- **Reatores, flanges cegos:** dois N2, o M1 e o A4. Os quatro N1 ficam em uso: respiro de equalização da saída, descarga da ventosa da alça, selo hidráulico e radar.
+- **Reatores, flanges cegos:** dois N2, o M1 e o A4. Os quatro N1 ficam em uso: alimentação, respiro de equalização da saída (R-201/202), selo hidráulico e radar; no R-101 sobra um N1 cego de reserva.
 - **A4 (8"):** é convertido em flange com cego multitomada. É o candidato ao transbordo dedicado (LAC-038) e às tomadas independentes de PSLL/PAHH (LAC-048).
 - **R-101:** sem saída por transbordo na rev. 5; o único bocal novo é o LSHH. A retirada sai pelo N2-135 (fundo) à P-201.
 - **Alimentação de todos os reatores pelo tampo (N1)** com tubo de imersão interno e furo quebra-sifão. A Fibrais precisa confirmar a carga no tampo e a folga para o misturador (LAC-047). Se não for possível, a alternativa é descarregar direto no N1, sem tubo: ver ESTUDO_ALTERNATIVAS.
@@ -35,7 +35,7 @@ Leitura do resumo:
 - **Tubos de imersão no N1:** carga no tampo (≈ 30–60 kg cheios), fixação no flange, folga para pás e chicanas do misturador (SP-12).
 - **Detalhes internos da CS-301 (nova):** copos de selagem CP-201/202 com borda acima do nível máximo, sondas de pH/ORP nos copos e quebra-vórtice no N-SUC.
 - **Dilatação do PEAD** entre o piso e os bocais altos (até ≈ 60 mm a ΔT 30 K). Prever liras ou mangote flexível junto ao bocal, sem carregar o PRFV.
-- **Acessos e plataformas** (projeto CSTR, LAC proposta): V-201SAI e V-202SAI a +7,6 m, LSHH a +8,35 m e ventosas das alças a +5,35/+9,35 m. As caixas e bombas ficam no chão.
+- **Acessos e plataformas** (projeto CSTR, LAC proposta): V-201SAI e V-202SAI a +7,6 m, LSHH a +8,35 m e válvulas de entrada no tampo (+4,85/+9,45). As caixas e bombas ficam no chão.
 - **Tampa de visita M1:** aparafusada e removível, estanque a gás (LAC-029). Não é um cego definitivo.
 
 ## R-101 — desenho 315E-25
@@ -44,7 +44,7 @@ Leitura do resumo:
 |---|---|---|---|---|---|---|---|
 | N1-45 | 150 (6") | tampo az 45°, r = 1000 mm; face a 150 mm do tampo | 4850 | TAMPONAR (flange cego) | reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6) | — |  |
 | N1-135 | 150 (6") | tampo az 135°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
-| N1-225 | 150 (6") | tampo az 225°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) |  | R-101-AL | tubo de imersão interno DN150 até +1.20, furo quebra-sifão a +4.45 |
+| N1-225 | 150 (6") | tampo az 225°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | alimentação pelo tampo (tubo de imersão nos R-201/202; descarga direta no R-101) | R-101-AL |  |
 | N1-315 | 150 (6") | tampo az 315°, r = 1000 mm; face a 150 mm do tampo | 4850 | USAR (existente) | transmissor de nível (radar) | LT |  |
 | N2-45 | 150 (6") | costado az 45°; eixo a 300 mm do fundo interno | 300 | TAMPONAR (flange cego) | sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05) | — |  |
 | N2-135 | 150 (6") | costado az 135°; eixo a 300 mm do fundo interno | 300 | USAR (existente) | retirada pelo fundo à P-201 (bomba volumétrica; LC + XV falha-fecha; só com o reator ligado à bolsa GH-1 que recebe) | L-101S |  |
@@ -62,7 +62,7 @@ Leitura do resumo:
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
 | N1-45 | 150 (6") | tampo az 45°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
-| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) |  | R-201-AL | tubo de imersão interno DN150 até +2.50, furo quebra-sifão a +9.05 |
+| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | alimentação pelo tampo (tubo de imersão nos R-201/202; descarga direta no R-101) | R-201-AL | tubo de imersão interno DN150 até +6.10, furo quebra-sifão a +9.05 |
 | N1-225 | 150 (6") | tampo az 225°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | respiro de equalização da descida da saída (quebra-sifão, gás) | R-201-RS |  |
 | N1-315 | 150 (6") | tampo az 315°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | transmissor de nível (radar) | LT |  |
 | N2-45 | 150 (6") | costado az 45°; eixo a 300 mm do fundo interno | 300 | TAMPONAR (flange cego) | sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05) | — |  |
@@ -82,7 +82,7 @@ Leitura do resumo:
 | bocal | DN | posição | z abs. (mm) | ação | serviço | ligado a | nota |
 |---|---|---|---|---|---|---|---|
 | N1-45 | 150 (6") | tampo az 45°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | selo hidráulico de sobre/subpressão (+8/−3 mbar) | SH |  |
-| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) |  | R-202-AL | tubo de imersão interno DN150 até +2.50, furo quebra-sifão a +9.05 |
+| N1-135 | 150 (6") | tampo az 135°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | alimentação pelo tampo (tubo de imersão nos R-201/202; descarga direta no R-101) | R-202-AL | tubo de imersão interno DN150 até +6.10, furo quebra-sifão a +9.05 |
 | N1-225 | 150 (6") | tampo az 225°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | respiro de equalização da descida da saída (quebra-sifão, gás) | R-202-RS |  |
 | N1-315 | 150 (6") | tampo az 315°, r = 1300 mm; face a 150 mm do tampo | 9450 | USAR (existente) | transmissor de nível (radar) | LT |  |
 | N2-45 | 150 (6") | costado az 45°; eixo a 300 mm do fundo interno | 300 | TAMPONAR (flange cego) | sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05) | — |  |

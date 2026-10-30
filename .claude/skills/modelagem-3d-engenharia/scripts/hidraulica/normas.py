@@ -179,7 +179,7 @@ FF_CORTA_CHAMAS = {50: 300, 80: 360, 100: 420, 150: 520, 200: 620}
 # misturador estático em linha (≈ 6–8 D de elementos) e carretel de medição (vazão
 # eletromagnética ou sonda de pH/ORP em linha): comprimentos típicos de catálogo
 FF_MISTURADOR = {25: 250, 50: 400, 80: 560, 100: 700, 150: 1000}
-FF_MEDIDOR = {25: 200, 50: 250, 80: 300, 100: 350, 150: 450}
+FF_MEDIDOR = {25: 200, 32: 200, 50: 250, 80: 300, 100: 350, 150: 450}
 
 
 def face_a_face(tipo: str, dn: int) -> float:

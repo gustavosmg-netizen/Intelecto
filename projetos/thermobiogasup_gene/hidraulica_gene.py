@@ -238,7 +238,6 @@ def trens(m, nv):
         "P-101 → R-101": {
             "suc": [], "rec": [("R-101-AL", 0, comp("R-101-AL"), ())],
             "crista": ("R-101-AL", _s_reto(al0, al0.spec["crista"]), crista("R-101-AL")),
-            "imersao": imersao(al0, "R-101"),
             "z_fonte": 1.20, "z_bomba": 1.20, "z_dest": nv["R-101"]["LSHH"] / 1000,
             "p_dest": P_GAS_OP, "fonte": "tie-in da P-101 a +1,20 (pressão a fornecer pela Ilha 1)",
             "destino": "R-101 no LSHH"},
@@ -555,7 +554,8 @@ def memoria(m, nv, res, arquivo_md, figura):
       f"P_vapor {_f(P_VAP_KPA, 1)} kPa.\n")
     w("## 2. Arranjo da rev. 5\n")
     w("**R-101 (acidogênico).**")
-    w("- Recebe da P-101 pelo tampo, com tubo de imersão até +1,20 m.")
+    w("- Recebe da P-101 pelo tampo, em **descarga direta** no N1, sem tubo de imersão. A "
+      "saída é pelo fundo, então não há curto-circuito, e o quebra-sifão é inerente.")
     w("- Sai pelo fundo (N2-135) para a P-201. O nível é variável, com controle por LT, e não "
       "há saída por transbordo.")
     rr = res.get("residuo", {})
@@ -581,6 +581,12 @@ def memoria(m, nv, res, arquivo_md, figura):
     w("\n**Alimentação dos R-201/202 pelo tampo com tubo de imersão** (C1 da F02 Rev. B):")
     w("- Pulsos alternados pela XV-211 e pela XV-221, com volume por pulso no FQIT-201.")
     w("- Quebra-sifão passivo pelo furo do tubo no espaço de gás, sem ventosa em lodo.")
+    w("- **Boca do tubo de imersão a +6,1 m.** A imersão fica limitada a ≈ 2,25 m abaixo do "
+      "LSHH, para que, mesmo com τy = 100 Pa, a polpa dentro do tubo não suba até o furo "
+      "quebra-sifão (+9,05).")
+    w("  - Com isso a entrada fica 1,4 m abaixo do N.A. O curto-circuito até o N-SAI é "
+      "controlado pelo pulso pequeno e pelo intertravamento com o misturador.")
+    w("  - Ensaio de traçador na partida (LAC-047).")
     w("\n**Saídas dos R-201/202 sem mudança:** bocal N-SAI no nível, respiro de equalização, "
       "descida livre e copos de selagem na CS-301 no chão. A saída por coluna a partir do N2 "
       "(C1) não foi adotada: deixa ≈ 7 m de tubo cheio de polpa e, com τy alto, o nível "

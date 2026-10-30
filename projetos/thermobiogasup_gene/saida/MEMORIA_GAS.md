@@ -1,4 +1,4 @@
-# Memória do sistema de biogás — Gen E rev. 4 (documento de trabalho)
+# Memória do sistema de biogás — Gen E rev. 5 (documento de trabalho)
 
 Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA**, sujeita ao Crivo A–F independente. Pressões em mbar manométricos no sítio de referência (Congonhas/MG, ≈ 870 m). Sem valores monetários.
 
@@ -24,7 +24,9 @@ O sistema tem dois níveis de pressão, e os reatores ficam praticamente sem pre
    - Camada mecânica (RES-001 D-RES-12): a válvula autoatuada PCV-501 mantém a pressão a montante, na bolsa, em ≈ +0,3 mbar.
    - Trips hardwired do S-501: LSLL de qualquer bolsa, PSLL medido na bolsa (≤ +0,5 mbar), PALL de qualquer reator, TSHH dos corta-chamas e O₂ alto. O PSLL de sucção, a −5 mbar, protege só o soprador.
    - O by-pass BYP-501 (descarga dos sopradores direto ao flare) serve para manutenção do GH-2 e fica fechado com chave presa.
-4. **Retiradas de líquido, pela mesma lógica.** Purga ou esgotamento de um reator só acontece com ele ligado ao GH-1 que recebe (V-xGAS aberta, ZSO), com esse gasômetro ≥ 70% (RES-001 §5.6) e sem transferência ativa daquela bolsa. O gás da bolsa repõe o volume retirado e o reator não entra em vácuo.
+4. **Retiradas de líquido, pela mesma lógica.** Purga ou esgotamento de um reator só acontece com ele ligado ao GH-1 que recebe (V-xGAS aberta, ZSO), com esse gasômetro com volume ≥ pulso + 10 m³ e sem transferência ativa daquela bolsa. O gás da bolsa repõe o volume retirado e o reator não entra em vácuo.
+   - **Na rev. 5 isso é rotina:** a P-201 aspira o R-101 em pulsos de ≈ 0,6 m³, que pedem ≈ 0,6 m³ de gás de volta da bolsa.
+   - Barreiras: PAL em −0,5 e PALL em −1,5 mbar com PT independente, e PALLL antes do selo do reator, que abre a −3 mbar (ver matriz).
 
 ## 2. Propriedades e vazões
 

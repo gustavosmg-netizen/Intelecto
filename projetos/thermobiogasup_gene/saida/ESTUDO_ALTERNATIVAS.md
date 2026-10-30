@@ -50,12 +50,12 @@ A P-302 dedicada sai. A P-301 faz as purgas por um manifold de sucção com chav
 
 | indicador | rev. 4 | rev. 5 | Δ |
 |---|---|---|---|
-| tubo DE110 (m) | 96,3 | 89,3 | -7,0 |
-| tubo DE160 (m) | 71,2 | 38,5 | -32,6 |
-| tubo DE32 (m) | 0,0 | 2,3 | 2,3 |
+| tubo DE110 (m) | 96,3 | 89,6 | -6,8 |
+| tubo DE160 (m) | 71,2 | 38,1 | -33,0 |
+| tubo DE32 (m) | 0,0 | 2,1 | 2,1 |
 | tubo DE63 (m) | 52,8 | 39,8 | -13,1 |
-| tubo DE90 (m) | 77,8 | 76,2 | -1,5 |
-| tubo total (m) | 298,1 | 246,2 | -51,9 |
+| tubo DE90 (m) | 77,8 | 75,2 | -2,6 |
+| tubo total (m) | 298,1 | 244,8 | -53,3 |
 | bocais novos nos tanques Fibrais existentes | 8 | 7 | -1 |
 | bomba móvel de reserva | 1 | 1 | 0 |
 | bombas instaladas | 3 | 2 | -1 |
@@ -63,9 +63,9 @@ A P-302 dedicada sai. A P-301 faz as purgas por um manifold de sucção com chav
 | curvas | 93 | 65 | -28 |
 | flanges cegos nos tanques Fibrais existentes | 19 | 23 | 4 |
 | gasômetros | 3 | 3 | 0 |
-| instrumentos de segurança | 11 | 11 | 0 |
+| instrumentos de segurança | 11 | 13 | 2 |
 | sopradores (skid A+B) | 2 | 2 | 0 |
-| válvulas e ventosas | 55 | 47 | -8 |
+| válvulas e ventosas | 55 | 50 | -5 |
 
 **Unidades que saem na rev. 5:**
 - TQ-201 com o agitador AG-200 e o FCA-201;

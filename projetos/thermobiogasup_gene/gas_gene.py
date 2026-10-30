@@ -1,4 +1,4 @@
-"""Memória do sistema de biogás (Gen E rev. 4) e matriz de causa e efeito.
+"""Memória do sistema de biogás (Gen E rev. 5) e matriz de causa e efeito.
 
 Arquitetura (pedido do cliente): os reatores só EMPURRAM gás para um gasômetro de pressão
 quase nula (GH-1). A retirada do GH-1 acontece só pela linha exclusiva de saída, com a ENTRADA
@@ -123,7 +123,7 @@ def _f(x, n=2):
 def memoria(m, res, arquivo):
     L = []
     w = L.append
-    w("# Memória do sistema de biogás — Gen E rev. 4 (documento de trabalho)\n")
+    w("# Memória do sistema de biogás — Gen E rev. 5 (documento de trabalho)\n")
     w("Situação: **PROPOSTA DE TRABALHO, NÃO LIBERADA**, sujeita ao Crivo A–F independente. "
       "Pressões em mbar manométricos no sítio de referência (Congonhas/MG, ≈ 870 m). Sem "
       "valores monetários.\n")
@@ -167,9 +167,12 @@ def memoria(m, res, arquivo):
       "do GH-2 e fica fechado com chave presa.")
     w("4. **Retiradas de líquido, pela mesma lógica.** Purga ou esgotamento de um reator só "
       "acontece com ele ligado ao GH-1 que recebe (V-xGAS aberta, ZSO), com esse gasômetro "
-      "≥ 70% (RES-001 §5.6) e sem transferência ativa daquela bolsa. O gás da bolsa repõe o "
-      "volume retirado "
-      "e o reator não entra em vácuo.\n")
+      "com volume ≥ pulso + 10 m³ e sem transferência ativa daquela bolsa. O gás da bolsa "
+      "repõe o volume retirado e o reator não entra em vácuo.")
+    w("   - **Na rev. 5 isso é rotina:** a P-201 aspira o R-101 em pulsos de ≈ 0,6 m³, que "
+      "pedem ≈ 0,6 m³ de gás de volta da bolsa.")
+    w("   - Barreiras: PAL em −0,5 e PALL em −1,5 mbar com PT independente, e PALLL antes do "
+      "selo do reator, que abre a −3 mbar (ver matriz).\n")
     w("## 2. Propriedades e vazões\n")
     w(f"- **Biogás** 60% CH₄ / 40% CO₂: ρ = {_f(res['rho'], 3)} kg/m³ no sítio a 35 °C. "
       f"Fator Nm³ → m³ reais: {_f(res['fator'], 3)}.")
@@ -248,21 +251,29 @@ MATRIZ = [
     ("LSH de reator", "+4,20 / +8,20 m", "Alarme (saída obstruída?)", "alarme"),
     ("PAH / PAHH do reator", "+5 / +6 mbar", "PAHH: para a alimentação; parte S-501B e "
      "abre a XV-FL; último recurso: alívio conduzido do GH-1", "SIF a definir no HAZOP"),
-    ("PALL do reator", "0 mbar", "Fecha as XV de purga e a XV-101S, para P-201, P-301 em "
-     "purga e "
-     "o S-501, e fecha as saídas dos GH-1", "hardwired"),
+    ("PAL / PALL do reator (PT independente do PT de controle)", "−0,5 / −1,5 mbar",
+     "PAL: interrompe o pulso e a purga. PALL: fecha as XV de purga, a XV-101S e as saídas dos "
+     "GH-1; para P-201, P-301 em purga e S-501", "hardwired"),
+    ("PALLL do reator (antes do selo, −3 mbar)", "−2,5 mbar", "Trip geral das retiradas e "
+     "alarme de entrada de ar iminente (selo e M2 admitem ar num espaço IIC)", "SIF (LOPA)"),
     ("ZSC da V-xSAI / V-xRS ou da V-xGAS fechada", "—", "Bloqueia a alimentação do reator "
      "(saída ou gás isolados)", "permissivo"),
     ("LSLL do R-101", "+2,40 m", "Para a P-201 e fecha a XV-101S (não esvazia o acidogênico)",
      "SIF"),
     ("LSL do R-101", "+2,80 m", "Bloqueia novo pulso da P-201", "permissivo"),
-    ("pH em linha fora da faixa (AIT-201)", "a definir (≈ 6,5–7,5)", "Interrompe o pulso "
-     "(fecha XV-211/221, para a P-201); alarme", "CLP"),
+    ("pH em linha fora da faixa (AIT-201/201B)", "a definir (≈ 6,5–7,5; alto e baixo)",
+     "Interrompe o pulso (fecha XV-211/221, para a P-201 e a DOS-201); alarme", "CLP"),
     ("pH/ORP na saída de um metanogênico (AIT-212/222)", "a definir", "Alarme; reduz a carga "
      "daquele reator (menos pulsos)", "CLP"),
-    ("Falha da dosadora DOS-201 (sem vazão)", "—", "Interrompe o pulso", "CLP"),
-    ("XV-RL05 (retorno alcalino à sucção da P-201)", "—", "Só abre com a P-201 em marcha, "
-     "com vazão em razão (FIT)", "intertravamento"),
+    ("Falha da dosadora (FIT-DOS sem vazão)", "—", "Interrompe o pulso", "CLP"),
+    ("Dosagem sem vazão da P-201 (FQIT-201 < mínimo)", "—", "Para a DOS-201 (evita tampão de "
+     "pH alto na linha)", "intertravamento"),
+    ("Desvio entre AIT-201 e AIT-201B", "> 0,3 pH", "Interrompe o pulso; alarme de "
+     "calibração (2oo2)", "CLP"),
+    ("XV-RL05 (retorno alcalino à sucção da P-201)", "—", "Falha-fecha; só abre com P-201 E "
+     "P-301 em marcha; FIT-RL05 ≤ fração da vazão da P-201", "intertravamento"),
+    ("XV-101AL (alimentação do R-101)", "—", "Falha-fecha; só aberta com a P-101 em marcha "
+     "(sem retorno à Ilha 1)", "intertravamento"),
     ("Misturador do reator de destino parado", "—", "Bloqueia o pulso para aquele reator "
      "(curto-circuito)", "permissivo"),
     ("LSLL da CS-301", "+0,70 m", "Para a P-301", "hardwired"),
@@ -273,9 +284,12 @@ MATRIZ = [
     ("PSHH na descarga das PCP", "abaixo da classe do PEAD", "Trip da bomba (a PSV alivia "
      "antes de qualquer válvula)", "hardwired"),
     ("PSL na sucção das PCP", "—", "Trip da bomba (marcha a seco)", "hardwired"),
-    ("Permissivo de purga (P-301) e de retirada do R-101 (P-201)", "—", "V-xGAS aberta (ZSO), bolsa que recebe "
-     "≥ 70%, destino < LSH, nenhuma outra retirada; a XV abre só com a bomba em marcha e "
-     "fecha com ela", "permissivo"),
+    ("Permissivo de retirada do R-101 (pulso da P-201) e de purga (P-301)", "—", "V-xGAS "
+     "aberta (ZSO); volume da bolsa que recebe ≥ volume do pulso + 10 m³; pressão do reator "
+     "≥ −0,5 mbar durante a retirada; destino < LSH; nenhuma outra retirada; a XV abre só com a "
+     "bomba em marcha e fecha com ela", "permissivo"),
+    ("Permissivo de purga (adicional)", "—", "CS-301 ≤ LSL e ≥ 30 min após o último pulso "
+     "(a V-301S fica fechada durante a purga)", "permissivo"),
     ("Permissivo de entrada de uma bolsa GH-1", "—", "Saída da mesma bolsa fechada (ZSC) e "
      "S-501 parado", "intertravamento"),
     ("Permissivo de saída de uma bolsa GH-1", "—", "Entrada da mesma bolsa fechada (ZSC), "
@@ -309,7 +323,7 @@ MATRIZ = [
 
 
 def matriz(arquivo):
-    L = ["# Matriz de causa e efeito e monitoramento — Gen E rev. 4 (documento de trabalho)\n",
+    L = ["# Matriz de causa e efeito e monitoramento — Gen E rev. 5 (documento de trabalho)\n",
          "Base: RES-001 §5.6 e as regras do cliente (retiradas só por linha exclusiva, com "
          "anti-retorno e a fonte em recebimento). Os ajustes são propostas, a confirmar no "
          "HAZOP/LOPA. As SIF exigem sensores independentes dos de controle (LAC-048).\n",

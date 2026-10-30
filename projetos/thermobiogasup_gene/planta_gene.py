@@ -41,6 +41,8 @@ NIVEL = {
 SELO_MIN = 330.0          # mm de polpa no copo de selagem (≈ 33 mbar): 2,7× a abertura do dispositivo
                           # de emergência (+12 mbar) e 4× o envelope de vácuo (−8 mbar R-201/202;
                           # −6 mbar R-101, emergência −4/−5); RES-001 LQ-04 pede ≥ 250 mm
+Z_IMERSAO = 6100.0        # boca do tubo de imersão dos R-201/202: imersão ≤ 2,25 m abaixo do LSHH,
+                          # para a polpa (τy 100 Pa) não subir até o furo quebra-sifão
 TOPO_ALIM = 900.0         # linha de alimentação cruza o tampo a +0,9 m e desce ao N1 (tubo de imersão)
 S_DESC = 0.40             # declividade mínima de projeto das descidas livres (as adotadas ficam ≥ 0,64)
 
@@ -313,19 +315,22 @@ def alimentacao(m, tq, L):
     # R-101: P-101 (Ilha 1) pelo tie-in a oeste
     n1 = _n1_livre(tq, "R-101", 225, "R-101-AL")
     Rp, Pn, zt = _sobe_ao_n1(m, tq, "R-101", 225, n1)
-    prfv.tubo_imersao(m, tq["R-101"], n1.tag, 1200, tq["R-101"].z_tampo - 250)
     L.append({**PEAD, "tag": "R-101-AL", "servico": "esgoto", "regime": "pressao", "de": 90,
               "raio_curva": 2.0, "vazao_ls": round(6 / 3.6, 2), "suportes": False,
               "origem": {"ponto": [-6500, round(Rp.Y, 1), 1200], "direcao": [1, 0, 0],
                          "descricao": "descarga da P-101 (Ilha 1)"},
               "pontos": [xyz(V(Rp.X, Rp.Y, 1200)), xyz(V(Rp.X, Rp.Y, zt)), xyz(V(Pn.X, Pn.Y, zt))],
-              "destino": f"R-101.{n1.tag}", "crista": 2, "imersao": (1200, n1.tag),
-              "ponto_alto": "quebra-sifão pelo furo do tubo de imersão (espaço de gás)",
+              "destino": f"R-101.{n1.tag}", "crista": 2,
+              "ponto_alto": "descarga livre no espaço de gás do R-101 (sem tubo de imersão: "
+                            "a saída do R-101 é pelo fundo, sem curto-circuito)",
               "componentes": [{"tipo": "retencao", "tag": "V-101RT", "distancia": 300,
                                "rotulo": "Válvula de retenção de esfera flangeada"},
                               {"tipo": "gaveta", "tag": "V-101BQ",
                                "rotulo": "Válvula guilhotina (faca) flangeada"},
                               {"tipo": "junta_desmontagem", "tag": "JD-101"},
+                              {"tipo": "gaveta", "tag": "XV-101AL",
+                               "rotulo": "Válvula guilhotina (faca) atuada falha-fecha",
+                               "nota": "abre só com a P-101 em marcha"},
                               {"tipo": "reducao", "tag": "A-101ENT", "de2": 160, "distancia": "fim"},
                               {"tipo": "gaveta", "tag": "V-101ENT", "distancia": "fim",
                                "rotulo": "Válvula guilhotina (faca) flangeada",
@@ -350,7 +355,7 @@ def alimentacao(m, tq, L):
     y_h, z_h = -3000, 1200
     n1a = _n1_livre(tq, "R-201", 135, "R-201-AL")
     Rp1, Pn1, zt1 = _sobe_ao_n1(m, tq, "R-201", 135, n1a)
-    prfv.tubo_imersao(m, tq["R-201"], n1a.tag, 2500, tq["R-201"].z_tampo - 250)
+    prfv.tubo_imersao(m, tq["R-201"], n1a.tag, Z_IMERSAO, tq["R-201"].z_tampo - 250)
     x_dos, x_te = 6800, 10200
     L.append({**PEAD, "tag": "R-201-AL", "servico": "esgoto", "regime": "pressao", "de": 90,
               "raio_curva": 2.0, "vazao_ls": round(6 / 3.6, 2), "suportes": False,
@@ -358,7 +363,7 @@ def alimentacao(m, tq, L):
               "pontos": [xyz(V(R.X + 1300, R.Y, R.Z)), xyz(V(R.X + 1300, y_h, z_h)),
                          xyz(V(Rp1.X, y_h, z_h)), xyz(V(Rp1.X, Rp1.Y, z_h)),
                          xyz(V(Rp1.X, Rp1.Y, zt1)), xyz(V(Pn1.X, Pn1.Y, zt1))],
-              "destino": f"R-201.{n1a.tag}", "crista": 5, "imersao": (2500, n1a.tag),
+              "destino": f"R-201.{n1a.tag}", "crista": 5, "imersao": (Z_IMERSAO, n1a.tag),
               "ponto_alto": "quebra-sifão pelo furo do tubo de imersão (espaço de gás)",
               "componentes": [{"tipo": "retencao", "tag": "V-201RT", "distancia": 150,
                                "rotulo": "Válvula de retenção de esfera flangeada"},
@@ -369,8 +374,12 @@ def alimentacao(m, tq, L):
                                "distancia": {"trecho": 2, "pos": "inicio", "offset": 1600},
                                "rotulo": "Misturador estático em linha (neutralização)"},
                               {"tipo": "medidor", "tag": "AIT-201",
+                               "distancia": {"trecho": 2, "pos": "inicio", "offset": 3100},
                                "rotulo": "pH/ORP em linha na entrada dos metanogênicos (AIC-201 "
-                                         "comanda a dosagem)"},
+                                         "comanda a dosagem; ≥ 10 D após o MX-201)"},
+                              {"tipo": "medidor", "tag": "AIT-201B",
+                               "rotulo": "Segundo pH em linha (2oo2 com o AIT-201, para o "
+                                         "intertravamento do pulso)"},
                               {"tipo": "medidor", "tag": "FQIT-201",
                                "rotulo": "Medidor eletromagnético de vazão com totalizador "
                                          "(volume por pulso)"},
@@ -394,20 +403,22 @@ def alimentacao(m, tq, L):
               "ponto_alto": "injeção pressurizada pela dosadora (respiro no skid)",
               "componentes": [{"tipo": "retencao", "tag": "V-DOSRT", "distancia": 150,
                                "rotulo": "Válvula de retenção de injeção (química)"},
+                              {"tipo": "medidor", "tag": "FIT-DOS",
+                               "rotulo": "Medidor de vazão da dosagem (confirma injeção)"},
                               {"tipo": "gaveta", "tag": "V-DOS",
-                               "rotulo": "Válvula de bloqueio da injeção"},
+                               "rotulo": "Válvula anti-sifão / bloqueio da injeção"},
                               {"tipo": "junta_desmontagem", "tag": "JD-DOS"}]})
     # R-202: ramal depois da medição, pulso pela XV-221
     n1b = _n1_livre(tq, "R-202", 135, "R-202-AL")
     Rp2, Pn2, zt2 = _sobe_ao_n1(m, tq, "R-202", 135, n1b)
-    prfv.tubo_imersao(m, tq["R-202"], n1b.tag, 2500, tq["R-202"].z_tampo - 250)
+    prfv.tubo_imersao(m, tq["R-202"], n1b.tag, Z_IMERSAO, tq["R-202"].z_tampo - 250)
     L.append({**PEAD, "tag": "R-202-AL", "servico": "esgoto", "regime": "pressao", "de": 90,
               "raio_curva": 2.0, "suportes": False,
               "origem": {"te": "R-201-AL", "ponto": [x_te, y_h, z_h], "direcao": [0, -1, 0]},
               "pontos": [xyz(V(x_te, -3750, z_h)), xyz(V(Rp2.X, -3750, z_h)),
                          xyz(V(Rp2.X, Rp2.Y, z_h)), xyz(V(Rp2.X, Rp2.Y, zt2)),
                          xyz(V(Pn2.X, Pn2.Y, zt2))],
-              "destino": f"R-202.{n1b.tag}", "crista": 4, "imersao": (2500, n1b.tag),
+              "destino": f"R-202.{n1b.tag}", "crista": 4, "imersao": (Z_IMERSAO, n1b.tag),
               "ponto_alto": "quebra-sifão pelo furo do tubo de imersão (espaço de gás)",
               "componentes": [{"tipo": "gaveta", "tag": "XV-221",
                                "distancia": {"trecho": 1, "pos": "inicio", "offset": 200},
@@ -460,7 +471,10 @@ def linhas(m, tq):
                   "nota": "LC; chave presa única V-201PG × V-202PG × V-301S × V-301N3"},
                  {"tipo": "gaveta", "tag": f"XV-{t[2:]}PG",
                   "rotulo": "Válvula guilhotina (faca) flangeada, atuada falha-fecha",
-                  "nota": "abre só com a P-301 em marcha e os permissivos de retirada"}]
+                  "nota": "abre só com a P-301 em marcha e os permissivos de retirada"},
+                 {"tipo": "gaveta", "tag": f"XV-{t[2:]}PG2",
+                  "rotulo": "Válvula guilhotina (faca) atuada falha-fecha (segundo bloqueio)",
+                  "nota": "bloqueio duplo: o reator (+7,5) fica acima da crista da L-301R"}]
         if t == "R-201":
             L.append({**PEAD, "tag": "R-201-PG", "servico": "lodo", "regime": "pressao",
                       "de": 160, "raio_curva": 1.0, "suportes": False, "origem": "R-201.N2-135",
@@ -485,6 +499,7 @@ def linhas(m, tq):
     z_top = tq["TQ-301"].z_tampo + 1300
     L.append({**PEAD, "tag": "L-301R", "servico": "lodo", "regime": "pressao", "de": 110,
               "suportes": False, "origem": "P-301.recalque",
+              "ponto_alto": "descarga livre no N1-270 do TQ-301 (ventila a linha; sem ventosa a ar)",
               "pontos": [xyz(V(R3.X, y_r, R3.Z)), xyz(V(x_r, y_r, R3.Z)),
                          xyz(V(x_r, y_r, z_top)), xyz(V(x_r, C["TQ-301"][1], z_top))],
               "destino": "TQ-301.N1-270",
@@ -494,9 +509,6 @@ def linhas(m, tq):
                               {"tipo": "gaveta", "tag": "V-301BQ",
                                "rotulo": "Válvula guilhotina (faca) flangeada"},
                               {"tipo": "junta_desmontagem", "tag": "JD-301"},
-                              {"tipo": "ventosa", "tag": "VQ-301", "dn_ramal": 50,
-                               "distancia": {"trecho": 3, "pos": "inicio", "offset": 150},
-                               "rotulo": "Tê + ventosa de esgoto (corpo longo), quebra-vácuo a ar"},
                               {"tipo": "reducao", "tag": "R-301RD", "de2": 160, "distancia": "fim"}]})
     Fr, nr = P(m, "R-101.N2-135")
     y_rl = round((Fr + nr * 600).Y, 1)              # trecho reto da L-101S
@@ -508,9 +520,13 @@ def linhas(m, tq):
                          xyz(V(x_rl, -2100, 300))],
               "destino": {"te": "L-101S", "ponto": [x_rl, y_rl, 300], "direcao": [0, -1, 0]},
               "componentes": [{"tipo": "gaveta", "tag": "XV-RL05", "distancia": 400,
-                               "rotulo": "Válvula guilhotina (faca) flangeada, atuada com FIT",
-                               "nota": "retorno alcalino (RL-05) à sucção da P-201: só com a "
-                                       "P-201 em marcha, vazão em razão com a dela"}]})
+                               "rotulo": "Válvula guilhotina (faca) atuada falha-fecha",
+                               "nota": "só aberta com P-201 E P-301 em marcha; vazão ≤ fração da "
+                                       "P-201"},
+                              {"tipo": "medidor", "tag": "FIT-RL05",
+                               "rotulo": "Medidor eletromagnético de vazão do RL-05"},
+                              {"tipo": "retencao", "tag": "V-RL05RT",
+                               "rotulo": "Válvula de retenção de esfera (anti-refluxo ao R-101)"}]})
     L.append({**PEAD, "tag": "L-EXP", "servico": "lodo", "regime": "pressao", "de": 110,
               "suportes": False,
               "origem": {"te": "L-301R", "ponto": [x_r, round(y_r, 1), 1100], "direcao": [1, 0, 0]},
@@ -693,6 +709,12 @@ def seguranca(m):
         m.item("Chave de posição ZSC na V-xGAS e nas válvulas de isolamento (permissivos)", t,
                "cj", 1)
         m.item("Transmissor de temperatura TIT por reator (sem aquecimento, D5)", t, "un", 1)
+    for t in ("R-201", "R-202"):
+        m.item("Sonda pH/ORP no copo de saída (AIT-212/222) com transmissor", t, "un", 1)
+    m.item("PT independente por reator para PALL/PALLL (separado do PT de controle)",
+           "R-101/201/202", "un", 3)
+    m.item("Engate de by-pass na sucção da P-201 (R-101 fora de operação: RL-03/P-102)",
+           "L-101S", "un", 1)
     m.item("Bomba PCP móvel de reserva sobre skid com mangotes (engate N-BYP da CS-301; "
            "mobilização ≤ 30 min)", "reserva da P-301 e da P-201", "cj", 1)
     m.item("Conexões de lavagem com água (engate rápido) nas linhas de purga e de retirada",
