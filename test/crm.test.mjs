@@ -139,7 +139,9 @@ test("Worker: nenhuma ação nova checa linhas afetadas por `r.meta` (sempre und
 });
 
 test("Worker: schema novo com bump de SCHEMA_VER e migração própria", () => {
-  assert.match(ts, /const SCHEMA_VER = "2026-10-29b";/);
+  // as tabelas do CRM nasceram em 2026-10-29b: qualquer versão posterior as mantém.
+  const ver = (ts.match(/const SCHEMA_VER = "([^"]+)";/) || [])[1] || "";
+  assert.ok(ver >= "2026-10-29b", "SCHEMA_VER " + ver);
   const mig = readFileSync(join(root, "migrations/0013_crm_tags_atividades_filtros.sql"), "utf8");
   for (const t of ["crm_tag", "crm_deal_tag", "crm_atividade", "filtro_salvo"]) {
     assert.match(mig, new RegExp("CREATE TABLE IF NOT EXISTS " + t + " "));

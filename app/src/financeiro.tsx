@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtBRL, fmtHoras, ApiError, type StateResp, type Proj } from "./api";
+import { ContasQuadro } from "./fincontas";
 
 function ErroCard({ e }: { e: ApiError }) {
   const login = e.status === 401;
@@ -10,7 +11,7 @@ function ErroCard({ e }: { e: ApiError }) {
 const th: React.CSSProperties = { textAlign: "left", padding: "8px 10px", font: "600 11px var(--fm)", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)" };
 const td: React.CSSProperties = { padding: "8px 10px" };
 
-const ABAS = ["Resumo", "Carteira", "Conciliação"] as const;
+const ABAS = ["Resumo", "Contas", "Carteira", "Conciliação"] as const;
 type Aba = typeof ABAS[number];
 
 export function Financeiro() {
@@ -21,6 +22,7 @@ export function Financeiro() {
         {ABAS.map((a) => <button key={a} className="btn" style={a === aba ? { background: "var(--brand-soft)", borderColor: "var(--brand)" } : {}} onClick={() => setAba(a)}>{a}</button>)}
       </nav>
       {aba === "Resumo" && <Resumo />}
+      {aba === "Contas" && <ContasQuadro />}
       {aba === "Carteira" && <CarteiraFin />}
       {aba === "Conciliação" && <Conciliacao />}
       <p className="muted" style={{ fontSize: 12.5, marginTop: 16 }}>

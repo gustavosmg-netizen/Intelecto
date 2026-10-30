@@ -68,7 +68,7 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 - `ensureSchema()` cria/ajusta tabelas em runtime no 1º request após mudança de `SCHEMA_VER`
   (`src/index.ts`, `const SCHEMA_VER`). **Toda mudança de schema exige bump de `SCHEMA_VER`** — sem o
   bump o D1 existente pula o setup e a tabela nunca nasce em produção.
-- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0013 `crm_tags_atividades_filtros`). Toda
+- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0014 `fin_tags`). Toda
   tabela nova ganha migração própria, idempotente (`IF NOT EXISTS`, sem `DROP`/`DELETE`). Numerar em
   sequência e checar se outro PR aberto já usou o número.
 - D1 `--remote` rejeita `BEGIN/COMMIT/PRAGMA`; `DELETE` em massa é feito pelo dono no terminal dele.
@@ -156,6 +156,13 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
   negócio. Regra única em `src/crm.mjs` (servidor, testes e `app/` importam o mesmo arquivo).
   Cartão não mostra R$. Gate: ver = allowlist `perm:comercial` ou `comercial.ver`; gravar
   atividade = `comercial.gerir`.
+- **Financeiro › Contas (casca nova)**: quadro de `fluxo` (entrada = a receber, saída = a pagar)
+  em Vencidas / Vencem em 7 dias / Previstas / Pagas-recebidas / Canceladas. Arrastar = baixar,
+  cancelar ou reabrir; clicar seleciona para o lote (`fluxoLote`: baixar/reabrir/cancelar/
+  categoria — **SENSIVEIS, pede reauth**; CC em lote via `fluxoCc`; tag em lote via `fluxoTag`).
+  Reabrir/cancelar entrada que baixou parcela desfaz a baixa da parcela. Tags por pessoa
+  (`fin_tag`/`fluxo_tag`); categoria é da casa; filtros salvos em `filtro_salvo` (módulo
+  `financeiro`). Regra única em `src/fin.mjs`. Gate: `financeiro.ver` / `financeiro.editar`.
 - O wrapper `sqlite.execute` devolve `rowsAffected` — **nunca** checar `r.meta` (é sempre undefined).
 
 ### Confidencialidade e privacidade (crítico)
