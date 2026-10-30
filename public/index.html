@@ -2209,6 +2209,7 @@ function viewCadastro(){
   <nav class="subnav" role="tablist">
     <button class="subnav-btn is-active" data-tab="cad-tab-novo" type="button">Cadastrar projeto</button>
     <button class="subnav-btn" data-tab="cad-tab-carteira" type="button">Carteira</button>
+    <button class="subnav-btn" data-tab="cad-tab-planilha" type="button">Importar planilha</button>
   </nav>
   <section class="tabpanel" id="cad-tab-novo">
   <div class="card" style="max-width:640px;margin-bottom:18px">
@@ -2243,6 +2244,19 @@ function viewCadastro(){
       <button class="btn sec sm" id="cad-fclear">Limpar</button>
     </div>
     <div id="cad-tab"></div>
+  </div>
+  </section>
+  <section class="tabpanel hidden" id="cad-tab-planilha">
+  <div class="card" style="max-width:820px">
+    <h3 style="font-size:1rem;margin:0 0 6px">Importar horas da planilha “Calendário Engenharia”</h3>
+    <p class="muted" style="font-size:.84rem;margin:0 0 12px">Baixe a planilha do Google como <b>.xlsx</b> (Arquivo › Fazer download › Microsoft Excel) e escolha o arquivo abaixo. O portal lê a aba <b>Dados Estruturados</b> aqui no navegador, compara com o que já tem (pessoa, dia, centro de custo e horas) e mostra o que é novo antes de gravar. Importar de novo a mesma planilha não duplica nada. As horas entram como <b>LANÇADO</b>.</p>
+    <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin:0">
+      <div class="field" style="margin:0;flex:1;min-width:240px"><label>Arquivo .xlsx</label><input id="pl-arq" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+      <button class="btn sm" id="pl-ler" type="button">Ler e comparar</button>
+      <button class="btn sm" id="pl-imp" type="button" disabled>Importar</button>
+    </div>
+    <div id="pl-msg" class="muted" style="font-size:.84rem;min-height:18px;margin-top:8px"></div>
+    <div id="pl-res"></div>
   </div>
   </section>
   </div>`;
@@ -2311,6 +2325,107 @@ function ligaCadastro(){
   ["cad-fq","cad-fstatus","cad-fcli"].forEach(function(id){var e=$("#"+id);if(e){var ev=e.tagName==="SELECT"?"change":"input";e.addEventListener(ev,_renderCadTab);}});
   var fc=$("#cad-fclear"); if(fc) fc.onclick=function(){["cad-fq","cad-fstatus","cad-fcli"].forEach(function(id){var e=$("#"+id);if(e)e.value="";});_renderCadTab();};
   _renderCadTab();
+  _ligaPlanilha();
+}
+/* ===== IMPORTAÇÃO DA PLANILHA "Calendário Engenharia" =====
+   Leitor de .xlsx SEM biblioteca: o .xlsx é um zip; o navegador descompacta (DecompressionStream
+   'deflate-raw') só o necessário (workbook, rels, sharedStrings e a aba "Dados Estruturados") e lê
+   as colunas A–D (DATA, COLABORADOR, CENTRO DE CUSTO, T (h)). A comparação e a gravação são do
+   servidor (planilhaPrevia / planilhaImportar). Nada é gravado sem o clique em Importar. */
+async function _xlsxArquivos(buf,quer){
+  var dv=new DataView(buf),eocd=-1;
+  for(var i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-66000);i--){if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}}
+  if(eocd<0)throw new Error("Arquivo não é um .xlsx válido.");
+  var n=dv.getUint16(eocd+10,true),p=dv.getUint32(eocd+16,true),out={},dec=new TextDecoder();
+  for(var k=0;k<n;k++){
+    if(dv.getUint32(p,true)!==0x02014b50)break;
+    var met=dv.getUint16(p+10,true),csz=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),el=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),loc=dv.getUint32(p+42,true);
+    var nome=dec.decode(new Uint8Array(buf,p+46,nl));
+    if(quer(nome)){
+      var ini=loc+30+dv.getUint16(loc+26,true)+dv.getUint16(loc+28,true),dados=new Uint8Array(buf,ini,csz);
+      if(met===0)out[nome]=dec.decode(dados);
+      else if(met===8){
+        if(typeof DecompressionStream==="undefined")throw new Error("Este navegador não descompacta .xlsx. Use o Chrome ou o Edge atualizados.");
+        out[nome]=await new Response(new Blob([dados]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      }
+    }
+    p+=46+nl+el+cl;
+  }
+  return out;
+}
+function _xmlTxt(s){return String(s||"").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,function(_,d){return String.fromCharCode(Number(d));}).replace(/&amp;/g,"&");}
+async function _planilhaLinhas(file){
+  var buf=await file.arrayBuffer();
+  var base=await _xlsxArquivos(buf,function(n){return n==="xl/workbook.xml"||n==="xl/_rels/workbook.xml.rels"||n==="xl/sharedStrings.xml";});
+  var wb=base["xl/workbook.xml"]||"";
+  var m=wb.match(/<sheet\b[^>]*name="Dados Estruturados"[^>]*>/);
+  if(!m)throw new Error("Aba “Dados Estruturados” não encontrada nesta planilha.");
+  var rid=(m[0].match(/r:id="([^"]+)"/)||[])[1];
+  var rel=(base["xl/_rels/workbook.xml.rels"]||"").match(new RegExp('<Relationship\\b[^>]*Id="'+rid+'"[^>]*>'));
+  var alvo=rel&&(rel[0].match(/Target="([^"]+)"/)||[])[1];
+  if(!alvo)throw new Error("Não foi possível localizar a aba “Dados Estruturados”.");
+  var cam=alvo.replace(/^\//,"");if(cam.indexOf("xl/")!==0)cam="xl/"+cam;
+  var ss=[];(base["xl/sharedStrings.xml"]||"").replace(/<si>([\s\S]*?)<\/si>/g,function(_,si){var t="";si.replace(/<t[^>]*>([\s\S]*?)<\/t>/g,function(__,x){t+=x;return "";});ss.push(_xmlTxt(t));return "";});
+  var sh=(await _xlsxArquivos(buf,function(n){return n===cam;}))[cam]||"";
+  var linhas={},re=/<c r="([A-D])(\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g,x;
+  while((x=re.exec(sh))){
+    var row=Number(x[2]);if(row<2)continue;
+    var attrs=x[3]||"",corpo=x[4]||"",tp=(attrs.match(/t="([^"]+)"/)||[])[1]||"",v=(corpo.match(/<v>([\s\S]*?)<\/v>/)||[])[1];
+    var val=tp==="s"?ss[Number(v)]:(tp==="inlineStr"?_xmlTxt((corpo.match(/<t[^>]*>([\s\S]*?)<\/t>/)||[])[1]):(v==null?"":_xmlTxt(v)));
+    (linhas[row]=linhas[row]||{})[x[1]]=val;
+  }
+  var out=[];
+  Object.keys(linhas).forEach(function(r){
+    var L=linhas[r],a=L.A,d="";
+    if(a!=null&&a!==""&&!isNaN(Number(a)))d=new Date(Date.UTC(1899,11,30)+Number(a)*864e5).toISOString().slice(0,10);
+    else{var mm=String(a||"").match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(mm)d=mm[3]+"-"+mm[2]+"-"+mm[1];else d=String(a||"").slice(0,10);}
+    var h=Number(String(L.D==null?"":L.D).replace(",","."));
+    if(!L.C||!(h>0))return; /* calendário futuro em branco */
+    out.push({d:d,nome:String(L.B||""),cc:String(L.C||""),h:h});
+  });
+  return out;
+}
+function _planilhaResumo(j){
+  var nomeDe=function(s){return (typeof NOMES!=="undefined"&&NOMES[s])||s;};
+  var linhasMes=Object.keys(j.novos.porMes||{}).sort().map(function(m){var x=j.novos.porMes[m];return '<tr><td>'+esc(m.split("-").reverse().join("/"))+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtH(x.h)+'</td></tr>';}).join("");
+  var linhasPes=Object.keys(j.novos.porPessoa||{}).sort().map(function(s){var x=j.novos.porPessoa[s];return '<tr><td>'+esc(nomeDe(s))+'</td><td style="text-align:right">'+x.n+'</td><td style="text-align:right">'+fmtH(x.h)+'</td></tr>';}).join("");
+  var sp=Object.keys(j.semPessoa||{}),sj=Object.keys(j.semProjeto||{}),inv=j.invalidas||{};
+  return '<div class="kpis" style="margin-top:10px">'+
+      '<div class="kpi"><div class="v">'+j.recebidas+'</div><div class="l">Linhas lidas</div></div>'+
+      '<div class="kpi"><div class="v">'+j.jaNoPortal+'</div><div class="l">Já no portal</div></div>'+
+      '<div class="kpi"><div class="v" style="color:var(--brand)">'+j.novos.n+'</div><div class="l">Novas · '+fmtH(j.novos.horas)+'</div></div>'+
+    '</div>'+
+    (j.novos.n?'<div class="row" style="gap:12px;align-items:flex-start;flex-wrap:wrap">'+
+      '<div class="table-card" style="flex:1;min-width:220px"><table><thead><tr><th>Mês</th><th style="text-align:right">Lanç.</th><th style="text-align:right">Horas</th></tr></thead><tbody>'+linhasMes+'</tbody></table></div>'+
+      '<div class="table-card" style="flex:1;min-width:220px"><table><thead><tr><th>Pessoa</th><th style="text-align:right">Lanç.</th><th style="text-align:right">Horas</th></tr></thead><tbody>'+linhasPes+'</tbody></table></div></div>':'<p class="muted">Nada novo: o portal já tem tudo o que está na planilha.</p>')+
+    (sp.length?'<p class="err" style="font-size:.84rem">Nomes sem pessoa no portal (não serão importados): '+sp.map(function(k){return esc(k)+' ('+j.semPessoa[k]+')';}).join(", ")+'.</p>':'')+
+    (sj.length?'<p class="err" style="font-size:.84rem">Centros de custo sem projeto cadastrado (cadastre e leia de novo; até lá não entram): '+sj.map(function(k){return esc(k)+' ('+j.semProjeto[k]+')';}).join(", ")+'.</p>':'')+
+    ((inv.data||inv.horas||inv.cc||inv.futuro)?'<p class="muted" style="font-size:.8rem">Ignoradas: '+[inv.data?inv.data+' sem data válida':'',inv.horas?inv.horas+' com horas fora de 0–24':'',inv.cc?inv.cc+' sem código de CC':'',inv.futuro?inv.futuro+' com data futura':''].filter(Boolean).join(" · ")+'.</p>':'');
+}
+function _ligaPlanilha(){
+  var ler=$("#pl-ler"),imp=$("#pl-imp"),res=$("#pl-res"),linhas=null;
+  var msg=function(t,err){var m=$("#pl-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);}};
+  if(!ler)return;
+  ler.onclick=async function(){
+    var f=$("#pl-arq").files[0];if(!f){msg("Escolha o arquivo .xlsx.",true);return;}
+    ler.disabled=true;imp.disabled=true;res.innerHTML="";msg("Lendo a planilha…");
+    try{
+      linhas=await _planilhaLinhas(f);
+      msg("Comparando "+linhas.length+" linhas com o portal…");
+      var j=await api("planilhaPrevia",{linhas:linhas});
+      res.innerHTML=_planilhaResumo(j);
+      msg(j.novos.n?"Confira e clique em Importar para gravar "+j.novos.n+" lançamento(s).":"Nada a importar.");
+      imp.disabled=!j.novos.n;imp.textContent=j.novos.n?"Importar "+j.novos.n+" lançamento(s)":"Importar";
+    }catch(e){msg(e.message||"Erro ao ler a planilha.",true);}
+    ler.disabled=false;
+  };
+  imp.onclick=async function(){
+    if(!linhas)return;
+    if(!confirm("Gravar os lançamentos novos da planilha no portal?"))return;
+    imp.disabled=true;msg("Importando…");
+    try{var j=await api("planilhaImportar",{linhas:linhas});res.innerHTML=_planilhaResumo(j);msg("Importado: "+j.gravados+" lançamento(s).");await carregarState();}
+    catch(e){msg(e.message||"Erro ao importar.",true);imp.disabled=false;}
+  };
 }
 
 /* ===================== DAILY BRIEF — radar com triagem por IA =====================

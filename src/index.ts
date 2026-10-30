@@ -12,6 +12,7 @@ import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
 import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
 import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
+import { normalizaLinhas, diffLancamentos, resumoNovos } from "./importa.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -972,6 +973,8 @@ function ensureSchema(): Promise<void> {
      * normal; depois, o acesso é recusado (membroDesligado) e o cron diário passa ativo=0, o mesmo
      * mecanismo de inativação do RH. Histórico preservado. Migração 0016. */
     try { await sqlite.execute("ALTER TABLE membro ADD COLUMN saida TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
+    // lanc.origem ('planilha' na importação) existe na baseline de produção; garante em banco novo.
+    try { await sqlite.execute("ALTER TABLE lanc ADD COLUMN origem TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS acesso_status ON acesso (tenant_id, status)"); } catch (_) {}
     // Backfill das identidades atuais: cada colaborador recebe o papel mapeado, sem perda.
     // Inativos mantêm papel (histórico), ativo=0; o login já é barrado por checaAtivo.
@@ -1415,7 +1418,7 @@ const REAUTH_MIN = 10; // minutos de validade da reautenticação
  *  financeiro, ou muda ACESSO/segurança. Sessão válida não basta — pede a senha de novo. */
 const SENSIVEIS = new Set<string>([
   "projfinSet", "custohoraSet", "custohoraDel", "contratoSet", "impostoPadraoSet",
-  "fluxoSet", "fluxoDel", "fluxoLote", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
+  "fluxoSet", "fluxoDel", "fluxoLote", "planilhaImportar", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
   "capacidadeSet", "resumoExecFechar",
   "permset", "acset", "resetpin",
   "restore_backup", "flagset",
@@ -2140,6 +2143,8 @@ const MIN: Record<string, Papel> = {
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
   // Quadro de contas (casca nova): leitura, tags por pessoa e operação em lote (esta com reauth: SENSIVEIS).
+  // Importação da planilha Calendário Engenharia (prévia lê; importar grava em lote, com reauth).
+  planilhaPrevia: "coordenacao", planilhaImportar: "coordenacao",
   finQuadro: "coordenacao", finTagSet: "coordenacao", finTagDel: "coordenacao", fluxoTag: "coordenacao", fluxoLote: "coordenacao",
   conciliacao: "coordenacao", conciliaSugerir: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
@@ -3049,6 +3054,42 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "UPDATE crm_lead SET status = 'aprovado', dealid = ?, aprovado = ? WHERE tenant_id = ? AND id = ?", args: [did, now.slice(0, 10), u.tenant_id, lid] });
     await audit("crm_lead_aprovar", u.slug, lid + " -> " + did, ip);
     return { ok: true, dealid: did };
+  }
+
+  /* ===== IMPORTAÇÃO DA PLANILHA "Calendário Engenharia" (aba Dados Estruturados) =====
+     O navegador lê o .xlsx e manda {d, nome, cc, h}. A prévia NÃO grava: mostra o que é novo
+     (multiconjunto pessoa|dia|CC|horas contra o portal), quem não foi reconhecido e os CCs sem
+     projeto. Importar recalcula o mesmo diff no servidor (idempotente) e grava só os novos, como
+     LANÇADO (regra: a base da planilha entra como LANÇADO), origem 'planilha'. Src/importa.mjs. */
+  if (action === "planilhaPrevia" || action === "planilhaImportar") {
+    const u = await auth(p);
+    if (!u.coord) throw new Error("Importar a planilha é restrito à Coordenação.");
+    const brutas = Array.isArray(p.linhas) ? (p.linhas as any[]).slice(0, 20000) : [];
+    if (!brutas.length) throw new Error("Nenhuma linha recebida da planilha.");
+    const roster: Record<string, string> = { ...NOMES };
+    const mr = await sqlite.execute({ sql: "SELECT slug, nome FROM membro WHERE tenant_id = ? AND papel NOT IN ('cliente','fornecedor')", args: [u.tenant_id] });
+    for (const x of mr.rows as P[]) roster[String(x.slug)] = String(x.nome || roster[String(x.slug)] || x.slug);
+    const pr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ?", args: [u.tenant_id] });
+    const hoje = new Date().toISOString().slice(0, 10);
+    const n = normalizaLinhas(brutas, roster, new Set((pr.rows as P[]).map((x) => String(x.cc))), hoje);
+    let novos: Array<{ slug: string; d: string; cc: string; h: number }> = [], jaNoPortal = 0;
+    if (n.validas.length) {
+      const ds = n.validas.map((x) => x.d).sort();
+      const ex = await sqlite.execute({ sql: "SELECT slug, d, cc, h FROM lanc WHERE tenant_id = ? AND d >= ? AND d <= ?", args: [u.tenant_id, ds[0], ds[ds.length - 1]] });
+      const df = diffLancamentos(n.validas, (ex.rows as P[]).map((x) => ({ slug: String(x.slug), d: String(x.d), cc: String(x.cc), h: Number(x.h) || 0 })));
+      novos = df.novos; jaNoPortal = df.jaNoPortal;
+    }
+    const resumo = { recebidas: brutas.length, validas: n.validas.length, jaNoPortal, novos: resumoNovos(novos), semPessoa: n.semPessoa, semProjeto: n.semProjeto, invalidas: n.invalidas };
+    if (action === "planilhaPrevia") return { ok: true, ...resumo };
+    if (!novos.length) return { ok: true, ...resumo, gravados: 0 };
+    const now = new Date().toISOString(); const marca = "import-planilha-" + hoje;
+    const stmts = novos.map((x) => ({
+      sql: "INSERT INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id, origem) VALUES (?,?,?,?,?,'', 'LANÇADO', '', ?, ?, ?, ?, 'planilha')",
+      args: [crypto.randomUUID().slice(0, 8), x.slug, x.d, x.cc, x.h, now.slice(0, 10), now.slice(0, 10), marca, u.tenant_id],
+    }));
+    for (let i = 0; i < stmts.length; i += 100) await sqlite.batch(stmts.slice(i, i + 100));
+    await audit("planilha_import", u.slug, novos.length + " lançamento(s), " + resumo.novos.horas + " h", ip);
+    return { ok: true, ...resumo, gravados: novos.length };
   }
 
   /* ===== FINANCEIRO na casca nova — quadro de contas a pagar/receber, tags por pessoa, lote =====
