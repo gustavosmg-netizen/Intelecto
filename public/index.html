@@ -4327,6 +4327,7 @@ function _ambFicha(id){
 function _crmLoad(){
   api("crm").then(function(j){
     CRMDATA=j;
+    if(!CRMSALVOS.length)_crmCarregaSalvos();
     _crmRenderPainel();
     _crmRenderPipeline();
     _crmRenderLeads();
@@ -4393,30 +4394,125 @@ function _crmRenderPipeline(){
     +'<div class="kpi"><div class="v">'+fmtBRL(valAberto)+'</div><div class="l">R$ em aberto</div></div>'
     +'<div class="kpi"><div class="v" style="color:var(--ok,#1f7a3d)">'+assin.length+'</div><div class="l">Fechados · '+fmtBRL(vendas)+'</div></div>'
   +'</div>';
-  // Kanban: uma coluna por macro-fase, cards de negócio (como o CRM original). Scroll horizontal.
-  var cols=CRM_MACRO.map(function(m){
-    var f=funil[m]||{n:0,val:0};
+  box.innerHTML=kpis
+    +(CRMDATA.podeGerir?'<div style="margin:4px 0 8px"><button class="btn sm" id="crm-novo" type="button">+ Novo negócio</button></div>':'')
+    +'<p class="muted" style="font-size:.74rem;margin:0 0 8px">Metas/mês: '+CRM_METAS.leads+' leads · '+CRM_METAS.qualif+' qualif. · '+CRM_METAS.prop+' propostas · '+CRM_METAS.negoc+' negoc. · '+CRM_METAS.fech+' fechados · '+fmtBRL(CRM_METAS.vendas)+' vendas.</p>'
+    +'<div id="crm-fbar"></div><div id="crm-cols"></div>';
+  _crmFiltroBar();
+  _crmRenderCols();
+  var nv=document.getElementById("crm-novo");if(nv)nv.onclick=function(){_crmDealForm("");};
+}
+/* ===== CRM: filtros (por pessoa), arrastar entre fases, tags e próximo passo no cartão =====
+   Mesma regra de src/crm.mjs (servidor e casca nova). Tags e filtros salvos são POR PESSOA. */
+var CRM_FASE_ID=["prosp","diag","prop","neg","exec","pos"];
+var CRM_TAG_COR={verde:"var(--ok,#1f7a3d)",azul:"#2563a8",ambar:"var(--warn,#a8610f)",vermelho:"var(--crit,#b3372a)",roxo:"#6b4fa0",cinza:"var(--muted)"};
+var CRMF={q:"",owners:[],fases:[],tags:[],temp:[],pri:[],prazo:""}, CRMSALVOS=[], CRMSALVO="", CRMFOPEN=false;
+function _crmSemAc(s){return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
+function _crmFaseId(st){var m=_crmMacro(st);var i=CRM_MACRO.indexOf(m);return i>=0?CRM_FASE_ID[i]:"";}
+function _crmTagChip(t,on,attr){var c=CRM_TAG_COR[t.cor]||CRM_TAG_COR.cinza;
+  return '<span '+(attr||'')+' style="display:inline-block;font-size:.62rem;font-weight:700;padding:1px 7px;border-radius:99px;border:1px '+(on===false?'dashed':'solid')+' '+c+';color:'+c+';opacity:'+(on===false?'.5':'1')+';margin:2px 3px 0 0;'+(attr?'cursor:pointer':'')+'">'+esc(t.nome)+'</span>';}
+function _crmFiltrados(){
+  var f=CRMF,hj=hoje(),dt=CRMDATA.dealTags||{},px=CRMDATA.prox||{},q=_crmSemAc(f.q).trim();
+  var mais7=new Date(Date.parse(hj+"T00:00:00Z")+7*864e5).toISOString().slice(0,10);
+  return (CRMDATA.deals||[]).filter(function(d){
+    if(q){var alvo=_crmSemAc([d.co,d.contact,d.city,d.seg,d.prod,d.owner,d.id,d.cc].join(" "));if(!q.split(/\s+/).every(function(p){return alvo.indexOf(p)>=0;}))return false;}
+    if(f.owners.length&&f.owners.indexOf(String(d.owner||""))<0)return false;
+    if(f.fases.length&&f.fases.indexOf(_crmFaseId(d.st))<0)return false;
+    if(f.temp.length&&f.temp.indexOf(String(d.temp||""))<0)return false;
+    if(f.pri.length&&f.pri.indexOf(String(d.pri||""))<0)return false;
+    if(f.tags.length){var t=dt[d.id]||[];if(!f.tags.every(function(x){return t.indexOf(x)>=0;}))return false;}
+    if(f.prazo){var p=px[d.id]&&px[d.id].prazo?String(px[d.id].prazo).slice(0,10):"";
+      if(f.prazo==="sem"){if(p)return false;}else if(!p)return false;
+      else if(f.prazo==="atrasado"&&!(p<hj))return false;
+      else if(f.prazo==="semana"&&!(p>=hj&&p<=mais7))return false;}
+    return true;
+  });
+}
+function _crmNFiltros(){return CRMF.owners.length+CRMF.fases.length+CRMF.tags.length+CRMF.temp.length+CRMF.pri.length+(CRMF.prazo?1:0);}
+function _crmFiltroVazio(){return !CRMF.q&&!_crmNFiltros();}
+function _crmFiltroBar(){
+  var el=document.getElementById("crm-fbar");if(!el)return;
+  var deals=CRMDATA.deals||[],tags=CRMDATA.tags||[];
+  var uniq=function(k){return Array.from(new Set(deals.map(function(d){return String(d[k]||"");}).filter(Boolean))).sort();};
+  var chip=function(grp,id,label){var on=(grp==="prazo"?CRMF.prazo===id:CRMF[grp].indexOf(id)>=0);
+    return '<button type="button" class="btn sm'+(on?'':' sec')+'" data-cf="'+grp+'" data-cv="'+esc(id)+'" style="padding:2px 9px;font-size:.74rem;margin:2px">'+esc(label)+'</button>';};
+  var grupo=function(lbl,html){return html?'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin:3px 0"><span class="muted" style="font-size:.66rem;font-weight:700;text-transform:uppercase;min-width:110px">'+lbl+'</span>'+html+'</div>':'';};
+  var n=_crmNFiltros();
+  el.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px">'
+    +'<input id="crm-fq" placeholder="Buscar empresa, contato, cidade, CC…" value="'+esc(CRMF.q)+'" style="flex:1 1 240px;min-width:180px">'
+    +'<button type="button" class="btn sm'+(CRMFOPEN||n?'':' sec')+'" id="crm-fbtn">Filtros'+(n?' ('+n+')':'')+'</button>'
+    +'<select id="crm-fsalvos" style="max-width:200px"><option value="">Filtros salvos…</option>'+CRMSALVOS.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===CRMSALVO?' selected':'')+'>'+esc(x.nome)+'</option>';}).join("")+'</select>'
+    +'<button type="button" class="btn sm sec" id="crm-fsave"'+(_crmFiltroVazio()?' disabled':'')+' title="Salvar o filtro atual com um nome (só você vê)">Salvar filtro</button>'
+    +(CRMSALVO?'<button type="button" class="btn sm sec" id="crm-fdel">Excluir filtro</button>':'')
+    +(_crmFiltroVazio()?'':'<button type="button" class="btn sm sec" id="crm-fclr">Limpar</button>')
+    +'</div>'
+    +(CRMFOPEN?'<div class="card" style="padding:8px 12px;margin:0 0 8px">'
+      +grupo("Responsável",uniq("owner").map(function(o){return chip("owners",o,o);}).join(""))
+      +grupo("Fase",CRM_MACRO.map(function(m,i){return chip("fases",CRM_FASE_ID[i],m);}).join(""))
+      +grupo("Minhas tags",tags.map(function(t){return chip("tags",t.id,t.nome);}).join("")||'<span class="muted" style="font-size:.76rem">Nenhuma tag ainda. Abra um negócio e crie a primeira; só você vê as suas.</span>')
+      +grupo("Temperatura",uniq("temp").map(function(o){return chip("temp",o,o);}).join(""))
+      +grupo("Prioridade",uniq("pri").map(function(o){return chip("pri",o,o);}).join(""))
+      +grupo("Próximo passo",[["","Todos"],["atrasado","Atrasado"],["semana","Próximos 7 dias"],["sem","Sem próximo passo"]].map(function(x){return chip("prazo",x[0],x[1]);}).join(""))
+      +'</div>':'');
+  var q=document.getElementById("crm-fq");if(q)q.oninput=function(){CRMF.q=q.value;CRMSALVO="";_crmRenderCols();};
+  var fb=document.getElementById("crm-fbtn");if(fb)fb.onclick=function(){CRMFOPEN=!CRMFOPEN;_crmFiltroBar();};
+  el.querySelectorAll("[data-cf]").forEach(function(b){b.onclick=function(){
+    var g=b.getAttribute("data-cf"),v=b.getAttribute("data-cv");
+    if(g==="prazo")CRMF.prazo=v;else{var i=CRMF[g].indexOf(v);if(i>=0)CRMF[g].splice(i,1);else CRMF[g].push(v);}
+    CRMSALVO="";_crmFiltroBar();_crmRenderCols();};});
+  var fs=document.getElementById("crm-fsalvos");if(fs)fs.onchange=function(){
+    CRMSALVO=fs.value;var x=CRMSALVOS.filter(function(s){return s.id===CRMSALVO;})[0];
+    var f=(x&&x.filtro)||{};CRMF={q:f.q||"",owners:f.owners||[],fases:f.fases||[],tags:f.tags||[],temp:f.temp||[],pri:f.pri||[],prazo:f.prazo||""};
+    _crmFiltroBar();_crmRenderCols();};
+  var sv=document.getElementById("crm-fsave");if(sv)sv.onclick=function(){
+    var at=CRMSALVOS.filter(function(s){return s.id===CRMSALVO;})[0];
+    var nome=prompt(at?"Atualizar o filtro salvo (ou dê outro nome para criar um novo):":"Nome do filtro:",at?at.nome:"");if(!nome)return;
+    api("filtroSet",{modulo:"crm",id:(at&&at.nome===nome.trim())?at.id:"",nome:nome,filtro:CRMF}).then(function(r){CRMSALVO=r.filtro.id;toast("Filtro salvo.");_crmCarregaSalvos();}).catch(function(e){alert(e.message||"Erro");});};
+  var dl=document.getElementById("crm-fdel");if(dl)dl.onclick=function(){
+    var at=CRMSALVOS.filter(function(s){return s.id===CRMSALVO;})[0];if(!at||!confirm("Excluir o filtro “"+at.nome+"”?"))return;
+    api("filtroDel",{modulo:"crm",id:at.id}).then(function(){CRMSALVO="";_crmCarregaSalvos();}).catch(function(e){alert(e.message||"Erro");});};
+  var cl=document.getElementById("crm-fclr");if(cl)cl.onclick=function(){CRMF={q:"",owners:[],fases:[],tags:[],temp:[],pri:[],prazo:""};CRMSALVO="";_crmFiltroBar();_crmRenderCols();};
+}
+function _crmCarregaSalvos(){api("filtroList",{modulo:"crm"}).then(function(r){CRMSALVOS=r.filtros||[];_crmFiltroBar();}).catch(function(){CRMSALVOS=[];});}
+function _crmRenderCols(){
+  var el=document.getElementById("crm-cols");if(!el||!CRMDATA)return;
+  var deals=_crmFiltrados(),pode=!!CRMDATA.podeGerir,tags=CRMDATA.tags||[],dt=CRMDATA.dealTags||{},px=CRMDATA.prox||{},hj=hoje();
+  var cols=CRM_MACRO.map(function(m,i){
     var ds=deals.filter(function(d){return _crmMacro(d.st)===m;}).sort(function(a,b){return (Number(b.val)||0)-(Number(a.val)||0);});
+    var soma=ds.reduce(function(s,d){return s+(Number(d.val)||0);},0);
     var cards=ds.map(function(d){
       var temp=d.temp?('<span class="tag" style="font-size:.58rem;float:right;margin-left:4px">'+esc(d.temp)+'</span>'):'';
-      return '<div class="crm-row" data-id="'+esc(d.id)+'" style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;cursor:pointer">'
+      var minhas=(dt[d.id]||[]).map(function(id){return tags.filter(function(t){return t.id===id;})[0];}).filter(Boolean);
+      var p=px[d.id],late=p&&p.prazo<hj;
+      return '<div class="crm-row" data-id="'+esc(d.id)+'"'+(pode?' draggable="true"':'')+' style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;cursor:'+(pode?'grab':'pointer')+'">'
         +temp+'<div style="font-weight:600;font-size:.82rem;line-height:1.25">'+esc(d.co||d.id)+'</div>'
         +(Number(d.val)?'<div style="font-size:.8rem;color:var(--ok,#1f7a3d);font-weight:700;margin-top:2px">'+fmtBRL(d.val)+'</div>':'')
         +'<div class="muted" style="font-size:.7rem;margin-top:2px">etapa '+(Number(d.st)||0)+(d.owner?' · '+esc(d.owner):'')+'</div>'
-        +(d.next?'<div class="muted" style="font-size:.68rem;margin-top:4px;border-top:1px dashed var(--line);padding-top:4px">'+(d.nextdate?esc(d.nextdate)+': ':'')+esc(String(d.next).slice(0,60))+'</div>':'')
-      +'</div>';
+        +(minhas.length?'<div>'+minhas.map(function(t){return _crmTagChip(t);}).join("")+'</div>':'')
+        +(p?'<div style="font-size:.68rem;margin-top:4px;border-top:1px dashed var(--line);padding-top:4px;'+(late?'color:var(--crit,#b3372a);font-weight:700':'')+'" class="'+(late?'':'muted')+'">'+(late?'Atrasado · ':'')+esc(p.prazo.split("-").reverse().join("/"))+': '+esc(String(p.texto).slice(0,60))+'</div>'
+          :(d.next?'<div class="muted" style="font-size:.68rem;margin-top:4px;border-top:1px dashed var(--line);padding-top:4px">'+(d.nextdate?esc(d.nextdate)+': ':'')+esc(String(d.next).slice(0,60))+'</div>':''))
+        +'</div>';
     }).join("")||'<div class="muted" style="font-size:.72rem;padding:4px 0">—</div>';
-    return '<div style="flex:0 0 230px;min-width:230px;background:var(--surface2);border-radius:10px;padding:8px 8px 4px">'
+    return '<div class="crm-col" data-fase="'+CRM_FASE_ID[i]+'" style="flex:0 0 230px;min-width:230px;background:var(--surface2);border:2px solid transparent;border-radius:10px;padding:8px 8px 4px">'
       +'<div style="font-size:.74rem;font-weight:700">'+esc(m)+'</div>'
-      +'<div class="muted" style="font-size:.68rem;margin:1px 0 8px">'+f.n+' negócio(s)'+(f.val?' · '+fmtBRL(f.val):'')+'</div>'
+      +'<div class="muted" style="font-size:.68rem;margin:1px 0 8px">'+ds.length+' negócio(s)'+(soma?' · '+fmtBRL(soma):'')+'</div>'
       +cards+'</div>';
   }).join("");
-  box.innerHTML=kpis
-    +(CRMDATA.podeGerir?'<div style="margin:4px 0 8px"><button class="btn sm" id="crm-novo" type="button">+ Novo negócio</button></div>':'')
-    +'<p class="muted" style="font-size:.74rem;margin:0 0 8px">Metas/mês: '+CRM_METAS.leads+' leads · '+CRM_METAS.qualif+' qualif. · '+CRM_METAS.prop+' propostas · '+CRM_METAS.negoc+' negoc. · '+CRM_METAS.fech+' fechados · '+fmtBRL(CRM_METAS.vendas)+' vendas. Arraste na horizontal para ver todas as fases.</p>'
+  var nf=_crmFiltroVazio()?'':'<p class="muted" style="font-size:.74rem;margin:0 0 6px">'+deals.length+' de '+(CRMDATA.deals||[]).length+' negócio(s) no filtro.</p>';
+  el.innerHTML=nf+(pode?'<p class="muted" style="font-size:.72rem;margin:0 0 6px">Arraste o cartão para outra fase para mover o negócio; clique para abrir.</p>':'')
     +'<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px">'+cols+'</div>';
-  box.querySelectorAll(".crm-row").forEach(function(tr){tr.onclick=function(){_crmDealDetail(tr.getAttribute("data-id"));};});
-  var nv=document.getElementById("crm-novo");if(nv)nv.onclick=function(){_crmDealForm("");};
+  el.querySelectorAll(".crm-row").forEach(function(tr){
+    tr.onclick=function(){_crmDealDetail(tr.getAttribute("data-id"));};
+    if(pode)tr.ondragstart=function(ev){ev.dataTransfer.setData("text/plain",tr.getAttribute("data-id"));ev.dataTransfer.effectAllowed="move";};
+  });
+  if(pode)el.querySelectorAll(".crm-col").forEach(function(c){
+    c.ondragover=function(ev){ev.preventDefault();c.style.borderColor="var(--brand)";};
+    c.ondragleave=function(){c.style.borderColor="transparent";};
+    c.ondrop=function(ev){ev.preventDefault();c.style.borderColor="transparent";
+      var id=ev.dataTransfer.getData("text/plain"),fase=c.getAttribute("data-fase");
+      var d=(CRMDATA.deals||[]).filter(function(x){return x.id===id;})[0];if(!d||_crmFaseId(d.st)===fase)return;
+      api("crmDealStage",{id:id,alvo:"fase:"+fase}).then(function(r){toast("Negócio movido.");d.st=r.st;_crmRenderCols();_crmRenderPainel();}).catch(function(e){alert(e.message||"Erro ao mover.");});};
+  });
 }
 function _crmDealDetail(id){
   var d=(CRMDATA.deals||[]).filter(function(x){return x.id===id;})[0];if(!d)return;
@@ -4433,11 +4529,56 @@ function _crmDealDetail(id){
     +rw("Último contato",(d.lastdate?d.lastdate+' · ':'')+(d.last||""))+rw("Próxima ação",(d.nextdate?d.nextdate+' · ':'')+(d.next||""))
     +rw("Dor",d.pain)+rw("Origem",d.src)+rw("Motivo de perda",d.lossreason)
     +(d.cc?rw("Projeto vinculado",d.cc):'')
+    +'<div id="crm-dx"></div>'
     +'</div></div>';
   m.style.display="";
+  _crmDealExtra(d);
   var x=document.getElementById("crm-mx");if(x)x.onclick=function(){m.style.display="none";};
   var ed=document.getElementById("crm-edit");if(ed)ed.onclick=function(){_crmDealForm(d.id);};
   m.onclick=function(ev){if(ev.target===m)m.style.display="none";};
+}
+/* Painel do negócio: subetapa (mover), MINHAS tags e ATIVIDADES (histórico + próximo passo). */
+var CRM_TIPO_LBL={nota:"Nota",ligacao:"Ligação",reuniao:"Reunião",email:"E-mail",tarefa:"Próximo passo",etapa:"Etapa"};
+function _crmRotSt(st){st=Number(st)||0;var f=[[1,4],[5,8],[9,12],[13,16],[17,20],[21,21]];for(var i=0;i<f.length;i++){if(st>=f[i][0]&&st<=f[i][1])return CRM_MACRO[i]+" · "+(st-f[i][0]+1)+"/"+(f[i][1]-f[i][0]+1);}return "Fora do funil";}
+function _crmDealExtra(d){
+  var el=document.getElementById("crm-dx");if(!el)return;
+  var pode=!!CRMDATA.podeGerir,tags=CRMDATA.tags||[],minhas=(CRMDATA.dealTags||{})[d.id]||[],hj=hoje();
+  var stSel=pode?'<div style="display:flex;gap:8px;align-items:center;margin:10px 0 0"><span class="muted" style="flex:0 0 130px;font-size:.8rem">Subetapa</span><select id="crm-st">'
+    +Array.from({length:21},function(_,i){return '<option value="'+(i+1)+'"'+((Number(d.st)||0)===i+1?' selected':'')+'>'+esc(_crmRotSt(i+1))+'</option>';}).join("")+'</select></div>':'';
+  var cores=["verde","azul","ambar","vermelho","roxo","cinza"].map(function(c){return '<option value="'+c+'">'+c+'</option>';}).join("");
+  el.innerHTML=stSel
+    +'<div style="border-top:1px solid var(--line);margin:12px 0 0;padding-top:10px"><div style="font-weight:700;font-size:.84rem;margin-bottom:4px">Minhas tags <span class="muted" style="font-weight:400;font-size:.72rem">(só você vê)</span></div>'
+    +'<div>'+(tags.map(function(t){return _crmTagChip(t,minhas.indexOf(t.id)>=0,'data-ctag="'+esc(t.id)+'" title="Clique para marcar/desmarcar"');}).join("")||'<span class="muted" style="font-size:.78rem">Nenhuma tag ainda.</span>')+'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="crm-ntag" maxlength="30" placeholder="Nova tag" style="flex:1;min-width:120px"><select id="crm-ntagc" style="max-width:110px">'+cores+'</select><button class="btn sm sec" id="crm-ntagb" type="button">Criar e marcar</button></div></div>'
+    +'<div style="border-top:1px solid var(--line);margin:12px 0 0;padding-top:10px"><div style="font-weight:700;font-size:.84rem;margin-bottom:6px">Atividades</div>'
+    +(pode?'<div style="background:var(--surface2);border-radius:8px;padding:8px;margin-bottom:8px"><div style="display:flex;gap:6px;flex-wrap:wrap">'
+      +'<select id="crm-at-tipo"><option value="ligacao">Ligação</option><option value="reuniao">Reunião</option><option value="email">E-mail</option><option value="nota">Nota</option><option value="tarefa">Próximo passo</option></select>'
+      +'<input id="crm-at-data" type="date" value="'+hj+'" title="Data">'
+      +'<input id="crm-at-resp" placeholder="Responsável" value="'+esc(CRMDATA.eu||"")+'" style="display:none;max-width:140px">'
+      +'</div><textarea id="crm-at-txt" rows="2" placeholder="O que aconteceu / o que precisa ser feito" style="width:100%;margin-top:6px"></textarea>'
+      +'<button class="btn sm" id="crm-at-ok" type="button" style="margin-top:4px">Registrar</button> <span id="crm-at-msg" class="muted" style="font-size:.76rem"></span></div>':'')
+    +'<div id="crm-at-lista"><div class="muted" style="font-size:.8rem">Carregando…</div></div></div>';
+  var recarrega=function(){api("crm").then(function(j){CRMDATA=j;_crmRenderCols();_crmFiltroBar();var nd=(j.deals||[]).filter(function(x){return x.id===d.id;})[0];if(nd)_crmDealExtra(nd);});};
+  var st=document.getElementById("crm-st");if(st)st.onchange=function(){api("crmDealStage",{id:d.id,alvo:"st:"+st.value}).then(function(){toast("Subetapa atualizada.");recarrega();}).catch(function(e){alert(e.message||"Erro");});};
+  el.querySelectorAll("[data-ctag]").forEach(function(c){c.onclick=function(){var id=c.getAttribute("data-ctag");api("crmDealTag",{deal:d.id,tag:id,on:minhas.indexOf(id)<0}).then(recarrega).catch(function(e){alert(e.message||"Erro");});};});
+  var nb=document.getElementById("crm-ntagb");if(nb)nb.onclick=function(){var nome=document.getElementById("crm-ntag").value.trim();if(!nome)return;
+    api("crmTagSet",{nome:nome,cor:document.getElementById("crm-ntagc").value}).then(function(r){return api("crmDealTag",{deal:d.id,tag:r.tag.id,on:true});}).then(recarrega).catch(function(e){alert(e.message||"Erro");});};
+  var tp=document.getElementById("crm-at-tipo");if(tp)tp.onchange=function(){var t=tp.value==="tarefa";document.getElementById("crm-at-resp").style.display=t?"":"none";document.getElementById("crm-at-data").title=t?"Prazo":"Data";if(t)document.getElementById("crm-at-data").value="";};
+  var ok=document.getElementById("crm-at-ok");if(ok)ok.onclick=function(){var t=tp.value,dv=document.getElementById("crm-at-data").value,msg=document.getElementById("crm-at-msg");
+    var pay={deal:d.id,tipo:t,texto:document.getElementById("crm-at-txt").value,resp:document.getElementById("crm-at-resp").value};
+    if(t==="tarefa")pay.prazo=dv;else pay.data=dv;
+    msg.textContent="Salvando…";api("crmAtividadeSet",pay).then(function(){msg.textContent="Registrado.";recarrega();}).catch(function(e){msg.textContent=e.message||"Erro";});};
+  api("crmAtividades",{deal:d.id}).then(function(r){
+    var box=document.getElementById("crm-at-lista");if(!box)return;var at=r.atividades||[];
+    box.innerHTML=at.length?at.map(function(a){var tarefa=a.tipo==="tarefa",feito=!!Number(a.feito),late=tarefa&&!feito&&a.prazo&&a.prazo<hj;
+      return '<div style="border-left:3px solid '+(tarefa?'var(--warn,#a8610f)':(a.tipo==="etapa"?'var(--brand)':'var(--line)'))+';padding:2px 0 2px 10px;margin:6px 0;'+(feito?'opacity:.55':'')+'">'
+        +'<div class="muted" style="font-size:.7rem">'+esc(CRM_TIPO_LBL[a.tipo]||a.tipo)+' · '+(tarefa?(late?'<b style="color:var(--crit,#b3372a)">Atrasado · ':'Prazo ')+esc(String(a.prazo).split("-").reverse().join("/"))+(late?'</b>':''):esc(String(a.data||a.criado).slice(0,10).split("-").reverse().join("/")))+' · '+esc(a.autor)+(tarefa&&a.resp?' → '+esc(a.resp):'')+'</div>'
+        +'<div style="font-size:.86rem;'+(feito?'text-decoration:line-through':'')+'">'+esc(a.texto)+'</div>'
+        +(pode?'<div style="font-size:.72rem;margin-top:2px">'+(tarefa?'<a href="#" data-afeito="'+esc(a.id)+'" data-v="'+(feito?0:1)+'">'+(feito?'Reabrir':'Marcar como feito')+'</a> ':'')+(a.tipo!=="etapa"&&a.autor===r.eu?'<a href="#" data-adel="'+esc(a.id)+'">Excluir</a>':'')+'</div>':'')
+        +'</div>';}).join(""):'<div class="muted" style="font-size:.8rem">Sem atividades registradas.</div>';
+    box.querySelectorAll("[data-afeito]").forEach(function(x){x.onclick=function(ev){ev.preventDefault();api("crmAtividadeFeita",{id:x.getAttribute("data-afeito"),feito:x.getAttribute("data-v")==="1"}).then(recarrega).catch(function(e){alert(e.message||"Erro");});};});
+    box.querySelectorAll("[data-adel]").forEach(function(x){x.onclick=function(ev){ev.preventDefault();if(!confirm("Excluir esta atividade?"))return;api("crmAtividadeDel",{id:x.getAttribute("data-adel")}).then(recarrega).catch(function(e){alert(e.message||"Erro");});};});
+  }).catch(function(e){var box=document.getElementById("crm-at-lista");if(box)box.innerHTML='<p class="err">'+esc(e.message||e)+'</p>';});
 }
 /* Formulário criar/editar negócio (E5). id vazio = novo. */
 function _crmDealForm(id){
