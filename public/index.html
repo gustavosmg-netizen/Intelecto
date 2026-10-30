@@ -3386,7 +3386,8 @@ function _rhColabsLoad(){
     var popt=function(sel){return papeis.map(function(pp){return '<option value="'+esc(pp)+'"'+(pp===sel?' selected':'')+'>'+esc(_PAPEL_LABEL[pp]||pp)+'</option>';}).join("");};
     var linhas=ms.map(function(m){
       var selPapel=m.owner?('<span class="muted" style="font-size:.82rem">Administração</span>'):('<select class="cl-papel" data-slug="'+esc(m.slug)+'" style="min-width:150px">'+popt(m.papel)+'</select>');
-      var tagSit=m.ativo?'<span class="tag s-APROVADO">ativo</span>':'<span class="tag s-DEVOLVIDO">inativo</span>';
+      var hojeRh=hoje();
+      var tagSit=!m.ativo?'<span class="tag s-DEVOLVIDO">inativo</span>':(m.saida&&m.saida<hojeRh?'<span class="tag s-DEVOLVIDO" title="Data de saída vencida; o acesso já está bloqueado">desligado</span>':(m.saida?'<span class="tag s-PENDENTE" title="Acesso termina ao fim deste dia">sai em '+esc(m.saida.split("-").reverse().join("/"))+'</span>':'<span class="tag s-APROVADO">ativo</span>'));
       var btnSit=m.owner?'':'<button class="btn sm sec" type="button" data-cl-toggle="'+esc(m.slug)+'" data-ativo="'+m.ativo+'">'+(m.ativo?'Inativar':'Reativar')+'</button>';
       var btnDel=(m.owner||m.lancs>0)?'':'<button class="btn sm danger" type="button" data-cl-del="'+esc(m.slug)+'">Excluir</button>';
       var histNota=m.lancs>0?'<span class="muted" style="font-size:.72rem" title="Tem horas lançadas; não pode ser excluído, só inativado">'+m.lancs+' lanç.</span>':'';
@@ -3395,12 +3396,13 @@ function _rhColabsLoad(){
         '<td><input class="cl-email" data-slug="'+esc(m.slug)+'" value="'+esc(m.email)+'" placeholder="e-mail" style="min-width:170px"></td>'+
         '<td>'+selPapel+'</td>'+
         '<td class="muted" style="font-size:.8rem">'+esc(m.cargocid||'—')+(m.cargos_n>1?' <span title="'+m.cargos_n+' cargos (acesso = união)">+'+(m.cargos_n-1)+'</span>':'')+'</td>'+
+        '<td>'+(m.owner?'':'<input class="cl-saida" type="date" data-slug="'+esc(m.slug)+'" value="'+esc(m.saida||'')+'" title="Data de saída (desligamento). Vazio = sem saída prevista." style="max-width:150px">')+'</td>'+
         '<td>'+tagSit+' '+histNota+'</td>'+
         '<td class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" type="button" data-cl-save="'+esc(m.slug)+'">Salvar</button>'+btnSit+btnDel+'</td>'+
       '</tr>';
-    }).join("")||'<tr><td colspan="6" class="muted center" style="padding:16px">Nenhum colaborador no quadro.</td></tr>';
+    }).join("")||'<tr><td colspan="7" class="muted center" style="padding:16px">Nenhum colaborador no quadro.</td></tr>';
     box.innerHTML='<div style="font-weight:700;margin-bottom:6px">Colaboradores</div>'+
-      '<p class="muted" style="font-size:.8rem;margin:0 0 10px">O quadro da casa. Adicione, edite nome/e-mail/papel, inative quem saiu (preserva o histórico) ou exclua quem nunca lançou horas. O cargo (acesso) é definido no painel “Pessoas & Cargos” abaixo. A Administração só é concedida pelo dono, na aba Permissões.</p>'+
+      '<p class="muted" style="font-size:.8rem;margin:0 0 10px">O quadro da casa. Adicione, edite nome/e-mail/papel, inative quem saiu ou agende a <b>data de saída</b> (o acesso termina ao fim daquele dia; o histórico é preservado) ou exclua quem nunca lançou horas. O cargo (acesso) é definido no painel “Pessoas & Cargos” abaixo. A Administração só é concedida pelo dono, na aba Permissões.</p>'+
       '<div class="card" style="padding:10px 12px;margin-bottom:12px;background:var(--surface2)"><div style="font-size:.82rem;font-weight:600;margin-bottom:6px">Adicionar colaborador</div>'+
         '<div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin:0">'+
           '<div class="field" style="margin:0;flex:1;min-width:160px"><label style="font-size:.72rem">Nome</label><input id="cl-nnome" placeholder="Nome completo"></div>'+
@@ -3408,13 +3410,14 @@ function _rhColabsLoad(){
           '<div class="field" style="margin:0;max-width:160px"><label style="font-size:.72rem">Papel</label><select id="cl-npapel">'+popt("equipe")+'</select></div>'+
           '<button class="btn sm" id="cl-add" type="button">Adicionar</button>'+
         '</div><div id="cl-addmsg" class="muted" style="font-size:.76rem;min-height:14px;margin-top:4px"></div></div>'+
-      '<div class="table-card"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Cargo</th><th>Situação</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+      '<div class="table-card"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Cargo</th><th>Saída</th><th>Situação</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
       '<div id="cl-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:8px"></div>';
     var gv=function(cls,slug){var e=box.querySelector(cls+'[data-slug="'+slug+'"]');return e?e.value:undefined;};
     var msg=function(t,err){var m=$("#cl-msg");if(m){m.textContent=t;m.classList.toggle("err",!!err);if(t&&!err)setTimeout(function(){if(m&&m.textContent===t)m.textContent="";},1600);}};
     box.querySelectorAll("[data-cl-save]").forEach(function(b){b.onclick=function(){
       var slug=b.getAttribute("data-cl-save");
       var payload={slug:slug,nome:gv(".cl-nome",slug),email:gv(".cl-email",slug)};
+      var sd=gv(".cl-saida",slug);if(sd!==undefined)payload.saida=sd;
       var sp=box.querySelector('.cl-papel[data-slug="'+slug+'"]');if(sp)payload.papel=sp.value;
       msg("Salvando…");api("rhmembroset",payload).then(function(){msg("Salvo.");_rhColabsLoad();}).catch(function(e){msg(e.message||"Erro",true);});
     };});

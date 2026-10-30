@@ -311,7 +311,7 @@ const RESTRITAS = ["financeiro", "comercial", "juridico"];
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-30a";
+const SCHEMA_VER = "2026-10-30b";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -968,6 +968,10 @@ function ensureSchema(): Promise<void> {
         PRIMARY KEY (tenant_id, slug))`);
     } catch (_) { /* já existe */ }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS membro_slug ON membro (slug)"); } catch (_) {}
+    /* Desligamento com DATA (2026-10-30): membro.saida (AAAA-MM-DD). Até a data a pessoa segue
+     * normal; depois, o acesso é recusado (membroDesligado) e o cron diário passa ativo=0, o mesmo
+     * mecanismo de inativação do RH. Histórico preservado. Migração 0016. */
+    try { await sqlite.execute("ALTER TABLE membro ADD COLUMN saida TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS acesso_status ON acesso (tenant_id, status)"); } catch (_) {}
     // Backfill das identidades atuais: cada colaborador recebe o papel mapeado, sem perda.
     // Inativos mantêm papel (histórico), ativo=0; o login já é barrado por checaAtivo.
@@ -1429,12 +1433,21 @@ async function exigeReauth(p: P, _slug: string): Promise<void> {
 /** H1 — conta habilitada a autenticar: colaborador interno ATIVO (COLABS sem INATIVOS) OU
  *  identidade do modelo formal `membro` com ativo=1 (cliente/fornecedor APROVADO via T7). Pendente
  *  (ativo=0) e desconhecido ficam de fora — a admissao segue gated pela aprovacao da Coordenacao. */
+/** Desligado = data de saída já passou (a saída vale até o fim do próprio dia). */
+function membroDesligado(saida: unknown, hojeIso = new Date().toISOString().slice(0, 10)): boolean {
+  const s = String(saida || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && s < hojeIso;
+}
 async function contaAtiva(slug: string): Promise<boolean> {
-  if (COLABS.includes(slug)) return !INATIVOS.includes(slug);
+  if (COLABS.includes(slug) && INATIVOS.includes(slug)) return false;
   try {
-    const r = await sqlite.execute({ sql: "SELECT ativo FROM membro WHERE slug = ? AND tenant_id = ? LIMIT 1", args: [slug, TENANT_INTELECTO] });
-    return r.rows.length ? !!Number((r.rows[0] as any).ativo) : false;
-  } catch (_) { return false; }
+    // Vale também para os colaboradores fixos (COLABS): a inativação do RH e a data de saída em
+    // `membro` barram o login — antes só a lista INATIVOS do código barrava.
+    const r = await sqlite.execute({ sql: "SELECT * FROM membro WHERE slug = ? AND tenant_id = ? LIMIT 1", args: [slug, TENANT_INTELECTO] });
+    if (!r.rows.length) return COLABS.includes(slug);
+    const m = r.rows[0] as any;
+    return !!Number(m.ativo) && !membroDesligado(m.saida);
+  } catch (_) { return COLABS.includes(slug); }
 }
 /** E-mail de contato/login do slug: config `email:<slug>` (cadastro da Coordenacao) com fallback a
  *  `membro.email` (identidade do T7). Usado no envio de recuperacao e nos avisos direcionados. */
@@ -1521,14 +1534,15 @@ type P = Record<string, any>;
  *  inferência por slug (e tenant Intelecto) enquanto a linha de membro não existir. */
 async function papelTenantDe(slug: string): Promise<{ papel: Papel; tenant_id: string; ativo: number | null }> {
   try {
-    const r = await sqlite.execute({ sql: "SELECT papel, tenant_id, ativo FROM membro WHERE slug = ? LIMIT 1", args: [slug] });
+    const r = await sqlite.execute({ sql: "SELECT * FROM membro WHERE slug = ? LIMIT 1", args: [slug] });
     if (r.rows.length) {
       const row = r.rows[0] as P;
       const pv = String(row.papel || "");
       return {
         papel: (PAPEIS.includes(pv as Papel) ? pv : papelInferido(slug)) as Papel,
         tenant_id: String(row.tenant_id || TENANT_INTELECTO),
-        ativo: (row.ativo === null || row.ativo === undefined) ? null : (Number(row.ativo) ? 1 : 0),
+        // Data de saída vencida conta como inativo (a sessão aberta cai no mesmo dia seguinte).
+        ativo: (row.ativo === null || row.ativo === undefined) ? null : ((Number(row.ativo) && !membroDesligado(row.saida)) ? 1 : 0),
       };
     }
   } catch (_) { /* membro ainda não materializada: cai no fallback */ }
@@ -5584,7 +5598,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const caps = await capsDe({ slug: u.slug, papel: u.papel });
     if (!u.coord && !temCapSet(caps, "pessoas.cargo_atribuir")) throw new Error("Sem permissão para gerir colaboradores.");
-    const r = await sqlite.execute({ sql: "SELECT slug, nome, email, papel, ativo FROM membro WHERE tenant_id = ? ORDER BY ativo DESC, papel, nome", args: [u.tenant_id] });
+    const r = await sqlite.execute({ sql: "SELECT slug, nome, email, papel, ativo, saida FROM membro WHERE tenant_id = ? ORDER BY ativo DESC, papel, nome", args: [u.tenant_id] });
     // Marca quem tem histórico de horas (não deve ser excluído, só inativado).
     const hr = await sqlite.execute({ sql: "SELECT slug, COUNT(*) AS n FROM lanc WHERE tenant_id = ? GROUP BY slug", args: [u.tenant_id] });
     const hist: Record<string, number> = {};
@@ -5599,7 +5613,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     for (const c of cfg.rows as P[]) { const s = String(c.k).slice(9); const v = String(c.v || "").trim(); if (v && !atrib[s]) { atrib[s] = v; nCargos[s] = nCargos[s] || 1; } }
     const membros = (r.rows as P[]).map((m) => ({
       slug: String(m.slug), nome: String(m.nome || m.slug), email: String(m.email || ""),
-      papel: String(m.papel || "equipe"), ativo: Number(m.ativo) ? 1 : 0,
+      papel: String(m.papel || "equipe"), ativo: Number(m.ativo) ? 1 : 0, saida: String(m.saida || ""),
       cargocid: atrib[String(m.slug)] || "", cargos_n: nCargos[String(m.slug)] || 0, lancs: hist[String(m.slug)] || 0,
       owner: isOwner(String(m.slug)),
     }));
@@ -5657,6 +5671,14 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       if (!ativo && isOwner(slug)) throw new Error("O dono do portal não pode ser inativado.");
       if (!ativo && slug === u.slug) throw new Error("Você não pode inativar a si mesmo.");
       sets.push("ativo = ?"); args.push(ativo);
+    }
+    if (p.saida != null) {
+      // Data de saída (desligamento agendado). Vazio = sem saída prevista. Não reativa sozinho.
+      const saida = String(p.saida || "").trim().slice(0, 10);
+      if (saida && !/^\d{4}-\d{2}-\d{2}$/.test(saida)) throw new Error("Data de saída inválida.");
+      if (saida && isOwner(slug)) throw new Error("O dono do portal não pode ter saída agendada.");
+      if (saida && slug === u.slug) throw new Error("Você não pode agendar a própria saída.");
+      sets.push("saida = ?"); args.push(saida);
     }
     if (!sets.length) throw new Error("Nada para alterar.");
     args.push(u.tenant_id, slug);
@@ -7004,6 +7026,20 @@ const BACKUP_RET_DIAS = 90;
 // ambientais, ~151k linhas, recarregados da fonte Base Empreendimentos MG por wrangler). Mantê-las
 // fora do dump deixa o backup pequeno e restaurável dentro dos limites de memória do Worker.
 const BACKUP_SKIP = new Set<string>(["amb_registro", "amb_agg"]);
+/** Cron diário: quem tem data de saída vencida passa a ativo=0 (mesmo efeito da inativação do RH),
+ *  com registro na auditoria. Idempotente (só toca quem ainda está ativo). */
+async function efetivaDesligamentos(env: any): Promise<{ n: number }> {
+  ENV = env;
+  await ensureSchema();
+  const hoje = new Date().toISOString().slice(0, 10);
+  const r = await sqlite.execute({ sql: "SELECT slug, saida FROM membro WHERE tenant_id = ? AND ativo = 1 AND COALESCE(saida,'') <> '' AND saida < ?", args: [TENANT_INTELECTO, hoje] });
+  for (const m of r.rows as P[]) {
+    await sqlite.execute({ sql: "UPDATE membro SET ativo = 0 WHERE tenant_id = ? AND slug = ? AND ativo = 1", args: [TENANT_INTELECTO, String(m.slug)] });
+    await sqlite.execute({ sql: "DELETE FROM sess WHERE tenant_id = ? AND slug = ?", args: [TENANT_INTELECTO, String(m.slug)] });
+    await audit("membro_desligado", "cron", String(m.slug) + " (saída " + String(m.saida) + ")", "cron");
+  }
+  return { n: r.rows.length };
+}
 async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?: number; linhas?: number; bytes?: number; removidos?: number; erro?: string }> {
   ENV = env; /* mesmo padrao do keepAlive: helpers usam o ENV global */
   if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
@@ -7523,7 +7559,7 @@ export default {
       return pr.then(() => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: true }))
         .catch((e: any) => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: false, msg: String((e && e.message) || e).slice(0, 200) }));
     };
-    if (event && event.cron === "0 6 * * *") ctx.waitUntil(run("backup", backupD1(env)));
+    if (event && event.cron === "0 6 * * *") { ctx.waitUntil(run("backup", backupD1(env))); ctx.waitUntil(run("desligamentos", efetivaDesligamentos(env))); }
     else if (event && event.cron === "0 9 * * *") ctx.waitUntil(run("daily_brief", briefColetar(env, { autor: "cron" })));
     else if (event && event.cron === "0 11 * * *") ctx.waitUntil(run("regras_agendadas", rodarRegrasAgendadas(env)));
     else ctx.waitUntil(run("keep_alive", keepAlive(env)));
