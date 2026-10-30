@@ -2029,13 +2029,14 @@ function _scvItems(){
   (_SCV.proj||[]).forEach(function(p){
     var c=byKey[String(p.cc)]; if(c)used[String(p.cc)]=1;
     itens.push({key:String(p.cc),titulo:(c&&c.titulo)||p.projeto||p.cc,cc:p.cc,area:(c&&c.area)||p.tipo||"",
-      resumo:(c&&c.resumo)||"",isProj:true,proj:p,hasCase:!!c,publicado:c?Number(c.publicado):1,nprod:c?(c.produtos||0):0,ordem:c?(c.ordem||0):9999});
+      resumo:(c&&c.resumo)||"",isProj:true,proj:p,hasCase:!!c,publicado:c?Number(c.publicado):0,nprod:c?(c.produtos||0):0,ordem:c?(c.ordem||0):9999,
+      temCorpo:c?Number(c.temCorpo||0):0,capa:c?(c.capa||""):""});
   });
   // 2) Cases curados sem projeto concluído correspondente (ex.: os cases-modelo da casa).
   (_SCV.cases||[]).forEach(function(c){
     if(used[String(c.cid)])return;
     itens.push({key:String(c.cid),titulo:c.titulo||c.cid,cc:c.cliente_cc||"",area:c.area||"",resumo:c.resumo||"",
-      isProj:false,proj:null,hasCase:true,publicado:Number(c.publicado),nprod:c.produtos||0,ordem:c.ordem||0});
+      isProj:false,proj:null,hasCase:true,publicado:Number(c.publicado),nprod:c.produtos||0,ordem:c.ordem||0,temCorpo:Number(c.temCorpo||0),capa:c.capa||""});
   });
   // Curados primeiro (por ordem), depois projetos (por cc).
   itens.sort(function(a,b){
@@ -2052,7 +2053,8 @@ function _scvCard(it){
   var badge=_SCV.pode?(it.hasCase?(it.publicado?'<span class="tag s-APROVADO" style="font-size:.66rem">publicado</span>':'<span class="tag s-DEVOLVIDO" style="font-size:.66rem">rascunho</span>'):'<span class="tag" style="font-size:.66rem;opacity:.7">sem apresentação</span>'):'';
   var statusPill=it.isProj?_pill(it.proj.status):'';
   var chips='<div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap">'+(it.area?_vtTipoChipArea(it.area):'')+statusPill+badge+'</div>';
-  var sub=esc(it.cc||'—')+(it.nprod?(' · '+it.nprod+' produto(s)'):'');
+  var sub=esc(it.cc||'—')+(it.nprod?(' · '+it.nprod+' produto(s)'):'')
+    +((_SCV.pode&&it.gate&&!it.gate.pronto)?'<div style="margin-top:4px;font-size:.72rem;color:var(--warn,#a8610f)">Falta: '+esc(it.gate.falta.join(", "))+'</div>':'');
   return '<div class="card vt-card" style="padding:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column" data-key="'+esc(it.key)+'">'+capa+
     '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;flex:1">'+chips+
       '<div style="font-weight:700;font-size:1rem;line-height:1.25">'+esc(it.titulo)+'</div>'+
@@ -2060,13 +2062,27 @@ function _scvCard(it){
       (it.resumo?'<p class="muted" style="font-size:.84rem;margin:4px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">'+esc(it.resumo)+'</p>':'')+
     '</div></div>';
 }
+/* GATE DA VITRINE REAL: só vai à vitrine o que tem descrição, apresentação, produto final e está
+   publicado. A equipe vê só os prontos; a gestão filtra e vê o que falta em cada um. */
+var _SCVF="prontos";
+function _scvGate(it){var g={descricao:String(it.resumo||"").trim().length>=40,apresentacao:!!(it.temCorpo||it.capa),produtos:(it.nprod||0)>=1,publicado:!!it.publicado};
+  g.falta=[];if(!g.descricao)g.falta.push("descrição");if(!g.apresentacao)g.falta.push("apresentação");if(!g.produtos)g.falta.push("produto final");if(!g.publicado)g.falta.push("publicação");
+  g.pronto=!g.falta.length;return g;}
 function _scvRender(){
-  var el=_SCV.el, itens=_scvItems();
+  var el=_SCV.el, todos=_scvItems();
+  todos.forEach(function(it){it.gate=_scvGate(it);});
+  var nP=todos.filter(function(it){return it.gate.pronto;}).length,nE=todos.length-nP;
+  if(!_SCV.pode)_SCVF="prontos";
+  var itens=todos.filter(function(it){return _SCVF==="todos"||(_SCVF==="prontos"?it.gate.pronto:!it.gate.pronto);});
+  var filtro=_SCV.pode?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px">'+[["prontos","Prontos para vitrine",nP],["preparo","Em preparação",nE],["todos","Todos",todos.length]].map(function(x){return '<button type="button" class="btn sm'+(_SCVF===x[0]?'':' sec')+'" data-scvf="'+x[0]+'">'+x[1]+' ('+x[2]+')</button>';}).join("")
+    +'<span class="muted" style="font-size:.76rem;align-self:center">Para entrar na vitrine: descrição, apresentação, produto final e publicação.</span></div>':'';
   var hint=_SCV.pode?'Clique num card para abrir a ficha. A gestão adiciona apresentação e produtos finais a qualquer um, e libera ao cliente.'
                     :'Clique num card para ver a apresentação, os produtos finais e o andamento.';
   var grid=itens.length?('<div class="vt-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">'+itens.map(_scvCard).join("")+'</div>')
                        :'<div class="card"><p class="muted" style="margin:0">Nenhum projeto concluído ou case ainda.</p></div>';
-  el.innerHTML=_SCV.head+'<p class="muted">'+esc(hint)+'</p><div id="scv-box">'+grid+'</div>';
+  if(!itens.length)grid='<div class="card"><p class="muted" style="margin:0">'+(_SCVF==="prontos"?'Nenhum projeto pronto para a vitrine ainda.'+(_SCV.pode?' Veja “Em preparação” para completar o que falta.':''):'Nada neste filtro.')+'</p></div>';
+  el.innerHTML=_SCV.head+'<p class="muted">'+esc(hint)+'</p>'+filtro+'<div id="scv-box">'+grid+'</div>';
+  el.querySelectorAll("[data-scvf]").forEach(function(b){b.onclick=function(){_SCVF=b.getAttribute("data-scvf");_scvRender();};});
   var box=$("#scv-box");
   if(box)box.querySelectorAll(".vt-card").forEach(function(card){card.onclick=function(){_scvFicha(card.getAttribute("data-key"));};});
 }

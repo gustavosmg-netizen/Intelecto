@@ -6477,7 +6477,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const gerir = !!u.coord;
     const r = await sqlite.execute({
-      sql: "SELECT cid, titulo, cliente_cc, area, resumo, capa, capa_fonte, publicado, ordem, atualizado FROM vitrine_case WHERE tenant_id = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo",
+      sql: "SELECT cid, titulo, cliente_cc, area, resumo, capa, capa_fonte, publicado, ordem, atualizado, LENGTH(COALESCE(corpo,'')) AS corpo_len FROM vitrine_case WHERE tenant_id = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo",
       args: [u.tenant_id],
     });
     // Contagem de produtos por case (p/ o badge do card), em 1 consulta.
@@ -6488,6 +6488,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       cid: x.cid, titulo: x.titulo, cliente_cc: x.cliente_cc, area: x.area, resumo: x.resumo,
       capa: x.capa, capa_fonte: x.capa_fonte, publicado: Number(x.publicado) ? 1 : 0, ordem: Number(x.ordem) || 0,
       atualizado: x.atualizado, produtos: nprod[String(x.cid)] || 0,
+      // Gate da vitrine real: há apresentação (corpo) de verdade? (o corpo em si não vai na lista)
+      temCorpo: (Number(x.corpo_len) || 0) >= 80 ? 1 : 0,
     }));
     return { ok: true, cases, podeGerir: gerir };
   }

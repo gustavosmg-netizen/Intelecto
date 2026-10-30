@@ -48,3 +48,11 @@ test("RH clássico: RCF por cargo (ver, imprimir, editar), ciência na Minha fic
   const i = html.indexOf("function _rhContratos()"); const bloco = html.slice(i, html.indexOf("function _fichaRcf()", i));
   assert.doesNotMatch(bloco, /id="ct-val"|salario|salário"/i);
 });
+
+test("Vitrine: gate de promoção (descrição, apresentação, produto, publicado); equipe vê só os prontos", () => {
+  assert.match(html, /function _scvGate\(it\)/);
+  assert.match(html, /descricao:String\(it\.resumo\|\|""\)\.trim\(\)\.length>=40/);
+  assert.match(html, /if\(!_SCV\.pode\)_SCVF="prontos";/);
+  const ts = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src/index.ts"), "utf8");
+  assert.match(ts, /temCorpo: \(Number\(x\.corpo_len\) \|\| 0\) >= 80 \? 1 : 0/);
+});
