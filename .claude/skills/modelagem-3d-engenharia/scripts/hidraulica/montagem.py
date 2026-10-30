@@ -117,7 +117,7 @@ def _bocal_parede(m: Modelo, eq_tag: str, b: dict, ponto_ext: Vector, normal: Ve
     p = Porta(f"{eq_tag}.{b['tag']}", face, normal, dn, pn, "flange", b.get("papel"), eq_tag,
               di=di, extra=dict(b))
     m.portas[p.nome] = p
-    m.item("Tubo de parede flangeado c/ anel de vedação", f"DN{dn} PN{pn} L={L:.0f} mm", "un", 1)
+    m.item("Tubo de parede flangeado c/ anel de vedação", f"DN{dn} {normas.classe_txt(pn)} L={L:.0f} mm", "un", 1)
     _dispositivos_bocal(m, eq_tag, b, nome, de, di, inicio, ponto_ext - normal * parede, normal, p)
     return de
 
@@ -457,9 +457,17 @@ def _posicionar_componentes(linha: Linha) -> None:
     # componentes "fim" são empacotados de trás para frente a partir do destino
     finais = [c for c in especificados if c.get("distancia") == "fim"]
     normais = [c for c in especificados if c.get("distancia") != "fim"]
+    retos = [el for el in linha.elementos if el[0] == "reto"]
     for c in normais:
         L = _comprimento_componente(c, linha.tubo_em(cursor))
-        s0 = float(c["distancia"]) if isinstance(c.get("distancia"), (int, float)) else cursor
+        dist = c.get("distancia")
+        if isinstance(dist, dict):          # {"trecho": i, "pos": inicio|meio|fim, "offset": mm}
+            el = retos[int(dist["trecho"])]
+            pos = dist.get("pos", "meio")
+            base = {"inicio": el[4], "meio": (el[4] + el[5] - L) / 2, "fim": el[5] - L}[pos]
+            s0 = base + float(dist.get("offset", 0.0))
+        else:
+            s0 = float(dist) if isinstance(dist, (int, float)) else cursor
         comp = Componente(c["tipo"], c.get("tag", c["tipo"]), s0, s0 + L,
                           linha.tubo_em(s0).dn_flange, dict(c))
         linha.componentes.append(comp)
@@ -469,15 +477,26 @@ def _posicionar_componentes(linha: Linha) -> None:
         cursor = s0 + L
     fim = linha.comprimento - _adaptador_comprimento(linha, linha.destino,
                                                      linha.tubo_em(linha.comprimento))
-    for c in reversed(finais):
+    def _t2(c):
+        return normas.tubo(tubo.material, int(c.get("dn2", c.get("de2"))))
+
+    for i, c in reversed(list(enumerate(finais))):
+        # tubo onde o componente fica: o da redução final seguinte mais próxima a montante
+        # dele na ordem da especificação; sem ela, o tubo da linha antes das reduções finais
+        red_ant = [x for x in finais[:i] if x["tipo"] == "reducao"]
+        t_aqui = _t2(red_ant[-1]) if red_ant else linha.tubo_em(fim - 1)
         if c["tipo"] == "reducao":
-            t2 = normas.tubo(tubo.material, int(c.get("dn2", c.get("de2"))))
-            L = max(3 * (linha.tubo_em(fim - 1).de - t2.de), linha.tubo_em(fim - 1).de)
+            t2 = _t2(c)
+            L = max(3 * (t_aqui.de - t2.de), t_aqui.de) if t_aqui.de > t2.de else \
+                max(3 * (t2.de - t_aqui.de), t2.de)
             linha.tubos_por_s.append((fim, t2))
+            dn = t_aqui.dn_flange
         else:
-            L = _comprimento_componente(c, linha.tubo_em(fim))
-        comp = Componente(c["tipo"], c.get("tag", c["tipo"]), fim - L, fim,
-                          linha.tubo_em(fim - L - 1).dn_flange, dict(c))
+            depois = [x for x in finais[:i + 1] if x["tipo"] == "reducao"]
+            t_comp = _t2(depois[-1]) if depois else linha.tubo_em(fim - 1)
+            L = _comprimento_componente(c, t_comp)
+            dn = t_comp.dn_flange
+        comp = Componente(c["tipo"], c.get("tag", c["tipo"]), fim - L, fim, dn, dict(c))
         linha.componentes.append(comp)
         fim -= L
     linha.tubos_por_s.sort(key=lambda x: x[0])
@@ -510,14 +529,14 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
             peca = g.colarinho_pead(tubo.de, porta_fl) + Pos(0, 0, t_c) * g.flange_peca(
                 porta_fl, tubo.de + 4)
             aperto = t_outro + t_c + porta_fl.t
-            m.item("Colarinho PEAD + flange solto", f"DE{tubo.dn} / DN{porta_fl.dn} PN{porta_fl.pn}",
+            m.item("Colarinho PEAD + flange solto", f"DE{tubo.dn} / DN{porta_fl.dn} {normas.classe_txt(porta_fl.pn)}",
                    "cj", 1)
         else:
             peca = g.flange_peca(porta_fl, tubo.de) + Pos(0, 0, porta_fl.t) * (
                 Cylinder(tubo.de / 2 * 1.22, 0.6 * tubo.de, align=g.BASE)
                 - Cylinder(tubo.de / 2, 0.6 * tubo.de, align=g.BASE))
             aperto = t_outro + porta_fl.t
-            m.item("Adaptador PVC flange-bolsa", f"DN{tubo.dn} / flange DN{porta_fl.dn} PN{porta_fl.pn}",
+            m.item("Adaptador PVC flange-bolsa", f"DN{tubo.dn} / flange DN{porta_fl.dn} {normas.classe_txt(porta_fl.pn)}",
                    "un", 1)
         m.add(nome, g.posicionar(peca, P, dd), CORES["metal"])
         m.add(nome, g.posicionar(g.parafusos(porta_fl, aperto), P - dd * t_outro, dd),
@@ -558,7 +577,7 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
                       "retencao": "Válvula de retenção portinhola flangeada",
                       "esfera": "Válvula esfera flangeada",
                       "junta_desmontagem": "Junta de desmontagem travada"}[c.tipo]
-            m.item(rotulo, f"DN{c.dn} PN{linha.spec.get('pn', 10)} F-F {L:.0f} mm", "un", 1)
+            m.item(rotulo, f"DN{c.dn} {normas.classe_txt(int(linha.spec.get('pn', 10)))} F-F {L:.0f} mm", "un", 1)
             # vizinhos: componente flangeado colado -> só parafusos; senão adaptador no tubo
             ant = linha.componentes[i - 1] if i else None
             prox = linha.componentes[i + 1] if i + 1 < len(linha.componentes) else None
@@ -673,9 +692,13 @@ def construir_linha(m: Modelo, linha: Linha, tes: list) -> None:
             continue
         m.item("Tubo", f"{desc} ({math.ceil(L / barra)} barra(s) de {barra / 1000:g} m)", "m",
                round(L / 1000, 2))
+    if linha.spec.get("curvas_sob_medida"):
+        n_c = sum(1 for a in linha.angulos if a)
+        m.item("Curva gomada PEAD sob medida (ângulo do traçado)", f"{linha.tubo.descricao}",
+               "un", n_c)
     if linha.spec.get("ponto_alto"):
         m.item("Respiro manual no ponto alto (DN25, válvula esfera)", linha.tag, "un", 1)
-    if linha.regime == "ventilacao":
+    if linha.regime == "ventilacao" and not linha.spec.get("fechada"):
         tb = linha.tubo_em(linha.comprimento)
         m.add(nome, dv.respiro_topo(tb.de, tb.di, linha.destino.ponto), CORES["metal"])
         m.item("Pescoço de ganso c/ tela (topo do respiro)", tb.descricao, "un", 1)
@@ -737,8 +760,9 @@ def _dentro_de_tanque(m: Modelo, P: Vector, folga: float = 0.0) -> bool:
         cx, cy = eq["centro"]
         a, b = eq["dim"]
         t = eq["parede"]
+        f = min(folga, 300.0) if eq.get("pote") else folga   # pote de selagem: só as pernas
         if eq["cil"]:
-            if math.hypot(P.X - cx, P.Y - cy) <= a / 2 + t + folga and P.Z <= eq["borda"] + 2000:
+            if math.hypot(P.X - cx, P.Y - cy) <= a / 2 + t + f and P.Z <= eq["borda"] + 2000:
                 return True
         elif abs(P.X - cx) <= a / 2 + t and abs(P.Y - cy) <= b / 2 + t and P.Z <= eq["borda"]:
             return True

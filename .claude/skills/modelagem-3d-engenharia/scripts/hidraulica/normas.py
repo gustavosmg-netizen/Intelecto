@@ -140,7 +140,12 @@ FLANGE_ANSI150 = {
 }
 # Flanges PRFV Fibrais medidos nos desenhos 315A/D/E-25 (D externo, espessura adotada)
 FLANGE_PRFV = {50: (161, 25), 150: (290, 30), 200: (343, 32), 600: (813, 40)}
-CLASSE_ANSI = 150   # usar pn=150 nas linhas e portas para furação ANSI B16.5 classe 150
+CLASSE_ANSI = 150
+
+
+def classe_txt(pn: int) -> str:
+    """Rótulo de compra: 'ASME B16.5 Classe 150' (pn = 150) ou 'PN10/PN16' (EN/ISO)."""
+    return "ASME B16.5 Classe 150" if pn == CLASSE_ANSI else f"PN{pn}"   # usar pn=150 nas linhas e portas para furação ANSI B16.5 classe 150
 
 
 def flange(dn: int, pn: int = 10) -> Flange:

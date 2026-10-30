@@ -84,7 +84,7 @@ def _validar_linha(m: Modelo, ln: Linha, add) -> None:
                 "furação incompatível.")
     # H04: ângulos de curva comerciais
     for i, ang in enumerate(ln.angulos, start=1):
-        if ang == 0:
+        if ang == 0 or ln.spec.get("curvas_sob_medida"):   # PEAD: curva gomada fabricada
             continue
         perto = min(normas.ANGULOS_COMERCIAIS, key=lambda a: abs(a - ang))
         if abs(perto - ang) > normas.TOLERANCIA_DEFLEXAO:

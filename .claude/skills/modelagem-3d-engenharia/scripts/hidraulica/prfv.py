@@ -371,3 +371,48 @@ def filtro_carvao(m, tag: str, centro, porta_nome: str):
     m.equipamentos[tag] = {"tipo": "filtro", "solido": v}
     m.item("Filtro de carvão ativado do respiro (FCA-201)", "envelope; especificar (LAC-042)",
            "un", 1)
+
+
+def pote_selagem(m, tag: str, centro, z_vertedor: float, selo: float, az_saida: float,
+                 Di: float = 400.0, de_dip: float = 160.0, folga_fundo: float = 200.0,
+                 bordo: float = 350.0, desenho: str = "novo (CSTR)") -> TanquePRFV:
+    """Pote de selagem (fecho hídrico) de saída por gravidade de reator fechado.
+
+    A descida do reator entra pelo bocal do tampo e continua por dentro como tubo mergulhado
+    (dip-leg) até `selo` abaixo da soleira do vertedor; o pote transborda pelo bocal lateral
+    (soleira = z_vertedor) para o tanque de destino. O ânulo externo fica à pressão do destino
+    (ventilado pela própria linha de transbordo, que trabalha com lâmina livre).
+    Poucas curvas cheias: com polpa de tensão de escoamento alta cada curva cheia custa caro.
+    """
+    z_dip = z_vertedor - selo
+    z0 = z_dip - folga_fundo
+    H = z_vertedor + bordo - z0
+    di_dip = normas.tubo("pead", int(de_dip)).di
+    b = [Bocal("N-ENT", 150, "tampo", "novo", "chegada do reator; continua como tubo mergulhado",
+               raio=0, elev=z0 + H + 150, origem=desenho),
+         Bocal("N-SAI", 150, "costado", "novo", "vertedor de saída (lâmina livre) ao destino",
+               az=az_saida, elev=z_vertedor + 76, origem=desenho, soleira=z_vertedor),
+         Bocal("N-DRE", 50, "costado", "tamponar", "dreno/limpeza do fundo do pote: cego com "
+               "registro DN50 (só com a saída do reator fechada)", az=(az_saida + 180) % 360,
+               elev=z0 + 90, origem=desenho),
+         Bocal("N-LAV", 50, "costado", "tamponar", "engate de água de lavagem (flushing)",
+               az=(az_saida + 90) % 360, elev=z_vertedor + 200, origem=desenho)]
+    tq = TanquePRFV(tag, desenho, centro, Di, z0, H, t=10, tampo="fechado", bocais=b,
+                    escada_az=None, guarda_corpo=False, gas=False)
+    construir(m, tq)
+    cx, cy = centro
+    dip = Pos(cx, cy, z_dip) * (Cylinder(de_dip / 2, z0 + H - z_dip, align=g.BASE)
+                                - Cylinder(di_dip / 2, z0 + H - z_dip, align=g.BASE))
+    m.add(f"{tag}-DIP", dip, COR["usar"])
+    pernas = None
+    for az in (45, 135, 225, 315):
+        d = direcao(az) * (Di / 2 + 10 + 40)
+        p = Pos(cx + d.X, cy + d.Y, 0) * Box(60, 60, z0 - 10, align=(Align.CENTER, Align.CENTER,
+                                                                     Align.MIN))
+        pernas = p if pernas is None else pernas + p
+    m.add(f"{tag}-SUP", pernas, COR["aco"])
+    m.equipamentos[tag]["pote"] = {"z_vertedor": z_vertedor, "z_dip": z_dip, "z_fundo": z0,
+                                   "Di": Di, "de_dip": de_dip, "di_dip": di_dip}
+    m.item("Pote de selagem (fecho hídrico) com tubo mergulhado e vertedor DN150",
+           f"{tag}: Ø{Di:.0f} × {H:.0f} mm, selo {selo:.0f} mm, apoio metálico até o piso", "un", 1)
+    return tq

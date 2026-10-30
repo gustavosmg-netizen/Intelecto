@@ -1,72 +1,84 @@
-equipamento;desenho;bocal;DN;local;posicao;z_abs_mm;estado;acao;servico;conexao;origem;nota;soleira_mm
-R-101;315E-25;N1-45;"150 (6"")";tampo;"tampo az 45°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);;R-101-SP;315E-25;;
-R-101;315E-25;N1-135;"150 (6"")";tampo;"tampo az 135°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);;SH;315E-25;;
-R-101;315E-25;N1-225;"150 (6"")";tampo;"tampo az 225°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);;R-101-AL;315E-25;;
-R-101;315E-25;N1-315;"150 (6"")";tampo;"tampo az 315°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);;LT;315E-25;;
-R-101;315E-25;N2-45;"150 (6"")";costado;"costado az 45°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);—;315E-25;;
-R-101;315E-25;N2-135;"150 (6"")";costado;"costado az 135°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);"purga de lodo/esgotamento por bomba (registro travado fechado, LC; Q ≤ Q_máx RES-001 §5.6)";R-101-PG;315E-25;;
-R-101;315E-25;N2-225;"150 (6"")";costado;"costado az 225°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);entrada da alimentação pelo fundo (alça quebra-sifão externa);R-101-DL;315E-25;;
-R-101;315E-25;N2-315;"150 (6"")";costado;"costado az 315°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);—;315E-25;;
-R-101;315E-25;N3-0;"50 (2"")";tampo;"tampo az 0°, r = 450 mm; face a 150 mm do tampo";4850;usar;USAR (existente);saída de biogás ao coletor comum;R-101-GAS;315E-25;posição radial no tampo a conferir no as-built (LAC-043);
-R-101;315E-25;N3-180;"50 (2"")";tampo;"tampo az 180°, r = 450 mm; face a 150 mm do tampo";4850;usar;USAR (existente);PT/PSLL/PAHH do espaço de gás;PT;315E-25;idem LAC-043;
-R-101;315E-25;M1;"600 (24"")";costado;"costado az 90°; eixo a 700 mm do fundo interno";700;tamponar;TAMPONAR (flange cego);boca de visita inferior: tampa cega estanque a gás (LAC-029);—;315E-25;;
-R-101;315E-25;M2;800 (Ø800 mm);tampo;"tampo az 0°, r = 1000 mm; face a 170 mm do tampo";4870;usar;USAR (existente);dispositivo de emergência bidirecional;EMG;315E-25;;
-R-101;315E-25;A4;"200 (8"")";tampo;"tampo az 180°, r = 1000 mm; face a 150 mm do tampo";4850;converter;"CONVERTER: flange 8"" + cego";"respiro 8"" PVC chapéu chinês → flange 8"" ANSI 150# + flange cego (abrir só na purga OP-02)";—;315E-25;;
-R-101;315E-25;N-SAI;"150 (6"")";costado;"costado az 90°; eixo a 2900 mm do fundo interno";2900;novo;NOVO (furar, laminar e flangear);saída por gravidade (transbordo selado) — soleira do transbordo na crista externa a 3500;R-101-SP;novo (CSTR);;
-R-101;315E-25;N-LSHH;"50 (2"")";costado;"costado az 65°; eixo a 4250 mm do fundo interno";4250;novo;NOVO (furar, laminar e flangear);chave de nível muito alto (garfo vibratório, sensor dedicado à SIF);LSHH;novo (CSTR);;
-R-201;315D-25;N1-45;"150 (6"")";tampo;"tampo az 45°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;SH;315D-25;;
-R-201;315D-25;N1-135;"150 (6"")";tampo;"tampo az 135°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;R-201-SP;315D-25;;
-R-201;315D-25;N1-225;"150 (6"")";tampo;"tampo az 225°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;R-201-AL;315D-25;;
-R-201;315D-25;N1-315;"150 (6"")";tampo;"tampo az 315°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;LT;315D-25;;
-R-201;315D-25;N2-45;"150 (6"")";costado;"costado az 45°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);—;315D-25;;
-R-201;315D-25;N2-135;"150 (6"")";costado;"costado az 135°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);"purga de lodo/esgotamento por bomba (registro travado fechado, LC; Q ≤ Q_máx RES-001 §5.6)";R-201-PG;315D-25;;
-R-201;315D-25;N2-225;"150 (6"")";costado;"costado az 225°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);entrada da alimentação pelo fundo (alça quebra-sifão externa);R-201-DL;315D-25;;
-R-201;315D-25;N2-315;"150 (6"")";costado;"costado az 315°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);—;315D-25;;
-R-201;315D-25;N3-0;"50 (2"")";tampo;"tampo az 0°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);saída de biogás ao coletor comum;R-201-GAS;315D-25;posição radial no tampo a conferir no as-built (LAC-043);
-R-201;315D-25;N3-180;"50 (2"")";tampo;"tampo az 180°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);PT/PSLL/PAHH do espaço de gás;PT;315D-25;idem LAC-043;
-R-201;315D-25;M1;"600 (24"")";costado;"costado az 90°; eixo a 700 mm do fundo interno";700;tamponar;TAMPONAR (flange cego);boca de visita inferior: tampa cega estanque a gás (LAC-029);—;315D-25;;
-R-201;315D-25;M2;800 (Ø800 mm);tampo;"tampo az 0°, r = 1300 mm; face a 170 mm do tampo";9470;usar;USAR (existente);dispositivo de emergência bidirecional;EMG;315D-25;;
-R-201;315D-25;A4;"200 (8"")";tampo;"tampo az 180°, r = 1300 mm; face a 150 mm do tampo";9450;converter;"CONVERTER: flange 8"" + cego";"respiro 8"" PVC chapéu chinês → flange 8"" ANSI 150# + flange cego (abrir só na purga OP-02)";—;315D-25;;
-R-201;315D-25;N-SAI;"150 (6"")";costado;"costado az 146°; eixo a 6900 mm do fundo interno";6900;novo;NOVO (furar, laminar e flangear);saída por gravidade (transbordo selado) — soleira do transbordo na crista externa a 7500;R-201-SP;novo (CSTR);;
-R-201;315D-25;N-LSHH;"50 (2"")";costado;"costado az 110°; eixo a 8250 mm do fundo interno";8250;novo;NOVO (furar, laminar e flangear);chave de nível muito alto (garfo vibratório, sensor dedicado à SIF);LSHH;novo (CSTR);;
-R-202;315D-25;N1-45;"150 (6"")";tampo;"tampo az 45°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;SH;315D-25;;
-R-202;315D-25;N1-135;"150 (6"")";tampo;"tampo az 135°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;LT;315D-25;;
-R-202;315D-25;N1-225;"150 (6"")";tampo;"tampo az 225°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;R-202-SP;315D-25;;
-R-202;315D-25;N1-315;"150 (6"")";tampo;"tampo az 315°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);;R-202-AL;315D-25;;
-R-202;315D-25;N2-45;"150 (6"")";costado;"costado az 45°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);—;315D-25;;
-R-202;315D-25;N2-135;"150 (6"")";costado;"costado az 135°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);"purga de lodo/esgotamento por bomba (registro travado fechado, LC; Q ≤ Q_máx RES-001 §5.6)";R-202-PG;315D-25;;
-R-202;315D-25;N2-225;"150 (6"")";costado;"costado az 225°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);—;315D-25;;
-R-202;315D-25;N2-315;"150 (6"")";costado;"costado az 315°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);entrada da alimentação pelo fundo (alça quebra-sifão externa);R-202-DL;315D-25;;
-R-202;315D-25;N3-0;"50 (2"")";tampo;"tampo az 0°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);saída de biogás ao coletor comum;R-202-GAS;315D-25;posição radial no tampo a conferir no as-built (LAC-043);
-R-202;315D-25;N3-180;"50 (2"")";tampo;"tampo az 180°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);PT/PSLL/PAHH do espaço de gás;PT;315D-25;idem LAC-043;
-R-202;315D-25;M1;"600 (24"")";costado;"costado az 90°; eixo a 700 mm do fundo interno";700;tamponar;TAMPONAR (flange cego);boca de visita inferior: tampa cega estanque a gás (LAC-029);—;315D-25;;
-R-202;315D-25;M2;800 (Ø800 mm);tampo;"tampo az 0°, r = 1300 mm; face a 170 mm do tampo";9470;usar;USAR (existente);dispositivo de emergência bidirecional;EMG;315D-25;;
-R-202;315D-25;A4;"200 (8"")";tampo;"tampo az 180°, r = 1300 mm; face a 150 mm do tampo";9450;converter;"CONVERTER: flange 8"" + cego";"respiro 8"" PVC chapéu chinês → flange 8"" ANSI 150# + flange cego (abrir só na purga OP-02)";—;315D-25;;
-R-202;315D-25;N-SAI;"150 (6"")";costado;"costado az 198°; eixo a 6900 mm do fundo interno";6900;novo;NOVO (furar, laminar e flangear);saída por gravidade (transbordo selado) — soleira do transbordo na crista externa a 7500;R-202-SP;novo (CSTR);;
-R-202;315D-25;N-LSHH;"50 (2"")";costado;"costado az 250°; eixo a 8250 mm do fundo interno";8250;novo;NOVO (furar, laminar e flangear);chave de nível muito alto (garfo vibratório, sensor dedicado à SIF);LSHH;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-ENT;"150 (6"")";costado;"costado az 270°; eixo a 1806 mm do fundo interno";2256;novo;NOVO (furar, laminar e flangear);entrada do R-101 (descarga livre acima do extravasor);R-101-TR;novo (CSTR);;2180
-TQ-201;novo (CSTR) — LAC-010;N-SUC;"100 (4"")";costado;"costado az 180°; eixo a 160 mm do fundo interno";610;novo;NOVO (furar, laminar e flangear);sucção da P-201 com quebra-vórtice;L-201S;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-EXT;"150 (6"")";costado;"costado az 30°; eixo a 1326 mm do fundo interno";1776;novo;NOVO (furar, laminar e flangear);extravasor livre (sem válvula);L-201EX;novo (CSTR);;1700
-TQ-201;novo (CSTR) — LAC-010;N-DRE;"50 (2"")";costado;"costado az 135°; eixo a 90 mm do fundo interno";540;novo;NOVO (furar, laminar e flangear);dreno de fundo com registro;L-201DR;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-LSLL;"50 (2"")";costado;"costado az 225°; eixo a 350 mm do fundo interno";800;novo;NOVO (furar, laminar e flangear);LSLL garfo (trip P-201);LSLL;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-LSHH;"50 (2"")";costado;"costado az 315°; eixo a 1100 mm do fundo interno";1550;novo;NOVO (furar, laminar e flangear);LSHH garfo (trip P-101);LSHH;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-RESP;"150 (6"")";tampo;"tampo az 0°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);respiro ao FCA-201;L-201RP;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-AG;"200 (8"")";tampo;"tampo az 0°, r = 0 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);agitador AG-200;AG-200;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-LT;"80 (3"")";tampo;"tampo az 120°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);LT-201 (radar);LT;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-PH;"50 (2"")";tampo;"tampo az 180°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);pHIT/ORP-201 (sonda de imersão);PHIT;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-DOS;"25 (1"")";tampo;"tampo az 60°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);injeção de NaOH (DOS-201);DOS;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-BL;"80 (3"")";tampo;"tampo az 240°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);boia LSL (para a P-201);LSL;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-BH;"80 (3"")";tampo;"tampo az 300°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);boia LSH (parte a P-201);LSH;novo (CSTR);;
-TQ-201;novo (CSTR) — LAC-010;N-RL05;"80 (3"")";tampo;"tampo az 270°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);retorno alcalino RL-05 (P-301);L-RL05;novo (CSTR);;
-TQ-301;315A-25;N1-0;"150 (6"")";tampo;"tampo az 0°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);chegada do R-201 (descarga livre);R-201-TR;315A-25;;
-TQ-301;315A-25;N1-90;"150 (6"")";tampo;"tampo az 90°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);chegada do R-202 (descarga livre);R-202-TR;315A-25;;
-TQ-301;315A-25;N1-180;"150 (6"")";tampo;"tampo az 180°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);LT-301 (radar);LT;315A-25;;
-TQ-301;315A-25;N1-270;"150 (6"")";tampo;"tampo az 270°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);retorno da P-301 (recirculação/purga de lodo dos reatores);L-301R;315A-25;;
-TQ-301;315A-25;N2-0;"150 (6"")";costado;"costado az 0°; eixo a 340 mm do fundo interno";2480;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV;—;315A-25;;
-TQ-301;315A-25;N2-90;"150 (6"")";costado;"costado az 90°; eixo a 340 mm do fundo interno";2480;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV;—;315A-25;;
-TQ-301;315A-25;N2-180;"150 (6"")";costado;"costado az 180°; eixo a 340 mm do fundo interno";2480;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV;—;315A-25;;
-TQ-301;315A-25;N2-270;"150 (6"")";costado;"costado az 270°; eixo a 340 mm do fundo interno";2480;tamponar;TAMPONAR (flange cego);sem uso: flange cego PRFV;—;315A-25;;
-TQ-301;315A-25;N3;"150 (6"")";fundo;fundo (ponta do cone);500;usar;USAR (existente);dreno do cone e sucção da P-301;L-301S;315A-25;;
-TQ-301;315A-25;M1;"600 (24"")";tampo;"tampo az 0°, r = 0 mm; face a 140 mm do tampo";4680;tamponar;TAMPONAR (flange cego);boca de visita: tampa cega;—;315A-25;;
-TQ-301;315A-25;N-EXT;"150 (6"")";costado;"costado az 200°; eixo a 1936 mm do fundo interno";4076;novo;NOVO (furar, laminar e flangear);extravasor livre (sem válvula);L-301EX;novo (CSTR);;4000
-TQ-301;315A-25;N-LSHH;"50 (2"")";costado;"costado az 160°; eixo a 1710 mm do fundo interno";3850;novo;NOVO (furar, laminar e flangear);LSHH garfo (trip P-201 e purga);LSHH;novo (CSTR);;
+equipamento;desenho;bocal;DN;local;posicao;z_abs_mm;estado;acao;conexao;servico;origem;nota;soleira_mm
+R-101;315E-25;N1-45;"150 (6"")";tampo;"tampo az 45°, r = 1000 mm; face a 150 mm do tampo";4850;tamponar;TAMPONAR (flange cego);—;reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6);315E-25;;
+R-101;315E-25;N1-135;"150 (6"")";tampo;"tampo az 135°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);SH;selo hidráulico de sobre/subpressão (+8/−3 mbar);315E-25;;
+R-101;315E-25;N1-225;"150 (6"")";tampo;"tampo az 225°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);R-101-VQ;descarga da ventosa da crista da alça de entrada (gás, quebra-sifão);315E-25;;
+R-101;315E-25;N1-315;"150 (6"")";tampo;"tampo az 315°, r = 1000 mm; face a 150 mm do tampo";4850;usar;USAR (existente);LT;transmissor de nível (radar);315E-25;;
+R-101;315E-25;N2-45;"150 (6"")";costado;"costado az 45°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);315E-25;;
+R-101;315E-25;N2-135;"150 (6"")";costado;"costado az 135°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);R-101-PG;"purga de lodo/esgotamento por bomba (LC + XV falha-fecha, intertravamento por chave com a sucção do tanque; Q ≤ Q_máx RES-001 §5.6)";315E-25;;
+R-101;315E-25;N2-225;"150 (6"")";costado;"costado az 225°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);R-101-AL;entrada da alimentação pelo fundo (alça externa com ventosa ligada ao gás);315E-25;;
+R-101;315E-25;N2-315;"150 (6"")";costado;"costado az 315°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);315E-25;;
+R-101;315E-25;N3-0;"50 (2"")";tampo;"tampo az 0°, r = 450 mm; face a 150 mm do tampo";4850;usar;USAR (existente);R-101-GAS;saída de biogás ao coletor comum;315E-25;posição radial no tampo a conferir no as-built (LAC-043);
+R-101;315E-25;N3-180;"50 (2"")";tampo;"tampo az 180°, r = 450 mm; face a 150 mm do tampo";4850;usar;USAR (existente);PT;PT/PSLL/PAHH do espaço de gás;315E-25;idem LAC-043;
+R-101;315E-25;M1;"600 (24"")";costado;"costado az 90°; eixo a 700 mm do fundo interno";700;tamponar;TAMPONAR (flange cego);—;boca de visita inferior: tampa cega estanque a gás (LAC-029);315E-25;;
+R-101;315E-25;M2;800 (Ø800 mm);tampo;"tampo az 0°, r = 1000 mm; face a 170 mm do tampo";4870;usar;USAR (existente);EMG;dispositivo de emergência bidirecional;315E-25;;
+R-101;315E-25;A4;"200 (8"")";tampo;"tampo az 180°, r = 1000 mm; face a 150 mm do tampo";4850;converter;"CONVERTER: flange 8"" + cego";—;"respiro 8"" PVC chapéu chinês → flange 8"" ANSI 150# + flange cego (abrir só na purga OP-02)";315E-25;;
+R-101;315E-25;N-SAI;"150 (6"")";costado;"costado az 90°; eixo a 3576 mm do fundo interno";3576;novo;NOVO (furar, laminar e flangear);R-101-SAI;"saída por gravidade no nível: soleira interna do bocal = N.A. (+3.50); segue ao pote de selagem";novo (CSTR);;3500
+R-101;315E-25;N-LSHH;"50 (2"")";costado;"costado az 65°; eixo a 4350 mm do fundo interno";4350;novo;NOVO (furar, laminar e flangear);LSHH;chave de nível muito alto (garfo vibratório, sensor dedicado à SIF);novo (CSTR);;
+R-201;315D-25;N1-45;"150 (6"")";tampo;"tampo az 45°, r = 1300 mm; face a 150 mm do tampo";9450;tamponar;TAMPONAR (flange cego);—;reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6);315D-25;;
+R-201;315D-25;N1-135;"150 (6"")";tampo;"tampo az 135°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);SH;selo hidráulico de sobre/subpressão (+8/−3 mbar);315D-25;;
+R-201;315D-25;N1-225;"150 (6"")";tampo;"tampo az 225°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);R-201-VQ;descarga da ventosa da crista da alça de entrada (gás, quebra-sifão);315D-25;;
+R-201;315D-25;N1-315;"150 (6"")";tampo;"tampo az 315°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);LT;transmissor de nível (radar);315D-25;;
+R-201;315D-25;N2-45;"150 (6"")";costado;"costado az 45°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);315D-25;;
+R-201;315D-25;N2-135;"150 (6"")";costado;"costado az 135°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);R-201-PG;"purga de lodo/esgotamento por bomba (LC + XV falha-fecha, intertravamento por chave com a sucção do tanque; Q ≤ Q_máx RES-001 §5.6)";315D-25;;
+R-201;315D-25;N2-225;"150 (6"")";costado;"costado az 225°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);R-201-AL;entrada da alimentação pelo fundo (alça externa com ventosa ligada ao gás);315D-25;;
+R-201;315D-25;N2-315;"150 (6"")";costado;"costado az 315°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);315D-25;;
+R-201;315D-25;N3-0;"50 (2"")";tampo;"tampo az 0°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);R-201-GAS;saída de biogás ao coletor comum;315D-25;posição radial no tampo a conferir no as-built (LAC-043);
+R-201;315D-25;N3-180;"50 (2"")";tampo;"tampo az 180°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);PT;PT/PSLL/PAHH do espaço de gás;315D-25;idem LAC-043;
+R-201;315D-25;M1;"600 (24"")";costado;"costado az 90°; eixo a 700 mm do fundo interno";700;tamponar;TAMPONAR (flange cego);—;boca de visita inferior: tampa cega estanque a gás (LAC-029);315D-25;;
+R-201;315D-25;M2;800 (Ø800 mm);tampo;"tampo az 0°, r = 1300 mm; face a 170 mm do tampo";9470;usar;USAR (existente);EMG;dispositivo de emergência bidirecional;315D-25;;
+R-201;315D-25;A4;"200 (8"")";tampo;"tampo az 180°, r = 1300 mm; face a 150 mm do tampo";9450;converter;"CONVERTER: flange 8"" + cego";—;"respiro 8"" PVC chapéu chinês → flange 8"" ANSI 150# + flange cego (abrir só na purga OP-02)";315D-25;;
+R-201;315D-25;N-SAI;"150 (6"")";costado;"costado az 146°; eixo a 7576 mm do fundo interno";7576;novo;NOVO (furar, laminar e flangear);R-201-SAI;"saída por gravidade no nível: soleira interna do bocal = N.A. (+7.50); segue ao pote de selagem";novo (CSTR);;7500
+R-201;315D-25;N-LSHH;"50 (2"")";costado;"costado az 110°; eixo a 8350 mm do fundo interno";8350;novo;NOVO (furar, laminar e flangear);LSHH;chave de nível muito alto (garfo vibratório, sensor dedicado à SIF);novo (CSTR);;
+R-202;315D-25;N1-45;"150 (6"")";tampo;"tampo az 45°, r = 1300 mm; face a 150 mm do tampo";9450;tamponar;TAMPONAR (flange cego);—;reserva: transbordo dedicado (LAC-038) ou tomada independente PSLL/PAHH (RES-001 §5.6);315D-25;;
+R-202;315D-25;N1-135;"150 (6"")";tampo;"tampo az 135°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);SH;selo hidráulico de sobre/subpressão (+8/−3 mbar);315D-25;;
+R-202;315D-25;N1-225;"150 (6"")";tampo;"tampo az 225°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);LT;transmissor de nível (radar);315D-25;;
+R-202;315D-25;N1-315;"150 (6"")";tampo;"tampo az 315°, r = 1300 mm; face a 150 mm do tampo";9450;usar;USAR (existente);R-202-VQ;descarga da ventosa da crista da alça de entrada (gás, quebra-sifão);315D-25;;
+R-202;315D-25;N2-45;"150 (6"")";costado;"costado az 45°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);315D-25;;
+R-202;315D-25;N2-135;"150 (6"")";costado;"costado az 135°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);R-202-PG;"purga de lodo/esgotamento por bomba (LC + XV falha-fecha, intertravamento por chave com a sucção do tanque; Q ≤ Q_máx RES-001 §5.6)";315D-25;;
+R-202;315D-25;N2-225;"150 (6"")";costado;"costado az 225°; eixo a 300 mm do fundo interno";300;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV (reduz caminhos de esvaziamento, VC-05);315D-25;;
+R-202;315D-25;N2-315;"150 (6"")";costado;"costado az 315°; eixo a 300 mm do fundo interno";300;usar;USAR (existente);R-202-AL;entrada da alimentação pelo fundo (alça externa com ventosa ligada ao gás);315D-25;;
+R-202;315D-25;N3-0;"50 (2"")";tampo;"tampo az 0°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);R-202-GAS;saída de biogás ao coletor comum;315D-25;posição radial no tampo a conferir no as-built (LAC-043);
+R-202;315D-25;N3-180;"50 (2"")";tampo;"tampo az 180°, r = 450 mm; face a 150 mm do tampo";9450;usar;USAR (existente);PT;PT/PSLL/PAHH do espaço de gás;315D-25;idem LAC-043;
+R-202;315D-25;M1;"600 (24"")";costado;"costado az 90°; eixo a 700 mm do fundo interno";700;tamponar;TAMPONAR (flange cego);—;boca de visita inferior: tampa cega estanque a gás (LAC-029);315D-25;;
+R-202;315D-25;M2;800 (Ø800 mm);tampo;"tampo az 0°, r = 1300 mm; face a 170 mm do tampo";9470;usar;USAR (existente);EMG;dispositivo de emergência bidirecional;315D-25;;
+R-202;315D-25;A4;"200 (8"")";tampo;"tampo az 180°, r = 1300 mm; face a 150 mm do tampo";9450;converter;"CONVERTER: flange 8"" + cego";—;"respiro 8"" PVC chapéu chinês → flange 8"" ANSI 150# + flange cego (abrir só na purga OP-02)";315D-25;;
+R-202;315D-25;N-SAI;"150 (6"")";costado;"costado az 198°; eixo a 7576 mm do fundo interno";7576;novo;NOVO (furar, laminar e flangear);R-202-SAI;"saída por gravidade no nível: soleira interna do bocal = N.A. (+7.50); segue ao pote de selagem";novo (CSTR);;7500
+R-202;315D-25;N-LSHH;"50 (2"")";costado;"costado az 250°; eixo a 8350 mm do fundo interno";8350;novo;NOVO (furar, laminar e flangear);LSHH;chave de nível muito alto (garfo vibratório, sensor dedicado à SIF);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-ENT;"150 (6"")";costado;"costado az 270°; eixo a 1836 mm do fundo interno";2286;novo;NOVO (furar, laminar e flangear);R-101-TRB;entrada do R-101 (descarga livre acima do extravasor);novo (CSTR);;2210
+TQ-201;novo (CSTR) — LAC-010;N-SUC;"100 (4"")";costado;"costado az 180°; eixo a 250 mm do fundo interno";700;novo;NOVO (furar, laminar e flangear);L-201S;sucção da P-201 com quebra-vórtice;novo (CSTR);eixo a 250 mm do fundo: Fibrais confirma a distância mínima à junta fundo-costado;
+TQ-201;novo (CSTR) — LAC-010;N-EXT;"150 (6"")";costado;"costado az 30°; eixo a 1376 mm do fundo interno";1826;novo;NOVO (furar, laminar e flangear);L-201EX;extravasor livre (sem válvula);novo (CSTR);;1750
+TQ-201;novo (CSTR) — LAC-010;N-DRE;"50 (2"")";costado;"costado az 135°; eixo a 200 mm do fundo interno";650;novo;NOVO (furar, laminar e flangear);L-201DR;dreno de fundo com registro;novo (CSTR);idem N-SUC;
+TQ-201;novo (CSTR) — LAC-010;N-LSLL;"50 (2"")";costado;"costado az 225°; eixo a 470 mm do fundo interno";920;novo;NOVO (furar, laminar e flangear);LSLL;LSLL garfo (trip P-201);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-LSHH;"50 (2"")";costado;"costado az 315°; eixo a 1150 mm do fundo interno";1600;novo;NOVO (furar, laminar e flangear);LSHH;LSHH garfo (trip P-101);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-RESP;"150 (6"")";tampo;"tampo az 0°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);L-201RP;respiro ao FCA-201;novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-AG;"200 (8"")";tampo;"tampo az 0°, r = 0 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);AG-200;agitador AG-200;novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-LT;"80 (3"")";tampo;"tampo az 120°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);LT;LT-201 (radar);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-PH;"50 (2"")";tampo;"tampo az 180°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);PHIT;pHIT/ORP-201 (sonda de imersão);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-DOS;"25 (1"")";tampo;"tampo az 60°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);DOS;injeção de NaOH (DOS-201);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-BL;"80 (3"")";tampo;"tampo az 240°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);LSL;boia LSL (para a P-201);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-BH;"80 (3"")";tampo;"tampo az 300°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);LSH;boia LSH (parte a P-201);novo (CSTR);;
+TQ-201;novo (CSTR) — LAC-010;N-RL05;"80 (3"")";tampo;"tampo az 270°, r = 550 mm; face a 150 mm do tampo";2900;novo;NOVO (furar, laminar e flangear);L-RL05;retorno alcalino RL-05 (P-301);novo (CSTR);;
+TQ-301;315A-25;N1-0;"150 (6"")";tampo;"tampo az 0°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);R-201-TRB;chegada do R-201 (descarga livre);315A-25;;
+TQ-301;315A-25;N1-90;"150 (6"")";tampo;"tampo az 90°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);R-202-TRB;chegada do R-202 (descarga livre);315A-25;;
+TQ-301;315A-25;N1-180;"150 (6"")";tampo;"tampo az 180°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);LT;LT-301 (radar);315A-25;;
+TQ-301;315A-25;N1-270;"150 (6"")";tampo;"tampo az 270°, r = 1250 mm; face a 120 mm do tampo";4660;usar;USAR (existente);L-301R;retorno da P-301 (recirculação/purga de lodo dos reatores);315A-25;;
+TQ-301;315A-25;N2-0;"150 (6"")";costado;"costado az 0°; eixo a 340 mm da junção cone-costado";2480;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV;315A-25;;
+TQ-301;315A-25;N2-90;"150 (6"")";costado;"costado az 90°; eixo a 340 mm da junção cone-costado";2480;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV;315A-25;;
+TQ-301;315A-25;N2-180;"150 (6"")";costado;"costado az 180°; eixo a 340 mm da junção cone-costado";2480;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV;315A-25;;
+TQ-301;315A-25;N2-270;"150 (6"")";costado;"costado az 270°; eixo a 340 mm da junção cone-costado";2480;tamponar;TAMPONAR (flange cego);—;sem uso: flange cego PRFV;315A-25;;
+TQ-301;315A-25;N3;"150 (6"")";fundo;fundo (ponta do cone);500;usar;USAR (existente);L-301S;dreno do cone e sucção da P-301;315A-25;;
+TQ-301;315A-25;M1;"600 (24"")";tampo;"tampo az 0°, r = 0 mm; face a 140 mm do tampo";4680;tamponar;TAMPONAR (flange cego);—;boca de visita: tampa cega;315A-25;;
+TQ-301;315A-25;N-EXT;"150 (6"")";costado;"costado az 200°; eixo a 1936 mm da junção cone-costado";4076;novo;NOVO (furar, laminar e flangear);L-301EX;extravasor livre (sem válvula);novo (CSTR);;4000
+TQ-301;315A-25;N-LSHH;"50 (2"")";costado;"costado az 160°; eixo a 1710 mm da junção cone-costado";3850;novo;NOVO (furar, laminar e flangear);LSHH;LSHH garfo (trip P-201 e purga);novo (CSTR);;
+PS-101;novo (CSTR);N-ENT;"150 (6"")";tampo;"tampo az 0°, r = 0 mm; face a 150 mm do tampo";2890;novo;NOVO (furar, laminar e flangear);R-101-SAI;"chegada do reator; continua como tubo mergulhado";novo (CSTR);;
+PS-101;novo (CSTR);N-SAI;"150 (6"")";costado;"costado az 90°; eixo a 606 mm do fundo interno";2466;novo;NOVO (furar, laminar e flangear);R-101-TRB;vertedor de saída (lâmina livre) ao destino;novo (CSTR);;2390
+PS-101;novo (CSTR);N-DRE;"50 (2"")";costado;"costado az 270°; eixo a 90 mm do fundo interno";1950;tamponar;TAMPONAR (flange cego);—;dreno/limpeza do fundo do pote: cego com registro DN50 (só com a saída do reator fechada);novo (CSTR);;
+PS-101;novo (CSTR);N-LAV;"50 (2"")";costado;"costado az 180°; eixo a 730 mm do fundo interno";2590;tamponar;TAMPONAR (flange cego);—;engate de água de lavagem (flushing);novo (CSTR);;
+PS-201;novo (CSTR);N-ENT;"150 (6"")";tampo;"tampo az 0°, r = 0 mm; face a 150 mm do tampo";6810;novo;NOVO (furar, laminar e flangear);R-201-SAI;"chegada do reator; continua como tubo mergulhado";novo (CSTR);;
+PS-201;novo (CSTR);N-SAI;"150 (6"")";costado;"costado az 146°; eixo a 606 mm do fundo interno";6386;novo;NOVO (furar, laminar e flangear);R-201-TRB;vertedor de saída (lâmina livre) ao destino;novo (CSTR);;6310
+PS-201;novo (CSTR);N-DRE;"50 (2"")";costado;"costado az 326°; eixo a 90 mm do fundo interno";5870;tamponar;TAMPONAR (flange cego);—;dreno/limpeza do fundo do pote: cego com registro DN50 (só com a saída do reator fechada);novo (CSTR);;
+PS-201;novo (CSTR);N-LAV;"50 (2"")";costado;"costado az 236°; eixo a 730 mm do fundo interno";6510;tamponar;TAMPONAR (flange cego);—;engate de água de lavagem (flushing);novo (CSTR);;
+PS-202;novo (CSTR);N-ENT;"150 (6"")";tampo;"tampo az 0°, r = 0 mm; face a 150 mm do tampo";6720;novo;NOVO (furar, laminar e flangear);R-202-SAI;"chegada do reator; continua como tubo mergulhado";novo (CSTR);;
+PS-202;novo (CSTR);N-SAI;"150 (6"")";costado;"costado az 198°; eixo a 606 mm do fundo interno";6296;novo;NOVO (furar, laminar e flangear);R-202-TRB;vertedor de saída (lâmina livre) ao destino;novo (CSTR);;6220
+PS-202;novo (CSTR);N-DRE;"50 (2"")";costado;"costado az 18°; eixo a 90 mm do fundo interno";5780;tamponar;TAMPONAR (flange cego);—;dreno/limpeza do fundo do pote: cego com registro DN50 (só com a saída do reator fechada);novo (CSTR);;
+PS-202;novo (CSTR);N-LAV;"50 (2"")";costado;"costado az 288°; eixo a 730 mm do fundo interno";6420;tamponar;TAMPONAR (flange cego);—;engate de água de lavagem (flushing);novo (CSTR);;
