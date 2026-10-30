@@ -181,7 +181,13 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
 - **Planilha "Calendário Engenharia"** (Google Sheets, alimentada por Forms): fonte = aba
   "Dados Estruturados"; o orçado da planilha é modelo por tipo de projeto em heq (horas ÷ 10,5).
 - O wrapper `sqlite.execute` devolve `rowsAffected` — **nunca** checar `r.meta` (é sempre undefined).
-- **Banco de horas** (aba Financeiro, ex-"Capacidade × apontado"): sem custo, só horas. Mês
+- **Financeiro › Visão geral** (`finVisao` + `visaoFinanceira`/`grupoFin` em src/fin.mjs): regime de
+  caixa sobre `fluxo`. Faturamento = só categoria RECEITAS; retirada de sócios, empréstimos e
+  investimentos em linhas próprias; TRANSF./SALDO/SAQUE fora; o resto das saídas = gasto
+  operacional. Filtro de categoria recorta só o lado (entrada/saída) escolhido. Gráficos clicáveis
+  (mês detalha, categoria filtra); filtros guardados no navegador (`localStorage finvg`).
+- **Banco de horas** (aba do **RH**, ex-"Capacidade × apontado" no Financeiro): sem custo, só horas;
+  lê com `rh.ver` ou `financeiro.ver`, edita com `rh.editar` ou `financeiro.editar`. Mês
   corrente cobra dias úteis até hoje (`diasUteisAte`); lançamento futuro fica fora; `banco` = saldo
   acumulado mês a mês.
 - **Gráficos da casca clássica**: biblioteca `_vzCard/_vzColunas/_vzBarras/_vzLinha` com tooltip,

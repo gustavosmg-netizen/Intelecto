@@ -23,7 +23,7 @@ test("abas com dados vivos recarregam ao abrir (Financeiro, Comercial, Início)"
   const ouvinte = trecho(html, 'closest(".subnav-btn[data-tab]")', "\n});");
   assert.match(ouvinte, /var ld=TAB_LOAD\[alvo\]; if\(typeof ld==="function"\)/);
   const reg = trecho(html, "var TAB_LOAD={", "\n};");
-  for (const t of ["fin-tab-res", "fin-tab-contas", "fin-tab-cart", "fin-tab-ch", "fin-tab-cf", "fin-tab-cap", "fin-tab-conc", "fin-tab-fx", "com-painel", "com-crm", "com-leads", "area-com", "area-fin"])
+  for (const t of ["fin-tab-vg", "fin-tab-res", "fin-tab-contas", "fin-tab-cart", "fin-tab-ch", "fin-tab-cf", "rh-tab-banco", "fin-tab-conc", "fin-tab-fx", "com-painel", "com-crm", "com-leads", "area-com", "area-fin"])
     assert.match(reg, new RegExp('"' + t + '":function'), t);
 });
 

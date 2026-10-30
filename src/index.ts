@@ -10,7 +10,7 @@ import { deveRodar, nivelEstouro, periodoSemanaISO, notifStatements } from "./on
 import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
 import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
-import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
+import { validaLote, planoLote, normalizaFiltroFin, visaoFinanceira } from "./fin.mjs";
 import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
 import { normalizaLinhas, diffLancamentos, resumoNovos } from "./importa.mjs";
 import { normalizaRcf, cienciaEmDia, validaContrato, validaAcordo, contratoVigente, alertasRh } from "./rh.mjs";
@@ -2190,7 +2190,7 @@ const MIN: Record<string, Papel> = {
   contratoList: "coordenacao", contratoSet: "coordenacao", impostoPadraoSet: "coordenacao",
   // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
-  resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
+  finVisao: "coordenacao", resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
   // Quadro de contas (casca nova): leitura, tags por pessoa e operação em lote (esta com reauth: SENSIVEIS).
   // Importação da planilha Calendário Engenharia (prévia lê; importar grava em lote, com reauth).
@@ -4295,7 +4295,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   }
   /* CAPACIDADE × APONTADO — horas extras / déficit por colaborador e mês (derivado do lanc). Leitura restrita. */
   if (action === "capacidade") {
-    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    // Banco de horas mora no RH (só horas, sem valor): RH ou financeiro leem.
+    const u = await auth(p); const cb = await capsAtribuidas(u);
+    if (!(isOwner(u.slug) || temCapSet(cb, "rh.ver") || temCapSet(cb, "financeiro.ver"))) throw new Error("Banco de horas restrito ao RH e à direção.");
     const pessoas = await capacidadeApontado(u.tenant_id);
     const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde DESC", args: [u.tenant_id] });
     const capAtual: Record<string, number> = {};
@@ -4306,7 +4308,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* CATÁLOGO DE CLASSES DE ATIVIDADE — editar os padrões de texto que marcam feriado/férias/ausência
      (reaproveitável por empresa). Gate coordenação (financeiro.editar). Auditado. */
   if (action === "atividadeClasseSet") {
-    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const u = await auth(p); const cb = await capsAtribuidas(u); if (!(isOwner(u.slug) || temCapSet(cb, "rh.editar") || temCapSet(cb, "financeiro.editar"))) throw new Error("Edição restrita ao RH ou à direção.");
     const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Classe ausente.");
     const padroes = String(p.padroes || "").slice(0, 400);
     const nome = String(p.nome || "").slice(0, 80);
@@ -4321,7 +4323,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* CAPACIDADE COM VIGÊNCIA — registrar horas/semana de uma pessoa a partir de uma data (histórico
      preservado, como o custo/hora). Gate coordenação. Auditado. */
   if (action === "capacidadeSet") {
-    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const u = await auth(p); const cb = await capsAtribuidas(u); if (!(isOwner(u.slug) || temCapSet(cb, "rh.editar") || temCapSet(cb, "financeiro.editar"))) throw new Error("Edição restrita ao RH ou à direção.");
     const slug = String(p.slug || "").trim(); if (!slug) throw new Error("Colaborador ausente.");
     const desde = String(p.desde || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) throw new Error("Data de vigência inválida (AAAA-MM-DD).");
     const hs = Math.max(0, Math.min(80, Number(p.horas_semana) || 0));
@@ -4334,6 +4336,19 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   }
   /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
      restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */
+  /* VISÃO GERAL DAS FINANÇAS — faturamento × gastos por mês, filtrável (período, situação,
+     categorias). Agrega no D1 por mês/tipo/categoria/status e classifica pela regra pura (fin.mjs). */
+  if (action === "finVisao") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const ym = (x: unknown) => { const v = String(x || "").slice(0, 7); return /^\d{4}-\d{2}$/.test(v) ? v : ""; };
+    const mesAtual = new Date().toISOString().slice(0, 7);
+    const ate = ym(p.ate) || mesAtual, de = ym(p.de) || ultimosMeses(12, ate)[0];
+    if (de > ate) throw new Error("Período inválido: o início é depois do fim.");
+    const r = await sqlite.execute({ sql: "SELECT substr(CASE WHEN status = 'realizado' AND data_real <> '' THEN data_real ELSE data_prev END,1,7) ym, tipo, categoria, status, COALESCE(SUM(valor),0) v, COUNT(*) n FROM fluxo WHERE tenant_id = ? GROUP BY ym, tipo, categoria, status", args: [u.tenant_id] });
+    const cats = Array.isArray(p.categorias) ? (p.categorias as unknown[]).map((x) => String(x).slice(0, 80)).slice(0, 60) : [];
+    const visao = visaoFinanceira(r.rows as any, { de, ate, situacao: String(p.situacao || "realizado"), categorias: cats });
+    return { ok: true, de, ate, ...visao };
+  }
   if (action === "resumoExec") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     const resumo = await resumoExecutivo(u.tenant_id);

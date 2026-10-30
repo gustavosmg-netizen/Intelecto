@@ -1464,6 +1464,14 @@ tbody tr[data-cc] { cursor: pointer; }
 .vz-table { width: 100%; border-collapse: collapse; font-size: .78rem; margin-top: 6px; }
 .vz-table th, .vz-table td { border-top: 1px solid var(--line); padding: 3px 6px; text-align: right; }
 .vz-table th:first-child, .vz-table td:first-child { text-align: left; }
-.vz-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.vz-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(320px, calc(50% - 7px)), 1fr)); gap: 14px; align-items: start; }
+.kpis.kpis-brl .kpi .v { font-size: 1.25rem; white-space: nowrap; }
 #vz-tip { position: fixed; z-index: 90; pointer-events: none; background: var(--ink); color: var(--surface); font: 500 12px var(--sans); padding: 6px 9px; border-radius: 8px; box-shadow: var(--shadow-md); max-width: 260px; display: none; white-space: pre-line; }
 @media (forced-colors: active) { .vz-svg rect, .vz-svg path, .vz-svg circle { forced-color-adjust: none; stroke: CanvasText; } }
+/* Chips de filtro (visão financeira) e alvos clicáveis dos gráficos. */
+.chip-f { font: inherit; font-size: .76rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip-f:hover { border-color: var(--brand); }
+.chip-f.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chip-f:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.vz-svg .vz-hit { cursor: pointer; }
+.vz-svg .vz-hit:hover { fill: var(--ink); fill-opacity: .05; }

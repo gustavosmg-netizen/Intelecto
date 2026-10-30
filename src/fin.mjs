@@ -158,3 +158,101 @@ export function aplicaFiltroFin(rows, filtro, ctx) {
     return true;
   });
 }
+
+// ---------- Visão geral das finanças (faturamento × gastos por mês) ----------
+// Decisão do dono (2026-10-30): faturamento = só RECEITAS; retirada de sócios, empréstimos e
+// investimentos ficam em linhas próprias; transferência entre contas, saldo e saque não são
+// movimento (ficam fora). O resto das saídas é gasto operacional.
+
+/** Grupos da visão, na ordem de exibição. */
+export const GRUPOS_FIN = [
+  { id: "faturamento", label: "Faturamento", tipo: "entrada" },
+  { id: "outras_entradas", label: "Outras entradas", tipo: "entrada" },
+  { id: "emprestimos_in", label: "Empréstimos recebidos", tipo: "entrada" },
+  { id: "gastos", label: "Gastos operacionais", tipo: "saida" },
+  { id: "socios", label: "Retirada de sócios", tipo: "saida" },
+  { id: "emprestimos_out", label: "Empréstimos pagos", tipo: "saida" },
+  { id: "investimentos", label: "Investimentos", tipo: "saida" },
+];
+
+function chaveCat(s) {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
+}
+
+/**
+ * Grupo de um lançamento pela categoria do plano de contas.
+ * @returns {"faturamento"|"outras_entradas"|"emprestimos_in"|"gastos"|"socios"|"emprestimos_out"|"investimentos"|"fora"}
+ */
+export function grupoFin(tipo, categoria) {
+  const c = chaveCat(categoria);
+  if (/^TRANSF|^SALDO|^SAQUE/.test(c)) return "fora";
+  if (tipo === "entrada") {
+    if (c === "RECEITAS" || c === "RECEITA") return "faturamento";
+    if (/^EMPRESTIMO/.test(c)) return "emprestimos_in";
+    return "outras_entradas";
+  }
+  if (/^RETIRADA/.test(c)) return "socios";
+  if (/^EMPRESTIMO/.test(c)) return "emprestimos_out";
+  if (/^INVESTIMENTO/.test(c)) return "investimentos";
+  return "gastos";
+}
+
+function mesesEntre(de, ate) {
+  const out = []; let [y, m] = de.split("-").map(Number); const [y2, m2] = ate.split("-").map(Number);
+  if (!y || !m || !y2 || !m2) return out;
+  while ((y < y2 || (y === y2 && m <= m2)) && out.length < 120) { out.push(y + "-" + String(m).padStart(2, "0")); m++; if (m > 12) { m = 1; y++; } }
+  return out;
+}
+const r2 = (v) => Math.round(v * 100) / 100;
+
+/**
+ * Agrega as linhas do caixa (já somadas por mês/tipo/categoria/status) na visão mensal.
+ * @param {{ym:string,tipo:string,categoria:string,status:string,v:number}[]} linhas
+ * @param {{de:string, ate:string, situacao?:"realizado"|"previsto"|"tudo", categorias?:string[]}} f
+ */
+export function visaoFinanceira(linhas, f) {
+  const meses = mesesEntre(String(f.de || ""), String(f.ate || ""));
+  const sit = f.situacao === "previsto" || f.situacao === "tudo" ? f.situacao : "realizado";
+  const cats = (f.categorias || []).map(chaveCat).filter(Boolean);
+  const vazio = () => Object.fromEntries(GRUPOS_FIN.map((g) => [g.id, 0]));
+  const porMes = Object.fromEntries(meses.map((ym) => [ym, vazio()]));
+  const porCat = {}, porMesCat = {}, categoriasExistentes = {};
+  const tipoFiltrado = {};
+  for (const l of linhas || []) if (cats.indexOf(chaveCat(l.categoria)) >= 0) tipoFiltrado[String(l.tipo)] = true;
+  for (const l of linhas || []) {
+    const st = String(l.status);
+    if (st === "cancelado") continue;
+    const g = grupoFin(String(l.tipo), l.categoria);
+    if (g === "fora") continue;
+    categoriasExistentes[String(l.categoria || "(sem categoria)")] = String(l.tipo);
+    if (sit !== "tudo" && st !== sit) continue;
+    // o filtro de categoria só recorta o lado (entradas/saídas) em que há categoria escolhida:
+    // filtrar um gasto não zera o faturamento.
+    const ym = String(l.ym); if (!porMes[ym]) continue;
+    const v = Number(l.v) || 0;
+    // por categoria SEM o filtro de categoria: o gráfico mostra todas (as fora do filtro apagadas)
+    if (g === "gastos" || g === "faturamento") {
+      const k = String(l.categoria || "(sem categoria)"), chave = g + "|" + k;
+      porCat[chave] = (porCat[chave] || 0) + v;
+      (porMesCat[ym] = porMesCat[ym] || {})[chave] = ((porMesCat[ym] || {})[chave] || 0) + v;
+    }
+    if (tipoFiltrado[String(l.tipo)] && cats.indexOf(chaveCat(l.categoria)) < 0) continue;
+    porMes[ym][g] += v;
+  }
+  const tot = vazio();
+  const serie = meses.map((ym) => {
+    const x = porMes[ym]; for (const k in x) { x[k] = r2(x[k]); tot[k] += x[k]; }
+    return { ym, ...x, resultado: r2(x.faturamento - x.gastos) };
+  });
+  for (const k in tot) tot[k] = r2(tot[k]);
+  const resultado = r2(tot.faturamento - tot.gastos);
+  const lista = (obj, grupo) => Object.entries(obj).filter(([k]) => k.startsWith(grupo + "|"))
+    .map(([k, v]) => ({ categoria: k.slice(grupo.length + 1), v: r2(v) })).sort((a, b) => b.v - a.v);
+  return {
+    meses: serie, tot, resultado,
+    margemPct: tot.faturamento > 0 ? Math.round((resultado / tot.faturamento) * 1000) / 10 : null,
+    gastosPorCategoria: lista(porCat, "gastos"), faturamentoPorCategoria: lista(porCat, "faturamento"),
+    porMes: Object.fromEntries(Object.entries(porMesCat).map(([ym, o]) => [ym, { gastos: lista(o, "gastos"), faturamento: lista(o, "faturamento") }])),
+    categorias: Object.entries(categoriasExistentes).map(([nome, tipo]) => ({ nome, tipo })).sort((a, b) => a.nome.localeCompare(b.nome)),
+  };
+}

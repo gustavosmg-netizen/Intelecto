@@ -39,8 +39,11 @@ test("capacidadeApontado: sem custo, meses em ordem, futuro fora, mês corrente 
   assert.match(b, /parcial: ym === mesAtual \? 1 : 0/);
 });
 
-test("UI: aba Banco de horas sem R$, com dois gráficos e tabela alternativa", () => {
-  assert.match(html, /data-tab="fin-tab-cap" type="button">Banco de horas</);
+test("UI: aba Banco de horas (no RH) sem R$, com dois gráficos e tabela alternativa", () => {
+  // mora no RH (horas, não dinheiro); saiu do Financeiro
+  assert.match(html, /data-tab="rh-tab-banco" type="button">Banco de horas</);
+  assert.match(html, /id="rh-tab-banco"><div id="fin-cap">/);
+  assert.doesNotMatch(html, /data-tab="fin-tab-cap"/);
   const i = html.indexOf("function _finCapacidade(){");
   const b = html.slice(i, html.indexOf("\nfunction _finConciliacao(", i));
   assert.doesNotMatch(b, /R\$|fmtBRL|custo\/h/);
@@ -57,4 +60,13 @@ test("biblioteca de gráficos: paleta validada própria, tabela e tooltip; viewB
   // viewBox estreito fazia o texto inflar nos cartões largos
   assert.match(html, /var W0=560,/);
   assert.doesNotMatch(html, /W=Math\.max\(300,cats\.length\*gw\+40\)/);
+});
+
+test("Worker: banco de horas lido pelo RH ou financeiro; editado pelo RH ou financeiro", () => {
+  const cap = ts.slice(ts.indexOf('if (action === "capacidade")'), ts.indexOf('if (action === "capacidadeSet")'));
+  assert.match(cap, /temCapSet\(cb, "rh\.ver"\) \|\| temCapSet\(cb, "financeiro\.ver"\)/);
+  for (const a of ["capacidadeSet", "atividadeClasseSet"]) {
+    const i = ts.indexOf('if (action === "' + a + '")');
+    assert.match(ts.slice(i, i + 400), /temCapSet\(cb, "rh\.editar"\) \|\| temCapSet\(cb, "financeiro\.editar"\)/, a);
+  }
 });

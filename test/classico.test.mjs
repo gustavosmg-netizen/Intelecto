@@ -32,7 +32,7 @@ test("Financeiro clássico: contas a pagar/receber com arrastar, filtros salvos,
   assert.match(html, /api\("fluxoCc",\{ids:FINC\.sel\.slice\(\)/);
   assert.match(html, /api\("fluxoTag",\{tag:t,ids:FINC\.sel\.slice\(\)/);
   assert.match(html, /api\("filtroSet",\{modulo:"financeiro"/);
-  assert.match(html, /_finResumo\(\);_finContas\(\);_finCarteira\(\)/);
+  assert.match(html, /"fin-tab-contas":function\(\)\{_finContas\(\);\}/); // carrega ao abrir a aba (TAB_LOAD)
 });
 
 test("RH clássico: RCF por cargo (ver, imprimir, editar), ciência na Minha ficha, contratos e acordos", () => {
