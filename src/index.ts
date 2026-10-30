@@ -11,6 +11,8 @@ import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./o
 import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
 import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
+import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
+import { normalizaLinhas, diffLancamentos, resumoNovos } from "./importa.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -310,7 +312,7 @@ const RESTRITAS = ["financeiro", "comercial", "juridico"];
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-29c";
+const SCHEMA_VER = "2026-10-30b";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -745,10 +747,17 @@ function ensureSchema(): Promise<void> {
     // 2026-10 com (id,cc,titulo,valor,assinado,obs); ganha agora status/tipo/deal_id para funcionar
     // como dono do valor (confirmado vs rascunho; base vs aditivo; ligação ao deal de origem).
     // ALTER idempotente. Ver migrations/0002_contrato.sql (caminho novo, versionado).
-    for (const col of ["status TEXT DEFAULT 'rascunho'", "tipo TEXT DEFAULT 'base'", "deal_id TEXT DEFAULT ''"]) {
+    // 2026-10-30: contrato RECORRENTE (cliente + valor mensal + vigência AAAA-MM), apropriado por
+    // horas do mês entre os projetos do cliente (src/apropriacao.mjs). Migração 0015.
+    for (const col of ["status TEXT DEFAULT 'rascunho'", "tipo TEXT DEFAULT 'base'", "deal_id TEXT DEFAULT ''",
+      "cliente TEXT DEFAULT ''", "valor_mensal REAL DEFAULT 0", "desde TEXT DEFAULT ''", "ate TEXT DEFAULT ''"]) {
       try { await sqlite.execute("ALTER TABLE cc_contrato ADD COLUMN " + col); } catch (_) { /* já existe */ }
     }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS cc_contrato_cc ON cc_contrato (tenant_id, cc, status)"); } catch (_) {}
+    // Custos fixos passam a ser MENSAIS com vigência (AAAA-MM; vazio = aberto). Migração 0015.
+    for (const col of ["desde TEXT DEFAULT ''", "ate TEXT DEFAULT ''"]) {
+      try { await sqlite.execute("ALTER TABLE custo_fixo ADD COLUMN " + col); } catch (_) { /* já existe */ }
+    }
     // Parcelas do contrato (base da conciliação com o caixa — a fila liga fluxo.cc ↔ parcela).
     try {
       await sqlite.execute(`CREATE TABLE IF NOT EXISTS contrato_parcela (
@@ -960,6 +969,12 @@ function ensureSchema(): Promise<void> {
         PRIMARY KEY (tenant_id, slug))`);
     } catch (_) { /* já existe */ }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS membro_slug ON membro (slug)"); } catch (_) {}
+    /* Desligamento com DATA (2026-10-30): membro.saida (AAAA-MM-DD). Até a data a pessoa segue
+     * normal; depois, o acesso é recusado (membroDesligado) e o cron diário passa ativo=0, o mesmo
+     * mecanismo de inativação do RH. Histórico preservado. Migração 0016. */
+    try { await sqlite.execute("ALTER TABLE membro ADD COLUMN saida TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
+    // lanc.origem ('planilha' na importação) existe na baseline de produção; garante em banco novo.
+    try { await sqlite.execute("ALTER TABLE lanc ADD COLUMN origem TEXT DEFAULT ''"); } catch (_) { /* já existe */ }
     try { await sqlite.execute("CREATE INDEX IF NOT EXISTS acesso_status ON acesso (tenant_id, status)"); } catch (_) {}
     // Backfill das identidades atuais: cada colaborador recebe o papel mapeado, sem perda.
     // Inativos mantêm papel (histórico), ativo=0; o login já é barrado por checaAtivo.
@@ -1403,7 +1418,7 @@ const REAUTH_MIN = 10; // minutos de validade da reautenticação
  *  financeiro, ou muda ACESSO/segurança. Sessão válida não basta — pede a senha de novo. */
 const SENSIVEIS = new Set<string>([
   "projfinSet", "custohoraSet", "custohoraDel", "contratoSet", "impostoPadraoSet",
-  "fluxoSet", "fluxoDel", "fluxoLote", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
+  "fluxoSet", "fluxoDel", "fluxoLote", "planilhaImportar", "custoFixoSet", "custoFixoDel", "parcelaSet", "parcelaBaixar",
   "capacidadeSet", "resumoExecFechar",
   "permset", "acset", "resetpin",
   "restore_backup", "flagset",
@@ -1421,12 +1436,21 @@ async function exigeReauth(p: P, _slug: string): Promise<void> {
 /** H1 — conta habilitada a autenticar: colaborador interno ATIVO (COLABS sem INATIVOS) OU
  *  identidade do modelo formal `membro` com ativo=1 (cliente/fornecedor APROVADO via T7). Pendente
  *  (ativo=0) e desconhecido ficam de fora — a admissao segue gated pela aprovacao da Coordenacao. */
+/** Desligado = data de saída já passou (a saída vale até o fim do próprio dia). */
+function membroDesligado(saida: unknown, hojeIso = new Date().toISOString().slice(0, 10)): boolean {
+  const s = String(saida || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && s < hojeIso;
+}
 async function contaAtiva(slug: string): Promise<boolean> {
-  if (COLABS.includes(slug)) return !INATIVOS.includes(slug);
+  if (COLABS.includes(slug) && INATIVOS.includes(slug)) return false;
   try {
-    const r = await sqlite.execute({ sql: "SELECT ativo FROM membro WHERE slug = ? AND tenant_id = ? LIMIT 1", args: [slug, TENANT_INTELECTO] });
-    return r.rows.length ? !!Number((r.rows[0] as any).ativo) : false;
-  } catch (_) { return false; }
+    // Vale também para os colaboradores fixos (COLABS): a inativação do RH e a data de saída em
+    // `membro` barram o login — antes só a lista INATIVOS do código barrava.
+    const r = await sqlite.execute({ sql: "SELECT * FROM membro WHERE slug = ? AND tenant_id = ? LIMIT 1", args: [slug, TENANT_INTELECTO] });
+    if (!r.rows.length) return COLABS.includes(slug);
+    const m = r.rows[0] as any;
+    return !!Number(m.ativo) && !membroDesligado(m.saida);
+  } catch (_) { return COLABS.includes(slug); }
 }
 /** E-mail de contato/login do slug: config `email:<slug>` (cadastro da Coordenacao) com fallback a
  *  `membro.email` (identidade do T7). Usado no envio de recuperacao e nos avisos direcionados. */
@@ -1513,14 +1537,15 @@ type P = Record<string, any>;
  *  inferência por slug (e tenant Intelecto) enquanto a linha de membro não existir. */
 async function papelTenantDe(slug: string): Promise<{ papel: Papel; tenant_id: string; ativo: number | null }> {
   try {
-    const r = await sqlite.execute({ sql: "SELECT papel, tenant_id, ativo FROM membro WHERE slug = ? LIMIT 1", args: [slug] });
+    const r = await sqlite.execute({ sql: "SELECT * FROM membro WHERE slug = ? LIMIT 1", args: [slug] });
     if (r.rows.length) {
       const row = r.rows[0] as P;
       const pv = String(row.papel || "");
       return {
         papel: (PAPEIS.includes(pv as Papel) ? pv : papelInferido(slug)) as Papel,
         tenant_id: String(row.tenant_id || TENANT_INTELECTO),
-        ativo: (row.ativo === null || row.ativo === undefined) ? null : (Number(row.ativo) ? 1 : 0),
+        // Data de saída vencida conta como inativo (a sessão aberta cai no mesmo dia seguinte).
+        ativo: (row.ativo === null || row.ativo === undefined) ? null : ((Number(row.ativo) && !membroDesligado(row.saida)) ? 1 : 0),
       };
     }
   } catch (_) { /* membro ainda não materializada: cai no fallback */ }
@@ -1661,6 +1686,13 @@ function validEmail(v: string): string {
   return em;
 }
 
+/** Trava de lógica: o total de horas de UMA pessoa num dia (fora as devolvidas) não passa de 24 h.
+ *  `ignorarId` = o lançamento em edição (não conta duas vezes). Entrava dia com 30 h somadas. */
+async function checaTotalDia(slug: string, d: string, h: number, tenant: string, ignorarId = ""): Promise<void> {
+  const r = await sqlite.execute({ sql: "SELECT COALESCE(SUM(h),0) t FROM lanc WHERE tenant_id = ? AND slug = ? AND d = ? AND s <> 'DEVOLVIDO' AND id <> ?", args: [tenant, slug, d, ignorarId] });
+  const ja = Number((r.rows[0] as P).t) || 0;
+  if (ja + h > 24) throw new Error("Esse lançamento passaria de 24 h no dia " + d.split("-").reverse().join("/") + " (já há " + (Math.round(ja * 10) / 10) + " h). Confira as horas.");
+}
 function validEntry(e: P) {
   if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(String(e.d || ""))) throw new Error("Data inválida.");
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(String(e.cc || ""))) throw new Error("Centro de custo inválido.");
@@ -1829,33 +1861,51 @@ function pctEtapa(atual: number, total: number): number | null {
 /** VALOR CONTRATADO por CC, do CONTRATO (dono único do valor) — Onda 1. Soma os contratos
  *  CONFIRMADOS de cada CC em cc_contrato (base + aditivos). Enquanto um CC não tiver contrato
  *  confirmado, o valor cai no fallback projx.contratado dentro de decompoeFin (transição). */
+/** Horas efetivas (APROVADO/LANÇADO) por mês e CC + cliente de cada CC — base da apropriação mensal. */
+async function baseApropriacao(tenant: string): Promise<{ hpm: Record<string, Record<string, number>>; clienteDoCc: Record<string, string> }> {
+  const r = await sqlite.execute({ sql: "SELECT cc, substr(d,1,7) AS mes, SUM(h) AS h FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') GROUP BY cc, substr(d,1,7)", args: [tenant] });
+  const pr = await sqlite.execute({ sql: "SELECT cc, cliente FROM proj WHERE tenant_id = ?", args: [tenant] });
+  const clienteDoCc: Record<string, string> = {};
+  for (const x of pr.rows as P[]) clienteDoCc[String(x.cc)] = String(x.cliente || "");
+  return { hpm: horasPorMes(r.rows as any), clienteDoCc };
+}
+/** Contratos RECORRENTES confirmados e a receita apropriada por projeto (horas do mês no cliente),
+ *  até o mês corrente. Ver src/apropriacao.mjs. */
+async function receitaRecorrenteMap(tenant: string): Promise<{ byCc: Record<string, number>; porContrato: Record<string, { apropriado: number; naoApropriado: number; meses: number }> }> {
+  try {
+    const r = await sqlite.execute({ sql: "SELECT id, cliente, valor_mensal, desde, ate FROM cc_contrato WHERE tenant_id = ? AND status = 'confirmado' AND tipo = 'recorrente'", args: [tenant] });
+    if (!r.rows.length) return { byCc: {}, porContrato: {} };
+    const b = await baseApropriacao(tenant);
+    return receitaRecorrente(r.rows as any, b.hpm, b.clienteDoCc, new Date().toISOString().slice(0, 7));
+  } catch (_) { return { byCc: {}, porContrato: {} }; }
+}
+/** VALOR CONTRATADO por CC = contratos confirmados base/aditivo do CC + a receita de contratos
+ *  RECORRENTES apropriada ao CC pelas horas do mês. O recorrente não conta no CC "guarda-chuva"
+ *  em que foi cadastrado (o valor é distribuído entre os projetos do cliente). */
 async function valorContratadoMap(tenant: string): Promise<Record<string, number>> {
   const m: Record<string, number> = {};
   try {
     const r = await sqlite.execute({
-      sql: "SELECT cc, COALESCE(SUM(valor),0) v FROM cc_contrato WHERE tenant_id = ? AND status = 'confirmado' GROUP BY cc",
+      sql: "SELECT cc, COALESCE(SUM(valor),0) v FROM cc_contrato WHERE tenant_id = ? AND status = 'confirmado' AND COALESCE(tipo,'base') <> 'recorrente' GROUP BY cc",
       args: [tenant],
     });
     for (const x of r.rows as P[]) { const v = Number(x.v) || 0; if (v > 0) m[String(x.cc)] = arred2(v); }
   } catch (_) { /* coluna status recém-criada ou tabela ausente: sem override, usa o fallback */ }
+  const rec = await receitaRecorrenteMap(tenant);
+  for (const cc in rec.byCc) m[cc] = arred2((m[cc] || 0) + rec.byCc[cc]);
   return m;
 }
-/** RATEIO DOS CUSTOS FIXOS (overhead) sobre a carteira bilhável, POR HORAS APONTADAS (decisão do
- * dono — pool total editável). O pool = soma de custo_fixo; a base = horas (APROVADO/LANÇADO) dos
- * projetos ATIVOS com contratado>0. Cada CC absorve fixos × (horas_do_CC / horas_da_base). Assim o
- * overhead é coberto pela receita dos projetos proporcional ao esforço que cada um consumiu. */
-async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number; byCc: Record<string, number>; horasBase: number }> {
-  const fx = await sqlite.execute({ sql: "SELECT COALESCE(SUM(valor),0) t FROM custo_fixo WHERE tenant_id = ?", args: [tenant] });
-  const fixosTotal = arred2(Number((fx.rows[0] as P)?.t) || 0);
-  const r = await sqlite.execute({
-    sql: "SELECT l.cc AS cc, COALESCE(SUM(l.h),0) AS h FROM lanc l WHERE l.tenant_id = ? AND l.s IN ('APROVADO','LANÇADO') AND l.cc IN (SELECT p.cc FROM proj p JOIN projx x ON x.cc = p.cc AND x.tenant_id = p.tenant_id WHERE p.tenant_id = ? AND p.registro = 'ATIVO' AND COALESCE(x.contratado,0) > 0) GROUP BY l.cc",
-    args: [tenant, tenant],
-  });
-  const hByCc: Record<string, number> = {}; let horasBase = 0;
-  for (const x of r.rows as P[]) { const h = Number(x.h) || 0; hByCc[String(x.cc)] = h; horasBase += h; }
-  const byCc: Record<string, number> = {};
-  if (fixosTotal > 0 && horasBase > 0) for (const cc in hByCc) byCc[cc] = arred2(fixosTotal * (hByCc[cc] / horasBase));
-  return { fixosTotal, byCc, horasBase };
+/** RATEIO DOS CUSTOS FIXOS (overhead), MÊS A MÊS (decisão do dono, 2026-10-30): o pool de cada mês
+ * (custos fixos MENSAIS vigentes naquele mês) é distribuído entre os projetos FATURÁVEIS pela
+ * participação nas horas daquele mês. As horas lançadas seguem como custo direto. `fixosTotal` =
+ * o que foi absorvido pelos projetos; `naoAbsorvido` = meses com fixos e sem horas faturáveis. */
+async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number; byCc: Record<string, number>; horasBase: number; naoAbsorvido: number }> {
+  const fx = await sqlite.execute({ sql: "SELECT valor, desde, ate FROM custo_fixo WHERE tenant_id = ?", args: [tenant] });
+  if (!fx.rows.length) return { fixosTotal: 0, byCc: {}, horasBase: 0, naoAbsorvido: 0 };
+  const b = await baseApropriacao(tenant);
+  const r = rateioFixosMensal(fx.rows as any, b.hpm, new Date().toISOString().slice(0, 7));
+  const horasBase = Object.values(r.meses).reduce((s, x) => s + x.horas, 0);
+  return { fixosTotal: r.absorvido, byCc: r.byCc, horasBase: arred2(horasBase), naoAbsorvido: r.naoAbsorvido };
 }
 /* RESUMO EXECUTIVO — consolida, SEM inventar número (tudo derivado do D1): (1) Financeiro:
  * contratado × custo real × margem da carteira ativa; (2) Pipeline CRM: deals por macro-fase,
@@ -2093,6 +2143,8 @@ const MIN: Record<string, Papel> = {
   resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
   // Quadro de contas (casca nova): leitura, tags por pessoa e operação em lote (esta com reauth: SENSIVEIS).
+  // Importação da planilha Calendário Engenharia (prévia lê; importar grava em lote, com reauth).
+  planilhaPrevia: "coordenacao", planilhaImportar: "coordenacao",
   finQuadro: "coordenacao", finTagSet: "coordenacao", finTagDel: "coordenacao", fluxoTag: "coordenacao", fluxoLote: "coordenacao",
   conciliacao: "coordenacao", conciliaSugerir: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
@@ -3004,6 +3056,42 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, dealid: did };
   }
 
+  /* ===== IMPORTAÇÃO DA PLANILHA "Calendário Engenharia" (aba Dados Estruturados) =====
+     O navegador lê o .xlsx e manda {d, nome, cc, h}. A prévia NÃO grava: mostra o que é novo
+     (multiconjunto pessoa|dia|CC|horas contra o portal), quem não foi reconhecido e os CCs sem
+     projeto. Importar recalcula o mesmo diff no servidor (idempotente) e grava só os novos, como
+     LANÇADO (regra: a base da planilha entra como LANÇADO), origem 'planilha'. Src/importa.mjs. */
+  if (action === "planilhaPrevia" || action === "planilhaImportar") {
+    const u = await auth(p);
+    if (!u.coord) throw new Error("Importar a planilha é restrito à Coordenação.");
+    const brutas = Array.isArray(p.linhas) ? (p.linhas as any[]).slice(0, 20000) : [];
+    if (!brutas.length) throw new Error("Nenhuma linha recebida da planilha.");
+    const roster: Record<string, string> = { ...NOMES };
+    const mr = await sqlite.execute({ sql: "SELECT slug, nome FROM membro WHERE tenant_id = ? AND papel NOT IN ('cliente','fornecedor')", args: [u.tenant_id] });
+    for (const x of mr.rows as P[]) roster[String(x.slug)] = String(x.nome || roster[String(x.slug)] || x.slug);
+    const pr = await sqlite.execute({ sql: "SELECT cc FROM proj WHERE tenant_id = ?", args: [u.tenant_id] });
+    const hoje = new Date().toISOString().slice(0, 10);
+    const n = normalizaLinhas(brutas, roster, new Set((pr.rows as P[]).map((x) => String(x.cc))), hoje);
+    let novos: Array<{ slug: string; d: string; cc: string; h: number }> = [], jaNoPortal = 0;
+    if (n.validas.length) {
+      const ds = n.validas.map((x) => x.d).sort();
+      const ex = await sqlite.execute({ sql: "SELECT slug, d, cc, h FROM lanc WHERE tenant_id = ? AND d >= ? AND d <= ?", args: [u.tenant_id, ds[0], ds[ds.length - 1]] });
+      const df = diffLancamentos(n.validas, (ex.rows as P[]).map((x) => ({ slug: String(x.slug), d: String(x.d), cc: String(x.cc), h: Number(x.h) || 0 })));
+      novos = df.novos; jaNoPortal = df.jaNoPortal;
+    }
+    const resumo = { recebidas: brutas.length, validas: n.validas.length, jaNoPortal, novos: resumoNovos(novos), semPessoa: n.semPessoa, semProjeto: n.semProjeto, invalidas: n.invalidas };
+    if (action === "planilhaPrevia") return { ok: true, ...resumo };
+    if (!novos.length) return { ok: true, ...resumo, gravados: 0 };
+    const now = new Date().toISOString(); const marca = "import-planilha-" + hoje;
+    const stmts = novos.map((x) => ({
+      sql: "INSERT INTO lanc (id, slug, d, cc, h, t, s, m, a, c, u, tenant_id, origem) VALUES (?,?,?,?,?,'', 'LANÇADO', '', ?, ?, ?, ?, 'planilha')",
+      args: [crypto.randomUUID().slice(0, 8), x.slug, x.d, x.cc, x.h, now.slice(0, 10), now.slice(0, 10), marca, u.tenant_id],
+    }));
+    for (let i = 0; i < stmts.length; i += 100) await sqlite.batch(stmts.slice(i, i + 100));
+    await audit("planilha_import", u.slug, novos.length + " lançamento(s), " + resumo.novos.horas + " h", ip);
+    return { ok: true, ...resumo, gravados: novos.length };
+  }
+
   /* ===== FINANCEIRO na casca nova — quadro de contas a pagar/receber, tags por pessoa, lote =====
      Base: `fluxo` (entrada = a receber, saída = a pagar). R$ só aqui (gate financeiro.ver/editar).
      Situação, transições e plano do lote em src/fin.mjs (mesma regra que a UI). */
@@ -3677,6 +3765,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       const status = String(p.status || "");
       if (!STATUSES.includes(status)) throw new Error("Status inválido.");
       setsP.push("status = ?"); argsP.push(status);
+      // Projeto CONCLUÍDO é 100% de progresso (antes ficava com o último % lançado e o painel
+      // mostrava "concluído a 60%").
+      if (status === "CONCLUÍDO") await sqlite.execute({ sql: "UPDATE projx SET progresso = 100 WHERE cc = ? AND tenant_id = ?", args: [cc, u.tenant_id] });
     }
     if (p.inicio !== undefined) { setsP.push("inicio = ?"); argsP.push(dt(p.inicio)); }
     if (p.previsto !== undefined) { setsP.push("previsto = ?"); argsP.push(dt(p.previsto)); }
@@ -3785,7 +3876,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     // E uma amostra das ENTRADAS de caixa sem CC (para baixar uma parcela e conciliar o recebimento).
     let contratos: P[] = []; let caixaSemCc: P[] = [];
     if (podeFin) {
-      const cr = await sqlite.execute({ sql: "SELECT id, titulo, valor, assinado, status, tipo, deal_id, obs FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+      const cr = await sqlite.execute({ sql: "SELECT id, titulo, valor, assinado, status, tipo, deal_id, obs, cliente, valor_mensal, desde, ate FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
       const pcr = await sqlite.execute({ sql: "SELECT id, contrato_id, numero, valor, venc_prev, recebido_em, fluxo_id, status, obs FROM contrato_parcela WHERE tenant_id = ? AND cc = ? ORDER BY numero, venc_prev", args: [u.tenant_id, cc] });
       const byCt: Record<string, P[]> = {};
       for (const pc of pcr.rows as P[]) { (byCt[String(pc.contrato_id)] = byCt[String(pc.contrato_id)] || []).push(pc); }
@@ -3908,7 +3999,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "contratoList") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
-    const r = await sqlite.execute({ sql: "SELECT id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u, criado, atualizado FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
+    const r = await sqlite.execute({ sql: "SELECT id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, cliente, valor_mensal, desde, ate, u, criado, atualizado FROM cc_contrato WHERE tenant_id = ? AND cc = ? ORDER BY criado", args: [u.tenant_id, cc] });
     const conf = (r.rows as P[]).filter((x) => String(x.status) === "confirmado").reduce((s, x) => s + (Number(x.valor) || 0), 0);
     return { ok: true, cc, contratos: r.rows, valorContratado: arred2(conf) };
   }
@@ -3917,18 +4008,37 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const cc = String(p.cc || ""); if (!/^\d{1,2}\.\d{1,2}\.[1-4]\.\d{1,3}$/.test(cc)) throw new Error("Centro de custo inválido.");
     let id = String(p.id || "").trim(); const isNew = !id;
     if (isNew) id = "CT-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
-    const valor = Math.max(0, Number(p.valor) || 0);
-    const titulo = String(p.titulo || "").slice(0, 200);
-    const assinado = (() => { const s = String(p.assinado || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; })();
-    let tipo = String(p.tipo || "base").trim().toLowerCase(); if (tipo !== "base" && tipo !== "aditivo") tipo = "base";
-    let status = String(p.status || "rascunho").trim().toLowerCase(); if (status !== "rascunho" && status !== "confirmado" && status !== "cancelado") status = "rascunho";
-    const deal_id = String(p.deal_id || "").slice(0, 60);
-    const obs = String(p.obs || "").slice(0, 2000);
+    // EDIÇÃO PARCIAL: campo não enviado mantém o valor gravado. Antes o "Confirmar" mandava só
+    // {id,cc,status} e o upsert regravava valor=0 e título vazio — confirmar zerava o contrato.
+    const atual: P = isNew ? {} : (((await sqlite.execute({ sql: "SELECT * FROM cc_contrato WHERE id = ? AND tenant_id = ?", args: [id, u.tenant_id] })).rows[0] as P) || {});
+    if (!isNew && !atual.id) throw new Error("Contrato não encontrado.");
+    const tem = (k: string) => p[k] !== undefined && p[k] !== null;
+    const pega = (k: string, def: any) => (tem(k) ? p[k] : (atual[k] ?? def));
+    const valor = Math.max(0, Number(pega("valor", 0)) || 0);
+    const titulo = String(pega("titulo", "")).slice(0, 200);
+    const assinado = (() => { const s = String(pega("assinado", "")).slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ""; })();
+    let tipo = String(pega("tipo", "base")).trim().toLowerCase(); if (tipo !== "base" && tipo !== "aditivo" && tipo !== "recorrente") tipo = "base";
+    let status = String(pega("status", "rascunho")).trim().toLowerCase(); if (status !== "rascunho" && status !== "confirmado" && status !== "cancelado") status = "rascunho";
+    const deal_id = String(pega("deal_id", "")).slice(0, 60);
+    const obs = String(pega("obs", "")).slice(0, 2000);
+    // Recorrente: cliente + valor mensal + vigência (AAAA-MM). O valor é apropriado por horas do mês
+    // entre os projetos do cliente (src/apropriacao.mjs) — não no CC em que o contrato foi cadastrado.
+    const cliente = String(pega("cliente", "")).trim().slice(0, 120);
+    const valor_mensal = Math.max(0, Number(pega("valor_mensal", 0)) || 0);
+    const desde = ym(pega("desde", "")), ate = ym(pega("ate", ""));
+    if (tipo === "recorrente") {
+      if (!cliente) throw new Error("Contrato recorrente: informe o cliente.");
+      if (!(valor_mensal > 0)) throw new Error("Contrato recorrente: informe o valor mensal.");
+      if (!desde) throw new Error("Contrato recorrente: informe o mês de início (AAAA-MM).");
+      if (ate && ate < desde) throw new Error("Contrato recorrente: o fim não pode ser antes do início.");
+    } else if (status === "confirmado" && !(valor > 0)) {
+      throw new Error("Informe o valor do contrato antes de confirmar.");
+    }
     const now = new Date().toISOString();
     await sqlite.execute({
-      sql: "INSERT INTO cc_contrato (id,tenant_id,cc,titulo,valor,assinado,status,tipo,deal_id,obs,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
-        + "ON CONFLICT(id) DO UPDATE SET cc=excluded.cc,titulo=excluded.titulo,valor=excluded.valor,assinado=excluded.assinado,status=excluded.status,tipo=excluded.tipo,deal_id=excluded.deal_id,obs=excluded.obs,u=excluded.u,atualizado=excluded.atualizado",
-      args: [id, u.tenant_id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, u.slug, now, now],
+      sql: "INSERT INTO cc_contrato (id,tenant_id,cc,titulo,valor,assinado,status,tipo,deal_id,obs,cliente,valor_mensal,desde,ate,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        + "ON CONFLICT(id) DO UPDATE SET cc=excluded.cc,titulo=excluded.titulo,valor=excluded.valor,assinado=excluded.assinado,status=excluded.status,tipo=excluded.tipo,deal_id=excluded.deal_id,obs=excluded.obs,cliente=excluded.cliente,valor_mensal=excluded.valor_mensal,desde=excluded.desde,ate=excluded.ate,u=excluded.u,atualizado=excluded.atualizado",
+      args: [id, u.tenant_id, cc, titulo, valor, assinado, status, tipo, deal_id, obs, cliente, valor_mensal, desde, ate, u.slug, now, now],
     });
     await audit("contrato", u.slug, (isNew ? "novo " : "edit ") + id + " cc=" + cc + " " + status + " valor=" + valor, ip);
     // Onda 3-A: contrato confirmado PROPÕE o projeto (PROPOSTO) + parcela inicial, atrás de flag.
@@ -3975,10 +4085,12 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* CUSTOS FIXOS / OVERHEAD — pool editável rateado por horas (Onda 2). Leitura restrita. */
   if (action === "custoFixoList") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
-    const r = await sqlite.execute({ sql: "SELECT id, categoria, descricao, valor, u, criado, atualizado FROM custo_fixo WHERE tenant_id = ? ORDER BY categoria, criado", args: [u.tenant_id] });
-    const total = (r.rows as P[]).reduce((s, x) => s + (Number(x.valor) || 0), 0);
+    const r = await sqlite.execute({ sql: "SELECT id, categoria, descricao, valor, desde, ate, u, criado, atualizado FROM custo_fixo WHERE tenant_id = ? ORDER BY categoria, criado", args: [u.tenant_id] });
+    // `total` = soma MENSAL dos fixos vigentes no mês corrente; o rateio é mês a mês (rateioFixosCarteira).
+    const mesAtual = new Date().toISOString().slice(0, 7);
+    const total = (r.rows as P[]).filter((x) => (!ym(x.desde) || ym(x.desde) <= mesAtual) && (!ym(x.ate) || ym(x.ate) >= mesAtual)).reduce((s, x) => s + (Number(x.valor) || 0), 0);
     const rf = await rateioFixosCarteira(u.tenant_id);
-    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase, impostoPadrao: await impostoPadrao(u.tenant_id) };
+    return { ok: true, fixos: r.rows, total: arred2(total), horasBase: rf.horasBase, absorvido: rf.fixosTotal, naoAbsorvido: rf.naoAbsorvido, impostoPadrao: await impostoPadrao(u.tenant_id) };
   }
   if (action === "custoFixoSet") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição do financeiro restrita à direção ou coordenação financeira.");
@@ -3988,10 +4100,13 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     let categoria = String(p.categoria || "outros").trim().toLowerCase(); if (!cats.includes(categoria)) categoria = "outros";
     const valor = Math.max(0, Number(p.valor) || 0);
     const descricao = String(p.descricao || "").slice(0, 200);
+    // Valor MENSAL com vigência (AAAA-MM; vazio = aberto) — o rateio é calculado mês a mês.
+    const desde = ym(p.desde), ate = ym(p.ate);
+    if (desde && ate && ate < desde) throw new Error("O fim da vigência não pode ser antes do início.");
     const now = new Date().toISOString();
     await sqlite.execute({
-      sql: "INSERT INTO custo_fixo (id,tenant_id,categoria,descricao,valor,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET categoria=excluded.categoria,descricao=excluded.descricao,valor=excluded.valor,u=excluded.u,atualizado=excluded.atualizado",
-      args: [id, u.tenant_id, categoria, descricao, valor, u.slug, now, now],
+      sql: "INSERT INTO custo_fixo (id,tenant_id,categoria,descricao,valor,desde,ate,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET categoria=excluded.categoria,descricao=excluded.descricao,valor=excluded.valor,desde=excluded.desde,ate=excluded.ate,u=excluded.u,atualizado=excluded.atualizado",
+      args: [id, u.tenant_id, categoria, descricao, valor, desde, ate, u.slug, now, now],
     });
     await audit("custo_fixo", u.slug, (isNew ? "novo " : "edit ") + id + " " + categoria + " " + valor, ip);
     return { ok: true, id, isNew };
@@ -5524,7 +5639,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const caps = await capsDe({ slug: u.slug, papel: u.papel });
     if (!u.coord && !temCapSet(caps, "pessoas.cargo_atribuir")) throw new Error("Sem permissão para gerir colaboradores.");
-    const r = await sqlite.execute({ sql: "SELECT slug, nome, email, papel, ativo FROM membro WHERE tenant_id = ? ORDER BY ativo DESC, papel, nome", args: [u.tenant_id] });
+    const r = await sqlite.execute({ sql: "SELECT slug, nome, email, papel, ativo, saida FROM membro WHERE tenant_id = ? ORDER BY ativo DESC, papel, nome", args: [u.tenant_id] });
     // Marca quem tem histórico de horas (não deve ser excluído, só inativado).
     const hr = await sqlite.execute({ sql: "SELECT slug, COUNT(*) AS n FROM lanc WHERE tenant_id = ? GROUP BY slug", args: [u.tenant_id] });
     const hist: Record<string, number> = {};
@@ -5539,7 +5654,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     for (const c of cfg.rows as P[]) { const s = String(c.k).slice(9); const v = String(c.v || "").trim(); if (v && !atrib[s]) { atrib[s] = v; nCargos[s] = nCargos[s] || 1; } }
     const membros = (r.rows as P[]).map((m) => ({
       slug: String(m.slug), nome: String(m.nome || m.slug), email: String(m.email || ""),
-      papel: String(m.papel || "equipe"), ativo: Number(m.ativo) ? 1 : 0,
+      papel: String(m.papel || "equipe"), ativo: Number(m.ativo) ? 1 : 0, saida: String(m.saida || ""),
       cargocid: atrib[String(m.slug)] || "", cargos_n: nCargos[String(m.slug)] || 0, lancs: hist[String(m.slug)] || 0,
       owner: isOwner(String(m.slug)),
     }));
@@ -5598,6 +5713,14 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       if (!ativo && slug === u.slug) throw new Error("Você não pode inativar a si mesmo.");
       sets.push("ativo = ?"); args.push(ativo);
     }
+    if (p.saida != null) {
+      // Data de saída (desligamento agendado). Vazio = sem saída prevista. Não reativa sozinho.
+      const saida = String(p.saida || "").trim().slice(0, 10);
+      if (saida && !/^\d{4}-\d{2}-\d{2}$/.test(saida)) throw new Error("Data de saída inválida.");
+      if (saida && isOwner(slug)) throw new Error("O dono do portal não pode ter saída agendada.");
+      if (saida && slug === u.slug) throw new Error("Você não pode agendar a própria saída.");
+      sets.push("saida = ?"); args.push(saida);
+    }
     if (!sets.length) throw new Error("Nada para alterar.");
     args.push(u.tenant_id, slug);
     await sqlite.execute({ sql: "UPDATE membro SET " + sets.join(", ") + " WHERE tenant_id = ? AND slug = ?", args });
@@ -5628,6 +5751,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   if (action === "add") {
     const u = await auth(p);
     const e = validEntry(p.entry);
+    await checaTotalDia(u.slug, e.d, e.h, u.tenant_id);
     const capsAdd = await capsDe({ slug: u.slug, papel: u.papel });
     const podeAprovarAdd = temCapSet(capsAdd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
     const forcadoAdd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarAdd });
@@ -5655,6 +5779,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     if (cur.s !== "PENDENTE" && cur.s !== "DEVOLVIDO" && !(!aprovReq && (cur.slug === u.slug || u.coord)))
       throw new Error("Lançamento " + cur.s + " não pode mais ser editado.");
     const e = validEntry(p.entry);
+    await checaTotalDia(cur.slug, e.d, e.h, u.tenant_id, String(p.id));
     const capsEd = await capsDe({ slug: u.slug, papel: u.papel });
     const podeAprovarEd = temCapSet(capsEd, "projetos.aprovar"); // coerente com projaprovar (cap-only) e a spec
     const forcadoEd = await bloqueiaSeFechado(e.cc, u.tenant_id, { forcar: p.forcar === true, podeAprovar: podeAprovarEd });
@@ -5902,6 +6027,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
         sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
       ...regrasExtra(T), // Onda 3-A: C17 (contrato sem projeto) e C18 (PROPOSTO parado)
+      ...regrasLogica(T), // varredura 2026-10-30: C19 sem contrato, C20 >16 h/dia, C21 etapa>total, C22 concluído<100%, C23 a iniciar com horas
     ];
     const out: P[] = [];
     for (const r of regras) {
@@ -6941,6 +7067,20 @@ const BACKUP_RET_DIAS = 90;
 // ambientais, ~151k linhas, recarregados da fonte Base Empreendimentos MG por wrangler). Mantê-las
 // fora do dump deixa o backup pequeno e restaurável dentro dos limites de memória do Worker.
 const BACKUP_SKIP = new Set<string>(["amb_registro", "amb_agg"]);
+/** Cron diário: quem tem data de saída vencida passa a ativo=0 (mesmo efeito da inativação do RH),
+ *  com registro na auditoria. Idempotente (só toca quem ainda está ativo). */
+async function efetivaDesligamentos(env: any): Promise<{ n: number }> {
+  ENV = env;
+  await ensureSchema();
+  const hoje = new Date().toISOString().slice(0, 10);
+  const r = await sqlite.execute({ sql: "SELECT slug, saida FROM membro WHERE tenant_id = ? AND ativo = 1 AND COALESCE(saida,'') <> '' AND saida < ?", args: [TENANT_INTELECTO, hoje] });
+  for (const m of r.rows as P[]) {
+    await sqlite.execute({ sql: "UPDATE membro SET ativo = 0 WHERE tenant_id = ? AND slug = ? AND ativo = 1", args: [TENANT_INTELECTO, String(m.slug)] });
+    await sqlite.execute({ sql: "DELETE FROM sess WHERE tenant_id = ? AND slug = ?", args: [TENANT_INTELECTO, String(m.slug)] });
+    await audit("membro_desligado", "cron", String(m.slug) + " (saída " + String(m.saida) + ")", "cron");
+  }
+  return { n: r.rows.length };
+}
 async function backupD1(env: any): Promise<{ ok: boolean; key?: string; tabelas?: number; linhas?: number; bytes?: number; removidos?: number; erro?: string }> {
   ENV = env; /* mesmo padrao do keepAlive: helpers usam o ENV global */
   if (!ENV.BACKUP) return { ok: false, erro: "binding BACKUP ausente (ver wrangler.toml)" };
@@ -7460,7 +7600,7 @@ export default {
       return pr.then(() => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: true }))
         .catch((e: any) => logEvent({ ev: "cron", job: nome, cron, ms: Date.now() - t0, ok: false, msg: String((e && e.message) || e).slice(0, 200) }));
     };
-    if (event && event.cron === "0 6 * * *") ctx.waitUntil(run("backup", backupD1(env)));
+    if (event && event.cron === "0 6 * * *") { ctx.waitUntil(run("backup", backupD1(env))); ctx.waitUntil(run("desligamentos", efetivaDesligamentos(env))); }
     else if (event && event.cron === "0 9 * * *") ctx.waitUntil(run("daily_brief", briefColetar(env, { autor: "cron" })));
     else if (event && event.cron === "0 11 * * *") ctx.waitUntil(run("regras_agendadas", rodarRegrasAgendadas(env)));
     else ctx.waitUntil(run("keep_alive", keepAlive(env)));
