@@ -5433,9 +5433,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       if (princ) atrib[s] = princ.cid; // compat: cid PRINCIPAL por pessoa
       for (const z of lista) { headcount[z.cid] = (headcount[z.cid] || 0) + 1; const nm = nomeCid[z.cid]; if (nm) (pessoas[nm] = pessoas[nm] || []).push(NOMES[s] || s); }
     }
+    // FONTE ÚNICA DE CAPACIDADE: a carga vigente de cada pessoa em capacidade_vig (alimentada pelo
+    // contrato do RH e pelo editor do banco de horas); a jornada do cargo é só a referência para
+    // quem ainda não tem carga cadastrada. A mesma regra do banco de horas.
+    const hojeCap = new Date().toISOString().slice(0, 10);
+    const cv = await sqlite.execute({ sql: "SELECT slug, horas_semana FROM capacidade_vig WHERE tenant_id = ? AND desde <= ? ORDER BY slug, desde", args: [u.tenant_id, hojeCap] });
+    const hsemVig: Record<string, number> = {}; for (const x of cv.rows as P[]) hsemVig[String(x.slug)] = Number(x.horas_semana) || 0;
+    const hdPessoa = (slug: string, cid: string) => (hsemVig[slug] != null ? Math.round((hsemVig[slug] / 5) * 10) / 10 : (hdCid[cid] || 0));
+    const capCid: Record<string, number> = {};
+    for (const sl in porSlug) { const lista = porSlug[sl]; const princ = (lista.find((z) => z.principal) || lista[0]); if (princ) capCid[princ.cid] = (capCid[princ.cid] || 0) + hdPessoa(sl, princ.cid); }
     const cargos = (r.rows as P[]).map((x) => {
       const cid = String(x.cid); const hd = Number(x.horas_dia) || 0; const n = headcount[cid] || 0;
-      return { cid, nome: x.nome, area: x.area, missao: x.missao, responsabilidades: x.responsabilidades, entregaveis: x.entregaveis, rotinas: x.rotinas, cadencia: x.cadencia, onboarding: x.onboarding, metas: x.metas || "", atualizado: x.atualizado, horas_dia: hd, vinculo: String(x.vinculo || "Contratado"), pessoas_no_cargo: n, capacidade_dia: Math.round(n * hd * 10) / 10, caps: (CARGO_CAPS_DEFAULT[cid] || []) };
+      return { cid, nome: x.nome, area: x.area, missao: x.missao, responsabilidades: x.responsabilidades, entregaveis: x.entregaveis, rotinas: x.rotinas, cadencia: x.cadencia, onboarding: x.onboarding, metas: x.metas || "", atualizado: x.atualizado, horas_dia: hd, vinculo: String(x.vinculo || "Contratado"), pessoas_no_cargo: n, capacidade_dia: Math.round((capCid[cid] || 0) * 10) / 10, caps: (CARGO_CAPS_DEFAULT[cid] || []) };
     });
     const podeAtribuir = temCapSet(caps, "pessoas.cargo_atribuir");
     // Colaboradores ativos + cargos atribuidos (painel de atribuicao da Coord. Adm/RH).
@@ -5448,7 +5457,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     let totPessoas = 0, totHoras = 0, totSoc = 0, totSocH = 0;
     for (const s in porSlug) {
       const lista = porSlug[s]; const princ = (lista.find((z) => z.principal) || lista[0]); if (!princ) continue;
-      const hd = hdCid[princ.cid] || 0; totPessoas += 1; totHoras += hd;
+      const hd = hdPessoa(s, princ.cid); totPessoas += 1; totHoras += hd;
       if (vincCid[princ.cid] === "Sociedade") { totSoc += 1; totSocH += hd; }
     }
     const capacidade = {

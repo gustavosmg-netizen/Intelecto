@@ -89,3 +89,20 @@ test("Consistência dos dados visível no clássico (dono), com atalho para o m�
   assert.match(ts, /atalho: "RH › Banco de horas"/);
   assert.doesNotMatch(ts, /atalho: "Financeiro › Capacidade"/);
 });
+
+test("Projetos: gráficos seguem os filtros (status clicável, horas por mês, mais horas), sem R$", () => {
+  const g = trecho(html, "function _pjGraficos(L,c){", "\n}\n");
+  assert.match(g, /_vzBarras\(\{itens:stI/);
+  assert.match(g, /r\.s==="APROVADO"\|\|r\.s==="LANÇADO"/);
+  assert.doesNotMatch(g, /fmtBRL|"brl"/);
+  assert.match(html, /'<\/div>'\+_pjGraficos\(L,c\);\n  _pjLigaGraficos\(L\);/);
+});
+
+test("Capacidade com fonte única: carga vigente da pessoa; jornada do cargo só como referência", () => {
+  const rh = trecho(ts, "// FONTE ÚNICA DE CAPACIDADE", "return { ok: true, cargos");
+  assert.match(rh, /FROM capacidade_vig WHERE tenant_id = \? AND desde <= \?/);
+  assert.match(rh, /hsemVig\[slug\] != null \? Math\.round\(\(hsemVig\[slug\] \/ 5\) \* 10\) \/ 10 : \(hdCid\[cid\] \|\| 0\)/);
+  assert.match(rh, /const hd = hdPessoa\(s, princ\.cid\); totPessoas \+= 1; totHoras \+= hd;/);
+  assert.match(rh, /capacidade_dia: Math\.round\(\(capCid\[cid\] \|\| 0\) \* 10\) \/ 10/);
+  assert.match(html, /Jornada de referência \(h\/dia;/);
+});

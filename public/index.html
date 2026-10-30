@@ -997,8 +997,37 @@ function aplicaPj(){
     '<div class="kpi"><div class="v" style="color:var(--brand)">'+(c["EM ANDAMENTO"]||0)+'</div><div class="l">Em andamento</div></div>'+
     '<div class="kpi"><div class="v">'+((c["A INICIAR"]||0)+(c["EM ESPERA"]||0))+'</div><div class="l">A iniciar / em espera</div></div>'+
     '<div class="kpi"><div class="v" style="color:var(--ok)">'+conc+'</div><div class="l">Concluídos</div></div>'+
-    '</div>';
+    '</div>'+_pjGraficos(L,c);
+  _pjLigaGraficos(L);
   var r=$("#pjr"); if(r)r.innerHTML = PJF.modo==="gantt" ? _pjGantt(L) : _pjTabela(L);
+}
+/* Gráficos da carteira (seguem os filtros; só horas e contagens): projetos por status (clique
+   filtra), horas apontadas por mês e os projetos com mais horas nos últimos 90 dias (clique busca
+   o projeto). Horas = lançamentos aprovados/lançados que o servidor mandou a quem vê. */
+var PJG_ST=["A INICIAR","EM ANDAMENTO","EM ESPERA","CONCLUÍDO","CANCELADO"],_pjgTop=[];
+function _pjGraficos(L,c){
+  var aberto=true;try{aberto=localStorage.getItem("pjgraf")!=="0";}catch(_){}
+  var bt='<div style="display:flex;justify-content:flex-end;margin:-4px 0 8px"><button class="linkbtn" type="button" id="pjg-tg" style="font-size:.76rem">'+(aberto?'ocultar gráficos ▴':'mostrar gráficos ▾')+'</button></div>';
+  if(!aberto)return bt;
+  var ccs={};L.forEach(function(p){ccs[p.cc]=p;});
+  var lanc=(state.data.lanc||[]).filter(function(r){return ccs[r.cc]&&(r.s==="APROVADO"||r.s==="LANÇADO");});
+  var meses=[],d0=new Date();for(var i=11;i>=0;i--)meses.push(new Date(Date.UTC(d0.getUTCFullYear(),d0.getUTCMonth()-i,1)).toISOString().slice(0,7));
+  var hm={};lanc.forEach(function(r){var k=String(r.d).slice(0,7);hm[k]=(hm[k]||0)+(Number(r.h)||0);});
+  var sH=[{nome:"Horas",vals:meses.map(function(m){return Math.round((hm[m]||0)*10)/10;})}],cm=meses.map(_vzMes);
+  var lim=new Date(Date.now()-90*864e5).toISOString().slice(0,10),hp={};
+  lanc.forEach(function(r){if(String(r.d)>=lim)hp[r.cc]=(hp[r.cc]||0)+(Number(r.h)||0);});
+  _pjgTop=Object.keys(hp).sort(function(a,b){return hp[b]-hp[a];}).slice(0,10).map(function(cc){var p=ccs[cc]||{};return {label:cc+" "+(p.projeto||""),v:Math.round(hp[cc]*10)/10,cc:cc};});
+  var stI=PJG_ST.map(function(st){return {label:st,v:(c[st]||0)+(st==="CONCLUÍDO"?(c["CONCLUIDO"]||0):0)};}).filter(function(x){return x.v;});
+  return bt+'<div class="vz-grid2" style="margin-bottom:14px">'
+    +'<div id="pjg-st">'+_vzCard("Projetos por status","Clique num status para filtrar a carteira.",_vzBarras({itens:stI,fmt:"",larguraRotulo:130,clique:true,aria:"Projetos por status"}),"",_vzTabela(stI.map(function(x){return x.label;}),[{nome:"Projetos",vals:stI.map(function(x){return x.v;})}],""))+'</div>'
+    +'<div>'+_vzCard("Horas apontadas por mês",(state.coord?"Equipe toda":"Suas horas")+" nos projetos filtrados (12 meses).",_vzColunas({cats:cm,series:sH,fmt:"h",rotulos:true,aria:"Horas por mês"}),"",_vzTabela(cm,sH,"h"))+'</div>'
+    +(_pjgTop.length?'<div id="pjg-top">'+_vzCard("Projetos com mais horas","Últimos 90 dias. Clique para buscar o projeto.",_vzBarras({itens:_pjgTop,fmt:"h",larguraRotulo:230,clique:true,aria:"Projetos com mais horas"}),"",_vzTabela(_pjgTop.map(function(x){return x.label;}),[{nome:"Horas",vals:_pjgTop.map(function(x){return x.v;})}],"h"))+'</div>':'')
+    +'</div>';
+}
+function _pjLigaGraficos(L){
+  var tg=$("#pjg-tg");if(tg)tg.onclick=function(){var ab=true;try{ab=localStorage.getItem("pjgraf")!=="0";localStorage.setItem("pjgraf",ab?"0":"1");}catch(_){}aplicaPj();};
+  var st=$("#pjg-st");if(st)st.onclick=function(e){var h=e.target.closest&&e.target.closest("[data-bi]");if(!h)return;var lbl=(h.getAttribute("data-tip")||"").split(":")[0];var sel=$("#pjstatus");if(sel){sel.value=sel.value===lbl?"":lbl;aplicaPj();}};
+  var tp=$("#pjg-top");if(tp)tp.onclick=function(e){var h=e.target.closest&&e.target.closest("[data-bi]");if(!h)return;var it=_pjgTop[Number(h.getAttribute("data-bi"))];var q=$("#pjq");if(it&&q){q.value=it.cc;aplicaPj();}};
 }
 function _pjTabela(L){
   /* Gestão (coord) vê a visão executiva completa: prioridade GUT, horas gasto×previsto e
@@ -3892,8 +3921,8 @@ function _rhLoad(){
       var quem=pes[c.nome]||[];
       var chips=quem.length?quem.map(_rhChip).join(""):'<span class="muted" style="font-size:.78rem">Sem colaborador vinculado</span>';
       var acoes=pode?'<div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm sec" type="button" data-ed="'+esc(c.cid)+'">Editar</button><button class="btn sm danger" type="button" data-del="'+esc(c.cid)+'">Remover</button></div>':'';
-      var hinfo=(c.horas_dia>0)?(c.horas_dia+' h/dia por pessoa'):'horas/dia a definir';
-      var pinfo=(c.pessoas_no_cargo!=null)?(' · '+c.pessoas_no_cargo+' pessoa(s)'+(c.horas_dia>0?' → capacidade '+(c.capacidade_dia||0)+' h/dia':'')):'';
+      var hinfo=(c.horas_dia>0)?('jornada de referência '+c.horas_dia+' h/dia'):'jornada de referência a definir';
+      var pinfo=(c.pessoas_no_cargo!=null)?(' · '+c.pessoas_no_cargo+' pessoa(s)'+(c.capacidade_dia>0?' → capacidade '+c.capacidade_dia+' h/dia (pela carga de cada pessoa)':'')):'';
       var capLinha='<div class="muted" style="font-size:.78rem;margin-top:4px">'+esc(c.vinculo||'Contratado')+' · '+hinfo+pinfo+'</div>';
       return '<div class="card" style="margin-bottom:12px">'+
         '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-weight:700;font-size:1.02rem">'+esc(c.nome)+'</div>'+(c.area?_rhChip(c.area):'')+(c.vinculo==='Sociedade'?_rhChip('Sociedade'):'')+'</div>'+
@@ -4031,7 +4060,7 @@ function _rhForm(c){
     '<div class="field"><label>Nome do cargo</label><input id="rh-nome" value="'+esc(c.nome||"")+'" placeholder="Engenheiro(a) Projetista"></div>'+
     '<div class="field"><label>Área</label><input id="rh-area" value="'+esc(c.area||"")+'" placeholder="Engenharia"></div>'+
     '<div class="field"><label>Vínculo</label><select id="rh-vinculo"><option value="Contratado"'+((c.vinculo!=="Sociedade")?" selected":"")+'>Contratado</option><option value="Sociedade"'+((c.vinculo==="Sociedade")?" selected":"")+'>Sociedade</option></select></div>'+
-    '<div class="field"><label>Horas por dia (capacidade por pessoa; 0 = a definir)</label><input id="rh-horas" type="number" min="0" max="24" step="0.5" value="'+esc(c.horas_dia!=null?c.horas_dia:0)+'"></div>'+
+    '<div class="field"><label>Jornada de referência (h/dia; vale só para quem ainda não tem carga no contrato ou no banco de horas)</label><input id="rh-horas" type="number" min="0" max="24" step="0.5" value="'+esc(c.horas_dia!=null?c.horas_dia:0)+'"></div>'+
     '<div class="field"><label>Ordem de exibição</label><input id="rh-ordem" type="number" min="0" value="'+esc(c.ordem||0)+'"></div>'+
     '<div class="field"><label>Missão</label><textarea id="rh-missao" rows="2" style="resize:vertical">'+esc(c.missao||"")+'</textarea></div>'+
     _rhTa("rh-resp","Responsabilidades (uma por linha)",c.responsabilidades)+

@@ -199,6 +199,12 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
 - **CRM**: metas mensais em `cfgGet/cfgSet("crm_metas", tenant)` (ação `crmMetasSet`); negócio
   vincula projeto por `cc` validado na carteira. `crm_time` é livro legado só leitura.
 - `config` é por tenant: usar sempre `cfgGet/cfgSet/cfgDel(k, v, tenant)`, nunca SQL direto.
+- **Capacidade: fonte única** = `capacidade_vig` (carga semanal datada por pessoa, gravada pelo
+  contrato do RH e pelo editor do banco de horas). `rh_cargo.horas_dia` é só jornada de referência
+  para quem ainda não tem carga. Banco de horas e capacidade do RH usam a mesma regra.
+- **Agenda › Prazos e vencimentos** (ação `prazos`): projetos (prazo previsto), CRM (próxima
+  ação/tarefa), RH (contratos/acordos) e contas previstas sem valor; cada fonte no seu gate.
+- **Pendências › Consistência dos dados** (dono): ação `consistencia` no clássico.
 
 ### Confidencialidade e privacidade (crítico)
 
