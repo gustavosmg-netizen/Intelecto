@@ -721,7 +721,17 @@ document.addEventListener("click",function(e){
   });
   // Explorador de leads: inicializa ao ativar a aba (garantia além do listener do botão).
   if(alvo==="com-amb"&&typeof _ambInit==="function"){try{_ambInit();}catch(_){}}
+  // Abas com dados vivos recarregam ao abrir: o que foi salvo em outra aba (ou por outra pessoa)
+  // aparece sem precisar sair e voltar ao módulo.
+  var ld=TAB_LOAD[alvo]; if(typeof ld==="function"){try{ld();}catch(_){}}
 });
+var TAB_LOAD={
+  "fin-tab-res":function(){_finResumo();},"fin-tab-contas":function(){_finContas();},"fin-tab-cart":function(){_finCarteira();},
+  "fin-tab-ch":function(){_finCustoHora();},"fin-tab-cf":function(){_finCustoFixo();},"fin-tab-cap":function(){_finCapacidade();},
+  "fin-tab-conc":function(){_finConciliacao();},"fin-tab-fx":function(){_finFluxo();},
+  "com-painel":function(){_crmLoad();},"com-crm":function(){_crmLoad();},"com-leads":function(){_crmLoad();},
+  "area-com":function(){_execCrm();},"area-fin":function(){_finResumo();}
+};
 
 /* ===================== T6 · PERFIL & CONTA ===================== */
 /* Tela da própria conta: foto, dados editáveis (nome/e-mail), papel em LEITURA e troca de
@@ -2929,7 +2939,14 @@ function _finResumo(){
     var snapTxt=snap?('Último snapshot: <b>'+esc(snap.d)+'</b> por '+esc(snap.autor||'—')):'Nenhum snapshot materializado ainda.';
     var acao='<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div class="muted" style="font-size:.8rem;flex:1;min-width:200px">'+snapTxt+'</div>'+
       '<button class="btn sm" type="button" id="res-fechar">Materializar snapshot de hoje</button><span id="res-msg" class="muted" style="font-size:.78rem"></span></div>';
-    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Retrato consolidado da casa, em R$, derivado só de dados reais do portal. <b>Materializar</b> congela o retrato de hoje como registro histórico (com autor e data na trilha de auditoria).</p>'+cardFin+cardPipe+cardHx+acao;
+    var se=r.serie||[],cm=se.map(function(x){return _vzMes(x.ym);});
+    var sCx=[{nome:"Entradas",vals:se.map(function(x){return x.entradas;})},{nome:"Saídas",vals:se.map(function(x){return x.saidas;})}];
+    var sHr=[{nome:"Horas",vals:se.map(function(x){return x.horas;})}];
+    var graf=se.length?('<div class="vz-grid2" style="margin-bottom:12px">'+
+      _vzCard("Caixa por mês","Entradas × saídas dos últimos 12 meses (realizado pela data real; previsto pela data prevista).",_vzColunas({cats:cm,series:sCx,fmt:"brl",aria:"Caixa por mês"}),_vzLegenda(sCx),_vzTabela(cm,sCx,"brl"))+
+      _vzCard("Horas apontadas por mês","Aprovadas e lançadas, toda a equipe.",_vzColunas({cats:cm,series:sHr,fmt:"h",rotulos:true,aria:"Horas apontadas por mês"}),"",_vzTabela(cm,sHr,"h"))+
+    '</div>'):"";
+    box.innerHTML='<p class="muted" style="font-size:.8rem;margin:0 0 12px">Retrato consolidado da casa, em R$, derivado só de dados reais do portal. <b>Materializar</b> congela o retrato de hoje como registro histórico (com autor e data na trilha de auditoria).</p>'+cardFin+graf+cardPipe+cardHx+acao;
     var m=$("#res-msg");var bt=$("#res-fechar");
     if(bt)bt.onclick=function(){bt.disabled=true;if(m)m.textContent="Materializando…";
       api("resumoExecFechar").then(function(){if(m)m.textContent="Snapshot gravado.";_finResumo();}).catch(function(e){bt.disabled=false;if(m){m.textContent=e.message||"Erro";m.classList.add("err");}});};
@@ -4096,7 +4113,7 @@ function viewComercial(el){
     +'<button class="subnav-btn is-active" data-tab="com-painel" type="button">Painel</button>'
     +'<button class="subnav-btn" data-tab="com-crm" type="button">CRM · Pipeline</button>'
     +'<button class="subnav-btn" data-tab="com-leads" type="button">Leads inbound</button>'
-    +'<button class="subnav-btn" data-tab="com-horas" type="button">Horas comerciais</button>'
+    +'<button class="subnav-btn" data-tab="com-horas" type="button">Horas comerciais (histórico)</button>'
     +'<button class="subnav-btn" data-tab="com-amb" id="com-amb-btn" type="button">Leads Ambientais · MG</button>'
     +'</nav>'
     +'<section class="tabpanel" id="com-painel"><div id="crm-painel-box"><p class="muted" style="padding:14px">Carregando painel…</p></div></section>'
@@ -4623,6 +4640,7 @@ function _ambFicha(id){
 function _crmLoad(){
   api("crm").then(function(j){
     CRMDATA=j;
+    if(j&&j.metas)Object.keys(CRM_METAS).forEach(function(k){if(j.metas[k]!=null)CRM_METAS[k]=Number(j.metas[k])||0;});
     if(!CRMSALVOS.length)_crmCarregaSalvos();
     _crmRenderPainel();
     _crmRenderPipeline();
@@ -4632,6 +4650,18 @@ function _crmLoad(){
     var b=document.getElementById("crm-box");
     if(b)b.innerHTML='<p class="err" style="padding:14px">Não foi possível carregar o CRM: '+esc(e.message||e)+'</p>';
   });
+}
+/* Gráficos do CRM (só contagens; valor em R$ fica no Financeiro): negócios por macro-fase e
+   entradas × propostas × fechados por mês (12 meses). Usado no Painel do Comercial e no Início. */
+function _crmGraficos(deals){
+  var itens=CRM_MACRO.map(function(m){return {label:m,v:deals.filter(function(d){return _crmMacro(d.st)===m;}).length};});
+  var meses=[],d0=new Date();for(var i=11;i>=0;i--){meses.push(new Date(Date.UTC(d0.getUTCFullYear(),d0.getUTCMonth()-i,1)).toISOString().slice(0,7));}
+  var conta=function(campo){return meses.map(function(ym){return deals.filter(function(d){return d[campo]&&String(d[campo]).slice(0,7)===ym;}).length;});};
+  var ser=[{nome:"Entradas",vals:conta("entry")},{nome:"Propostas",vals:conta("sentdate")},{nome:"Fechados",vals:conta("signeddate")}],cm=meses.map(_vzMes);
+  return '<div class="vz-grid2" style="margin:6px 0 14px">'
+    +_vzCard("Negócios por macro-fase","Situação atual do funil.",_vzBarras({itens:itens,fmt:"",larguraRotulo:190,aria:"Negócios por macro-fase"}),"",_vzTabela(itens.map(function(x){return x.label;}),[{nome:"Negócios",vals:itens.map(function(x){return x.v;})}],""))
+    +_vzCard("Ritmo comercial por mês","Negócios que entraram, receberam proposta e fecharam (12 meses).",_vzColunas({cats:cm,series:ser,fmt:"",aria:"Ritmo comercial por mês"}),_vzLegenda(ser),_vzTabela(cm,ser,""))
+    +'</div>';
 }
 function _crmRenderPainel(){
   var box=document.getElementById("crm-painel-box");if(!box||!CRMDATA)return;
@@ -4653,7 +4683,8 @@ function _crmRenderPainel(){
       +'<div style="width:100%;height:6px;background:var(--line);border-radius:4px;margin-top:6px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,pct)+'%;background:'+cor+'"></div></div>'
       +'<div class="muted" style="font-size:.7rem;margin-top:3px">meta '+al+' · '+pct+'%</div></div>';
   };
-  var kpis='<h3 style="font-size:1rem;margin:10px 0 6px">Ritmo × meta — '+nomeMesLongo(ym.slice(5,7))+'/'+ym.slice(0,4)+'</h3>'
+  var kpis='<h3 style="font-size:1rem;margin:10px 0 6px;display:flex;align-items:center;gap:10px">Ritmo × meta — '+nomeMesLongo(ym.slice(5,7))+'/'+ym.slice(0,4)
+    +(CRMDATA.podeGerir?' <button class="btn sec sm" id="crm-metas-ed" type="button" style="margin-left:auto;font-weight:400">Editar metas</button>':'')+'</h3>'
     +'<div class="kpis">'+meta("Leads novos",leadsNovos,CRM_METAS.leads)+meta("Qualificados (no funil)",qualif,CRM_METAS.qualif)+meta("Propostas enviadas",propostas,CRM_METAS.prop)+meta("Negociações",negoc,CRM_METAS.negoc)+meta("Fechados",fechados.length,CRM_METAS.fech)+meta("Vendas",vendas,CRM_METAS.vendas,true)+'</div>';
   // Fila de decisões: ações com data (nextdate) vencidas ou a vencer em 7 dias; e deals sem próxima ação
   var em7=new Date(Date.now()+7*864e5).toISOString().slice(0,10);
@@ -4669,12 +4700,26 @@ function _crmRenderPainel(){
     return '<h3 style="font-size:.95rem;margin:16px 0 4px">'+tit+' <span class="muted" style="font-weight:400">('+arr.length+')</span></h3>'
       +'<div class="card" style="padding:4px 14px">'+arr.slice(0,25).map(function(d){return linha(d,cor?'<span class="tag" style="font-size:.64rem;background:'+cor+';color:#fff">●</span>':'');}).join("")+'</div>';
   };
-  box.innerHTML=kpis
+  box.innerHTML=kpis+_crmGraficos(deals)
     +secao("🔴 Ações vencidas",vencidas,"var(--crit)")
     +secao("🟡 A vencer (7 dias)",aVencer,"var(--warn)")
     +secao("⚪ Sem próxima ação definida",semAcao,"")
     +((!vencidas.length&&!aVencer.length&&!semAcao.length)?'<p class="muted" style="padding:14px">Nenhuma ação pendente.</p>':'');
   box.querySelectorAll(".crm-row").forEach(function(tr){tr.onclick=function(){_crmDealDetail(tr.getAttribute("data-id"));};});
+  var me=document.getElementById("crm-metas-ed");if(me)me.onclick=_crmMetasForm;
+}
+/* Metas mensais do funil (por empresa) — antes fixas no código. */
+function _crmMetasForm(){
+  var m=document.getElementById("crm-modal");if(!m)return;
+  var L=[["leads","Leads novos"],["qualif","Qualificados"],["prop","Propostas enviadas"],["negoc","Negociações"],["fech","Fechados"],["vendas","Vendas (R$)"]];
+  m.innerHTML='<div class="card" style="max-width:460px;width:100%;margin:auto;padding:16px"><h3 style="margin:0 0 10px;font-size:1.05rem">Metas mensais do comercial</h3>'
+    +L.map(function(x){return '<div class="field" style="margin:0 0 8px"><label style="font-size:.72rem">'+x[1]+'</label><input id="mt-'+x[0]+'" type="number" min="0" step="1" value="'+(CRM_METAS[x[0]]||0)+'"></div>';}).join("")
+    +'<div id="mt-msg" class="muted" style="font-size:.78rem;min-height:16px"></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn sec sm" id="mt-x" type="button">Cancelar</button><button class="btn sm" id="mt-ok" type="button">Salvar</button></div></div>';
+  m.style.display="";
+  document.getElementById("mt-x").onclick=function(){m.style.display="none";};
+  document.getElementById("mt-ok").onclick=function(){var pay={};L.forEach(function(x){pay[x[0]]=Number(document.getElementById("mt-"+x[0]).value)||0;});
+    var msg=document.getElementById("mt-msg");msg.textContent="Salvando…";
+    api("crmMetasSet",pay).then(function(){m.style.display="none";toast("Metas salvas.");_crmLoad();}).catch(function(e){msg.textContent=e.message||"Erro";msg.classList.add("err");});};
 }
 function _crmRenderPipeline(){
   var box=document.getElementById("crm-box");if(!box||!CRMDATA)return;
@@ -4817,7 +4862,7 @@ function _crmDealDetail(id){
   m.innerHTML='<div class="card" style="max-width:620px;width:100%;margin:auto"><div style="display:flex;align-items:flex-start;gap:10px;border-bottom:1px solid var(--line);padding:14px 16px">'
     +'<div><h3 style="margin:0;font-size:1.05rem">'+esc(d.co||d.id)+'</h3><div class="muted" style="font-size:.8rem;margin-top:3px">'+esc(d.id)+' · '+esc(_crmMacro(d.st))+' (etapa '+(Number(d.st)||0)+')</div></div>'
     +'<div style="margin-left:auto;display:flex;gap:6px">'+(CRMDATA&&CRMDATA.podeGerir?'<button class="btn sec sm" id="crm-edit">Editar</button>':'')+'<button class="btn sec sm" id="crm-mx">Fechar</button></div></div><div style="padding:14px 16px">'
-    +rw("Valor",Number(d.val)?fmtBRL(d.val):"")+rw("Segmento",d.seg)+rw("Produto/serviço",d.prod)+rw("Cidade",d.city)+rw("Responsável",d.owner)+rw("Prioridade",d.pri)+rw("Temperatura",d.temp)
+    +rw("Valor",Number(d.val)?fmtBRL(d.val):"")+rw("Segmento",d.seg)+rw("Produto/serviço",d.prod)+rw("Cidade",d.city)+rw("Responsável",d.owner)+rw("Prioridade",d.pri)+rw("Temperatura",d.temp)+rw("Projeto vinculado",d.cc?(d.cc+(nomeProj(d.cc)?" — "+nomeProj(d.cc):"")):"")
     +'<div style="border-top:1px solid var(--line);margin:8px 0;padding-top:8px"></div>'
     +rw("Contato",d.contact)+rw("Cargo",d.role)+rw("E-mail",d.email)+rw("Telefone",d.phone)
     +'<div style="border-top:1px solid var(--line);margin:8px 0;padding-top:8px"></div>'
@@ -4897,6 +4942,8 @@ function _crmDealForm(id){
     +'<div style="flex:1 1 100%;border-top:1px solid var(--line);margin:4px 0"></div>'
     +f("cf-entry","Entrada",d.entry||"","date")+f("cf-sentdate","Proposta enviada",d.sentdate||"","date")+f("cf-signeddate","Assinado em",d.signeddate||"","date")
     +f("cf-nextdate","Próxima ação (data)",d.nextdate||"","date")
+    +'<div class="field" style="margin:0;flex:1 1 220px"><label style="font-size:.72rem">Projeto vinculado (centro de custo)</label><select id="cf-cc"><option value="">(nenhum)</option>'
+      +projList().map(function(p){return '<option value="'+esc(p.cc)+'"'+(String(d.cc||"")===String(p.cc)?' selected':'')+'>'+esc(p.cc+" — "+(p.projeto||""))+'</option>';}).join("")+'</select></div>'
     +ta("cf-next","Próxima ação",d.next||"")+ta("cf-last","Último contato",d.last||"")+ta("cf-pain","Dor / contexto",d.pain||"")
     +'</div>'
     +'<div id="cf-msg" class="muted" style="font-size:.78rem;min-height:16px;margin-top:8px"></div>'
@@ -4908,7 +4955,7 @@ function _crmDealForm(id){
   document.getElementById("cf-save").onclick=function(){
     var co=gv("cf-co").trim(), msg=document.getElementById("cf-msg");
     if(co.length<2){if(msg){msg.textContent="Informe a empresa / nome do negócio.";msg.classList.add("err");}return;}
-    var pay={id:id||"",co:co,st:gv("cf-st"),val:gv("cf-val"),owner:gv("cf-owner"),pri:gv("cf-pri"),seg:gv("cf-seg"),prod:gv("cf-prod"),city:gv("cf-city"),temp:gv("cf-temp"),contact:gv("cf-contact"),role:gv("cf-role"),email:gv("cf-email"),phone:gv("cf-phone"),entry:gv("cf-entry"),sentdate:gv("cf-sentdate"),signeddate:gv("cf-signeddate"),nextdate:gv("cf-nextdate"),next:gv("cf-next"),last:gv("cf-last"),pain:gv("cf-pain")};
+    var pay={id:id||"",cc:gv("cf-cc"),co:co,st:gv("cf-st"),val:gv("cf-val"),owner:gv("cf-owner"),pri:gv("cf-pri"),seg:gv("cf-seg"),prod:gv("cf-prod"),city:gv("cf-city"),temp:gv("cf-temp"),contact:gv("cf-contact"),role:gv("cf-role"),email:gv("cf-email"),phone:gv("cf-phone"),entry:gv("cf-entry"),sentdate:gv("cf-sentdate"),signeddate:gv("cf-signeddate"),nextdate:gv("cf-nextdate"),next:gv("cf-next"),last:gv("cf-last"),pain:gv("cf-pain")};
     var b=document.getElementById("cf-save");b.disabled=true;if(msg){msg.textContent="Salvando…";msg.classList.remove("err");}
     api("crmDealSet",pay).then(function(){m.style.display="none";toast("Negócio salvo.");_crmLoad();}).catch(function(e){b.disabled=false;if(msg){msg.textContent=e.message||"Erro";msg.classList.add("err");}});
   };
@@ -4941,7 +4988,9 @@ function _crmRenderHoras(){
   var rows=Object.keys(byArea).sort(function(a,b){return byArea[b]-byArea[a];}).map(function(a){
     return '<tr><td>'+esc(a)+'</td><td style="white-space:nowrap">'+fmtH(byArea[a])+'</td></tr>';
   }).join("")||'<tr><td colspan="2" class="muted center" style="padding:20px">Sem lançamentos.</td></tr>';
-  box.innerHTML='<p class="muted" style="font-size:.8rem;margin:8px 0 10px">Horas da equipe comercial por atividade (total '+fmtH(tot)+' em '+ts.length+' lançamentos).</p>'
+  var ds=ts.map(function(t){return String(t.d||"");}).filter(Boolean).sort();
+  box.innerHTML='<div class="card" style="border-left:3px solid var(--warn);margin:8px 0 10px;padding:10px 14px;font-size:.82rem"><b>Livro antigo, só leitura.</b> Estas horas vieram da planilha do CRM'+(ds.length?' ('+esc(ds[0])+' a '+esc(ds[ds.length-1])+')':'')+' e não recebem lançamentos novos. Horas comerciais de agora são apontadas em <b>Lançar</b>, no centro de custo comercial, e entram no banco de horas.</div>'
+    +'<p class="muted" style="font-size:.8rem;margin:0 0 10px">Horas por atividade (total '+fmtH(tot)+' em '+ts.length+' lançamentos).</p>'
     +'<div class="card table-card"><table><thead><tr><th>Atividade</th><th>Horas</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
@@ -5205,35 +5254,15 @@ function _execResumo(){
       '</div>'+
     '</div>';
 }
-/* Painel de área (Comercial/Financeiro) no Início Executivo: resumo + principais pontos +
-   atalho para o módulo REAL (data-go, religado por liga()). Comercial e Financeiro já são
-   módulos funcionais; aqui é só o espelho executivo com link. `ok=false` (ex.: Financeiro
-   para admin que não é o dono) mostra aviso de restrição em vez do botão — o servidor é a
-   fronteira de verdade. Não expõe valor monetário aqui. */
-function _areaCard(titulo,resumo,pontos,view,label,ok){
-  var lis=(pontos||[]).map(function(x){return '<li>'+esc(x)+'</li>';}).join("");
-  return '<section class="card" style="border-left:3px solid var(--brand)">'+
-    '<h3 style="margin:0 0 8px">'+esc(titulo)+'</h3>'+
-    '<p class="muted" style="margin:0 0 10px">'+esc(resumo)+'</p>'+
-    '<ul class="muted" style="margin:0 0 14px;padding-left:18px;font-size:.84rem;line-height:1.65">'+lis+'</ul>'+
-    (ok?'<button class="btn sec sm" data-go="'+esc(view)+'">'+esc(label)+'</button>'
-       :'<div class="muted" style="font-size:.8rem">Área restrita ao dono.</div>')+
-  '</section>';
-}
 function viewInicioExec(){
   var isAdmin=(state.papel==="admin")||!!state.owner;
   var resumo=_execResumo();
   if(!isAdmin) return '<div class="animate-in">'+resumo+'</div>';
-  /* ABAS POR ÁREA (só Admin): Engenharia é tudo o que já existe (resumo + sidebar); Comercial e
-     Financeiro entram como stubs. A alternância usa o listener delegado de .tabs (apresentação). */
-  var com=_areaCard("Comercial — Leads Ambientais",
-    "Explorador de leads ambientais de MG numa tela única (todos os bancos), consultado direto no D1. Abra o módulo para o funil completo.",
-    ["Leads + outorgas, minerários, embargos, contaminadas, ETEs, IQA, saneamento, barragens e fiscalizações","Filtros, ordenação, busca, download e mapa — tudo server-side","Top Leads por score (pesos ajustáveis) e TACs na ficha"],
-    "comercial","Abrir Leads Ambientais →",true);
-  var fin=_areaCard("Financeiro — Lucro × Prejuízo",
-    "Posição por projeto, em R$ (restrita ao dono). Abra o módulo para a carteira financeira completa.",
-    ["Custo real (horas × custo/hora + impostos + rateio) × contratado","Margem por projeto, prejuízo primeiro","Custo/hora por colaborador"],
-    "financeiro","Abrir Financeiro →",!!state.owner);
+  /* ABAS POR ÁREA (só Admin): Engenharia é o resumo de sempre; Comercial (CRM) e Financeiro
+     (resumoExec, restrito pelo servidor) carregam ao vivo quando a aba abre. */
+  /* Comercial e Financeiro com dados vivos (carregam ao abrir a aba — TAB_LOAD). */
+  var com='<div id="exec-crm"><p class="muted" style="padding:8px 0">Carregando o comercial…</p></div>';
+  var fin='<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="btn sec sm" type="button" onclick="irPara(\'financeiro\')">Abrir Financeiro →</button></div><div id="fin-res"><p class="muted" style="padding:8px 0">Carregando o financeiro…</p></div>';
   return '<div class="animate-in"><div class="tabs">'+
     '<div class="subnav" role="tablist">'+
       '<button class="subnav-btn is-active" data-tab="area-eng">Gestão de Engenharia</button>'+
@@ -5250,6 +5279,23 @@ function viewInicioExec(){
       +com+'</div>'+
     '<div class="tabpanel hidden" id="area-fin">'+fin+'</div>'+
   '</div></div>';
+}
+/* Comercial no Início: KPIs do funil (contagens), gráficos e fila de ações — dados do CRM. */
+function _execCrm(){
+  var box=document.getElementById("exec-crm");if(!box)return;
+  api("crm").then(function(j){
+    var deals=(j&&j.deals)||[],hj=hoje();
+    var aberto=deals.filter(function(d){var m=_crmMacro(d.st);return m&&m!==CRM_MACRO[4]&&m!==CRM_MACRO[5]&&!d.signeddate;}).length;
+    var venc=deals.filter(function(d){return d.nextdate&&d.next&&d.nextdate<hj;}).length;
+    var semAc=deals.filter(function(d){var m=_crmMacro(d.st);return (!d.nextdate||!d.next)&&m&&m!==CRM_MACRO[5];}).length;
+    var ym=hj.slice(0,7),fech=deals.filter(function(d){return d.signeddate&&String(d.signeddate).slice(0,7)===ym;}).length;
+    var k=function(v,l,cor){return '<div class="kpi"><div class="v"'+(cor?' style="color:'+cor+'"':'')+'>'+v+'</div><div class="l">'+l+'</div></div>';};
+    box.innerHTML='<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:22px;flex-wrap:wrap;align-items:center">'
+      +k(deals.length,"Negócios no CRM")+k(aberto,"Em andamento (antes da execução)")+k(fech,"Fechados no mês")
+      +k(venc,"Ações vencidas",venc?"var(--crit)":"")+k(semAc,"Sem próxima ação",semAc?"var(--warn)":"")
+      +'<button class="btn sec sm" type="button" style="margin-left:auto" onclick="irPara(\'comercial\')">Abrir CRM →</button></div></div>'
+      +_crmGraficos(deals);
+  }).catch(function(e){box.innerHTML='<p class="muted" style="padding:8px 0">CRM indisponível: '+esc(e.message||e)+'</p>';});
 }
 /* KPI de leads na home (Resumo Executivo): preenche os contadores do card via ambMeta (leve). */
 function _ambHomeKpi(){

@@ -1938,6 +1938,12 @@ async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number
 /* CAPACIDADE × APONTADO (horas extras / déficit). Capacidade estagiário = 20h/sem (4h/dia); demais
  * 40h/sem (8h/dia). Ajustável aqui até virar campo de cargo. */
 const CAP20 = new Set<string>(["cecilia", "david"]);
+/** Os n meses (YYYY-MM) que terminam em ateYm, do mais antigo ao mais recente. */
+function ultimosMeses(n: number, ateYm: string): string[] {
+  const [y, m] = ateYm.split("-").map(Number); const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(Date.UTC(y, m - 1 - i, 1)); out.push(d.toISOString().slice(0, 7)); }
+  return out;
+}
 /** Dias úteis (seg–sex) do mês até a data (inclusive) — o mês corrente só cobra até hoje. */
 function diasUteisAte(ym: string, ateIso: string): number {
   const [y, m] = ym.split("-").map(Number); if (!y || !m) return 0;
@@ -2051,7 +2057,18 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   const fx = await sqlite.execute({ sql: "SELECT tipo, status, COALESCE(SUM(valor),0) v, COUNT(*) n FROM fluxo WHERE tenant_id = ? GROUP BY tipo, status", args: [tenant] });
   let fxEP = 0, fxSP = 0, fxER = 0, fxSR = 0, fxN = 0;
   for (const r of fx.rows as P[]) { const v = Number(r.v) || 0; fxN += Number(r.n) || 0; const st = String(r.status); const entrada = String(r.tipo) === "entrada"; if (st === "realizado") { entrada ? (fxER += v) : (fxSR += v); } else if (st === "previsto") { entrada ? (fxEP += v) : (fxSP += v); } }
+  // (5) Séries mensais (últimos 12 meses) p/ os gráficos: horas apontadas e caixa (entradas ×
+  // saídas, realizado pela data real, previsto pela data prevista; cancelado fora).
+  const meses = ultimosMeses(12, new Date().toISOString().slice(0, 7));
+  const ini = meses[0];
+  const hm = await sqlite.execute({ sql: "SELECT substr(d,1,7) ym, COALESCE(SUM(h),0) h FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) >= ? GROUP BY ym", args: [tenant, ini] });
+  const fm = await sqlite.execute({ sql: "SELECT substr(CASE WHEN status = 'realizado' AND data_real <> '' THEN data_real ELSE data_prev END,1,7) ym, tipo, COALESCE(SUM(valor),0) v FROM fluxo WHERE tenant_id = ? AND status <> 'cancelado' GROUP BY ym, tipo", args: [tenant] });
+  const hPor: Record<string, number> = {}; for (const x of hm.rows as P[]) hPor[String(x.ym)] = Number(x.h) || 0;
+  const ePor: Record<string, number> = {}, sPor: Record<string, number> = {};
+  for (const x of fm.rows as P[]) { const k = String(x.ym); if (String(x.tipo) === "entrada") ePor[k] = Number(x.v) || 0; else sPor[k] = Number(x.v) || 0; }
+  const serie = meses.map((ym) => ({ ym, horas: arred2(hPor[ym] || 0), entradas: arred2(ePor[ym] || 0), saidas: arred2(sPor[ym] || 0) }));
   return {
+    serie,
     fin: { contratado: arred2(contratado), custoTotal: arred2(custoTotal), margem: arred2(margem), margemPct, nProj, nPrej, overhead: rf.fixosTotal },
     pipeline: { dealsN, funil, assinN, assinVal: arred2(assinVal), pipeAberto: arred2(pipeAberto) },
     horas: { horasTotais: arred2(horasTotais), moTotal: arred2(moTotal) },
@@ -2080,7 +2097,7 @@ const PUBLICAS = new Set<string>(["ping", "haspin", "setpin", "login", "recupera
 const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
-  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
+  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmMetasSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
   // CRM na casca nova: tags/filtros por pessoa e atividades do negócio. Gate fino na ação (comercial.*).
   crmTagSet: "equipe", crmTagDel: "equipe", crmDealTag: "equipe", crmAtividades: "equipe", crmAtividadeSet: "equipe",
   crmAtividadeFeita: "equipe", crmAtividadeDel: "equipe", filtroList: "equipe", filtroSet: "equipe", filtroDel: "equipe",
@@ -3024,7 +3041,19 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     for (const r of dt.rows as P[]) (dealTags[String(r.deal_id)] = dealTags[String(r.deal_id)] || []).push(String(r.tag_id));
     const ta = await sqlite.execute({ sql: "SELECT id, deal_id, tipo, feito, prazo, texto, resp FROM crm_atividade WHERE tenant_id = ? AND tipo = 'tarefa' AND feito = 0", args: [u.tenant_id] });
     const prox = proximosPassos(ta.rows as any);
-    return { ok: true, deals: dr.rows, leads: lr.rows, time: tr.rows, funil, podeGerir: await crmPodeGerir(u), eu: u.slug, tags: tg.rows, dealTags, prox };
+    const mv = await cfgGet("crm_metas", u.tenant_id);
+    let metas: P | null = null; try { metas = mv ? JSON.parse(String(mv)) : null; } catch { metas = null; }
+    return { ok: true, deals: dr.rows, leads: lr.rows, time: tr.rows, funil, podeGerir: await crmPodeGerir(u), eu: u.slug, tags: tg.rows, dealTags, prox, metas };
+  }
+  /* CRM — metas mensais do funil (por empresa), editáveis por quem gere o CRM. */
+  if (action === "crmMetasSet") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.gerir")) throw new Error("Sem permissão para editar as metas.");
+    const m: P = {};
+    for (const k of ["leads", "qualif", "prop", "negoc", "fech", "vendas"]) { const v = Math.floor(Number(p[k])); if (!Number.isFinite(v) || v < 0 || v > 1e9) throw new Error("Meta inválida: " + k + "."); m[k] = v; }
+    await cfgSet("crm_metas", JSON.stringify(m), u.tenant_id);
+    await audit("crm_metas", u.slug, JSON.stringify(m), ip);
+    return { ok: true, metas: m };
   }
   /* CRM — criar/editar negócio (E5). Upsert: em edição só toca os campos do formulário
      (preserva cc/history/d4date/autuacao). Gate comercial.gerir. */
@@ -3047,6 +3076,13 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         + (isNew ? "" : "") ,
       args: [u.tenant_id, id, st, co, g("city"), g("seg"), g("prod"), val, g("owner", 60), g("pri", 20), g("contact"), g("role"), g("email", 160), g("phone", 60), g("src"), g("pain", 2000), entry, dt("sentdate"), dt("signeddate"), dt("lastdate"), g("last", 2000), dt("nextdate"), g("next", 2000), g("lossreason", 300), g("temp", 20), now],
     });
+    // Vínculo com o projeto (centro de custo): só quando o formulário manda `cc`. Vazio desliga;
+    // um cc precisa existir na carteira. É o elo negócio ganho → projeto/contrato.
+    if (p.cc !== undefined) {
+      const cc = String(p.cc || "").trim().slice(0, 40);
+      if (cc) { const ex = await sqlite.execute({ sql: "SELECT 1 FROM proj WHERE tenant_id = ? AND cc = ?", args: [u.tenant_id, cc] }); if (!ex.rows.length) throw new Error("Centro de custo " + cc + " não está na carteira."); }
+      await sqlite.execute({ sql: "UPDATE crm_deal SET cc = ? WHERE tenant_id = ? AND id = ?", args: [cc, u.tenant_id, id] });
+    }
     await audit("crm_deal", u.slug, (isNew ? "novo " : "edit ") + id + ": " + co.slice(0, 60), ip);
     return { ok: true, id, isNew };
   }
