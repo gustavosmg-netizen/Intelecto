@@ -68,7 +68,7 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 - `ensureSchema()` cria/ajusta tabelas em runtime no 1º request após mudança de `SCHEMA_VER`
   (`src/index.ts`, `const SCHEMA_VER`). **Toda mudança de schema exige bump de `SCHEMA_VER`** — sem o
   bump o D1 existente pula o setup e a tabela nunca nasce em produção.
-- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0016 `membro_saida`). Toda
+- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0017 `rh_rcf_contratos`). Toda
   tabela nova ganha migração própria, idempotente (`IF NOT EXISTS`, sem `DROP`/`DELETE`). Numerar em
   sequência e checar se outro PR aberto já usou o número.
 - D1 `--remote` rejeita `BEGIN/COMMIT/PRAGMA`; `DELETE` em massa é feito pelo dono no terminal dele.
@@ -168,6 +168,13 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
   "Contas a pagar/receber" (`_finContas`); Cadastro › "Importar planilha" (lê a aba Dados
   Estruturados do .xlsx no navegador; `planilhaPrevia`/`planilhaImportar`, idempotente); RH com
   **data de saída** (`membro.saida`; cron diário efetiva o desligamento).
+- **RH (src/rh.mjs, src/rcf_seed.mjs)**: RCF digital por cargo no modelo da casa (missão,
+  indicadores, responsabilidades Jr/Pl/Sr, matrizes 1–3 de conhecimentos e soft skills,
+  exigências; `rh_cargo.rcf`), aprovado → ciência do ocupante por revisão (`rh_rcf_ciencia`, botão
+  na Minha ficha). Contratos e acordos de colaboradores **sem valores** (`rh_contrato`,
+  `rh_acordo`) com alertas 30/15 dias, vencidos e estágio perto de 2 anos; a carga semanal do
+  contrato vira a capacidade (`capacidade_vig`). RCFs da casa (Drive): Engenheiro, Analista
+  Ambiental, Estágio em Química; demais cargos semeados como rascunho para revisão.
 - **Apropriação (src/apropriacao.mjs)**: custos fixos mensais com vigência rateados por horas do
   mês; contrato recorrente (cliente + valor mensal) distribuído pelas horas do mês entre os
   projetos do cliente; projeto sem horas contratadas = "sem contrato", nunca estouro.

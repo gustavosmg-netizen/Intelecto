@@ -34,3 +34,17 @@ test("Financeiro clássico: contas a pagar/receber com arrastar, filtros salvos,
   assert.match(html, /api\("filtroSet",\{modulo:"financeiro"/);
   assert.match(html, /_finResumo\(\);_finContas\(\);_finCarteira\(\)/);
 });
+
+test("RH clássico: RCF por cargo (ver, imprimir, editar), ciência na Minha ficha, contratos e acordos", () => {
+  assert.match(html, /data-tab="rh-tab-ct"/);
+  assert.match(html, /data-rcf="'\+esc\(c\.cid\)\+'">RCF do cargo/);
+  assert.match(html, /api\("rcfGet",\{cid:cid\}\)/);
+  assert.match(html, /api\("rcfSet",\{cid:cid,rcf:rcf,novaRevisao:/);
+  assert.match(html, /api\("rcfCiencia",\{cid:/);
+  assert.match(html, /<div id="ficha-rcf"><\/div>/);
+  assert.match(html, /api\("rhContratoSet",\{slug:/);
+  assert.match(html, /api\("rhAcordoSet",\{slug:/);
+  // o RH não pede valor (salário/PJ/bolsa ficam no Financeiro)
+  const i = html.indexOf("function _rhContratos()"); const bloco = html.slice(i, html.indexOf("function _fichaRcf()", i));
+  assert.doesNotMatch(bloco, /id="ct-val"|salario|salário"/i);
+});
