@@ -14,6 +14,7 @@ import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
 import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
 import { normalizaLinhas, diffLancamentos, resumoNovos } from "./importa.mjs";
 import { normalizaRcf, cienciaEmDia, validaContrato, validaAcordo, contratoVigente, alertasRh } from "./rh.mjs";
+import { RCF_SEED } from "./rcf_seed.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -1077,6 +1078,12 @@ function ensureSchema(): Promise<void> {
         tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Outro',
         descricao TEXT DEFAULT '', inicio TEXT DEFAULT '', fim TEXT DEFAULT '', doc_url TEXT DEFAULT '',
         u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+      // RCFs iniciais (src/rcf_seed.mjs): os 3 aprovados da casa + rascunhos para revisão. Só
+      // preenche cargo SEM RCF — nunca sobrescreve o que o RH editou.
+      await sqlite.batch(Object.entries(RCF_SEED).map(([cid, r]) => ({
+        sql: "UPDATE rh_cargo SET rcf = ? WHERE tenant_id = ? AND cid = ? AND COALESCE(rcf,'') = ''",
+        args: [JSON.stringify(normalizaRcf(r)), TENANT_INTELECTO, cid],
+      })));
       // Semeadura ADITIVA e idempotente: INSERT OR IGNORE garante que TODOS os cargos do modelo
       // existam, sem sobrescrever os que a Coordenacao ja editou (preserva edicoes) nem apagar
       // cargos criados a mao. Socios nascem com vinculo Sociedade; os demais, Contratado (8h/dia,

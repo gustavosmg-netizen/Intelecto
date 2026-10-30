@@ -62,3 +62,39 @@ test("alertasRh: vencido, ≤15 crítico, ≤30 atenção; renovação automáti
   assert.deepEqual(r, ["c1:vencido", "a1:critico", "c2:critico", "c3:atencao", "c5:atencao"]); // por nível, depois pelos dias que faltam
   assert.equal(a.find((x) => x.id === "c5").tipo, "Estágio (limite de 2 anos)");
 });
+
+// ---------- Conteúdo inicial e fiação (asserts) ----------
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { RCF_SEED } from "../src/rcf_seed.mjs";
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ts = readFileSync(join(root, "src/index.ts"), "utf8");
+
+test("RCF_SEED: os 3 da casa aprovados com a revisão do documento; demais em rascunho; tudo válido", () => {
+  assert.equal(normalizaRcf(RCF_SEED.engenheiro_jr).status, "aprovado");
+  assert.equal(normalizaRcf(RCF_SEED.engenheiro_jr).revisao, "2025-02-21");
+  assert.equal(normalizaRcf(RCF_SEED.analista).revisao, "2026-04-27");
+  assert.equal(normalizaRcf(RCF_SEED.estagiario).revisao, "2026-04-27");
+  for (const cid of ["tecnico_lab", "eletricista", "montagem", "coord_tecnica", "coord_comercial", "coord_financeira", "coord_adm_rh", "coord_juridica", "socios"])
+    assert.equal(normalizaRcf(RCF_SEED[cid]).status, "rascunho", cid);
+  for (const [cid, r] of Object.entries(RCF_SEED)) {
+    const n = normalizaRcf(r);
+    assert.ok(n.missao.length > 40, cid + " sem missão");
+    assert.ok(n.soft.length >= 10, cid + " sem soft skills");
+    assert.ok(n.niveis.pl.length > 0 || n.niveis.jr.length > 0, cid + " sem responsabilidades");
+    assert.equal(JSON.stringify(normalizaRcf(n)), JSON.stringify(n), cid + " não é estável na normalização");
+  }
+  // RCF não carrega valor monetário
+  assert.doesNotMatch(JSON.stringify(RCF_SEED), /R\$\s*\d/);
+});
+
+test("Worker: seed só preenche cargo sem RCF; ciência só de ocupante em RCF aprovado; contratos sem valor alimentam a capacidade", () => {
+  assert.match(ts, /UPDATE rh_cargo SET rcf = \? WHERE tenant_id = \? AND cid = \? AND COALESCE\(rcf,''\) = ''/);
+  assert.match(ts, /Este RCF ainda está em rascunho; a ciência abre quando o RH aprovar\./);
+  assert.match(ts, /Você não ocupa este cargo\./);
+  assert.match(ts, /Só o RH ou a Coordenação editam o RCF\./);
+  assert.match(ts, /INSERT INTO capacidade_vig \(tenant_id, slug, desde, horas_semana, u, criado\) VALUES \(\?,\?,\?,\?,\?,\?\) ON CONFLICT\(tenant_id, slug, desde\)/);
+  assert.doesNotMatch(ts.slice(ts.indexOf("CREATE TABLE IF NOT EXISTS rh_contrato"), ts.indexOf("CREATE TABLE IF NOT EXISTS rh_acordo")), /valor|salario/);
+  for (const a of ["rcfGet", "rcfMeu", "rcfCiencia", "rcfSet", "rhContratos", "rhContratoSet", "rhContratoDel", "rhAcordoSet", "rhAcordoDel"]) assert.match(ts, new RegExp("\\b" + a + ': "equipe"'), a);
+});
