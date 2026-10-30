@@ -3350,10 +3350,128 @@ function _servForm(s){
 }
 /* ===== Onda 3 / INC 2 — Ficha da pessoa (CV/Lattes, habilidades, metas, treinamentos, evolução) ===== */
 var _fichaAlvo=null; /* null = minha própria ficha; RH pode abrir a de outra pessoa */
+/* ===== RCF digital (modelo da casa) — ver, imprimir, editar (RH), dar ciência (ocupante) ===== */
+var RCF_ESC={"-":"—","1":"1","2":"2","3":"3"};
+function _rcfHtml(nome,area,r,extra){
+  var lst=function(xs){return xs&&xs.length?'<ul style="margin:4px 0 0 18px;padding:0">'+xs.map(function(x){return '<li style="margin:2px 0">'+esc(x)+'</li>';}).join("")+'</ul>':'<p class="muted" style="margin:4px 0">—</p>';};
+  var mat=function(t,xs){return '<div style="margin-top:12px"><b>'+t+'</b> <span class="muted" style="font-size:.74rem">1 Iniciante · 2 Autonomia · 3 Domínio</span><table style="width:100%;border-collapse:collapse;margin-top:4px;font-size:.84rem"><thead><tr><th style="text-align:left;padding:3px 6px">Item</th><th>Jr</th><th>Pl</th><th>Sr</th></tr></thead><tbody>'
+    +(xs||[]).map(function(x){return '<tr style="border-top:1px solid var(--line)"><td style="padding:3px 6px">'+esc(x.item)+'</td><td style="text-align:center">'+RCF_ESC[x.jr]+'</td><td style="text-align:center">'+RCF_ESC[x.pl]+'</td><td style="text-align:center">'+RCF_ESC[x.sr]+'</td></tr>';}).join("")+'</tbody></table></div>';};
+  var ex=r.exigencias||{};
+  return '<div class="rcf-doc">'
+    +'<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><h3 style="margin:0">RCF — '+esc(nome)+'</h3>'+(r.status==="aprovado"?'<span class="tag s-APROVADO">aprovado · revisão '+esc((r.revisao||"").split("-").reverse().join("/"))+'</span>':'<span class="tag s-PENDENTE">rascunho para revisão</span>')+'</div>'
+    +'<div class="muted" style="font-size:.84rem;margin:4px 0 8px">Área: '+esc(area||"—")+' · Subordinação direta: '+esc(r.subordinacao||"—")+'</div>'
+    +'<b>Missão do cargo</b><p style="margin:4px 0 8px">'+esc(r.missao||"—")+'</p>'
+    +'<b>Indicadores do cargo</b>'+lst(r.indicadores)
+    +'<div style="margin-top:10px"><b>Responsabilidades e atividades — Júnior</b>'+lst(r.niveis.jr)+'</div>'
+    +'<div style="margin-top:10px"><b>Pleno</b>'+lst(r.niveis.pl)+'</div>'
+    +'<div style="margin-top:10px"><b>Sênior</b>'+lst(r.niveis.sr)+'</div>'
+    +mat("Conhecimentos específicos",r.conhecimentos)+mat("Soft skills",r.soft)
+    +'<div style="margin-top:12px"><b>Outras exigências</b><div style="font-size:.86rem;margin-top:4px">Educação: '+esc(ex.educacao||"—")+'<br>Experiência: '+esc(ex.experiencia||"—")+'<br>Treinamento: '+esc(ex.treinamento||"—")+'<br>Habilidade: '+esc(ex.habilidade||"—")+'</div></div>'
+    +(extra||'')+'</div>';
+}
+function _rcfModal(html){
+  var m=document.getElementById("rcf-modal");if(!m){m=document.createElement("div");m.id="rcf-modal";m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;overflow:auto;padding:24px 12px";document.body.appendChild(m);}
+  m.innerHTML='<div class="card" style="max-width:860px;margin:0 auto">'+html+'</div>';m.style.display="";
+  m.onclick=function(ev){if(ev.target===m)m.style.display="none";};
+  return m;
+}
+function _rcfAbrir(cid){
+  api("rcfGet",{cid:cid}).then(function(j){
+    var r=j.rcf,ocup=(j.ocupantes||[]).map(function(o){return '<li>'+esc(o.nome)+' — '+(r.status!=="aprovado"?'<span class="muted">aguardando aprovação do RCF</span>':(o.cienteEm?'ciência em '+esc(o.cienteEm.slice(0,10).split("-").reverse().join("/")):'<b style="color:var(--warn,#a8610f)">sem ciência nesta revisão</b>'))+'</li>';}).join("");
+    var extra='<div style="margin-top:12px"><b>Ocupante(s)</b>'+(ocup?'<ul style="margin:4px 0 0 18px;padding:0">'+ocup+'</ul>':'<p class="muted">Ninguém neste cargo.</p>')+'</div>';
+    var m=_rcfModal('<div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">'+(j.podeEditar?'<button class="btn sm" id="rcf-ed">Editar RCF</button>':'')+'<button class="btn sm sec" id="rcf-pr">Imprimir</button><button class="btn sm sec" id="rcf-x">Fechar</button></div>'+_rcfHtml(j.nome,j.area,r,extra));
+    $("#rcf-x").onclick=function(){m.style.display="none";};
+    $("#rcf-pr").onclick=function(){var w=window.open("","_blank");if(!w)return;w.document.write('<html><head><meta charset="utf-8"><title>RCF '+esc(j.nome)+'</title><style>body{font-family:sans-serif;font-size:12px;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3px}</style></head><body>'+_rcfHtml(j.nome,j.area,r,extra)+'<p style="margin-top:28px">Data da ciência: ____/____/______</p><p>______________________ RH &nbsp;&nbsp;&nbsp;&nbsp; ______________________ Gestor &nbsp;&nbsp;&nbsp;&nbsp; ______________________ Ocupante</p></body></html>');w.document.close();w.print();};
+    var ed=$("#rcf-ed");if(ed)ed.onclick=function(){_rcfEditar(cid,j);};
+  }).catch(function(e){alert(e.message||"Erro ao abrir o RCF.");});
+}
+function _rcfEditar(cid,j){
+  var r=j.rcf,ln=function(xs){return esc((xs||[]).join("\n"));},mx=function(xs){return esc((xs||[]).map(function(x){return x.item+" | "+x.jr+" | "+x.pl+" | "+x.sr;}).join("\n"));};
+  var ta=function(id,lbl,val,rows){return '<div class="field"><label>'+lbl+'</label><textarea id="'+id+'" rows="'+(rows||4)+'" style="width:100%">'+val+'</textarea></div>';};
+  var ex=r.exigencias||{};
+  var m=_rcfModal('<h3 style="margin:0 0 8px">Editar RCF — '+esc(j.nome)+'</h3>'
+    +'<p class="muted" style="font-size:.8rem;margin:0 0 8px">Listas: um item por linha. Matrizes: <code>item | Jr | Pl | Sr</code> com níveis 1, 2, 3 ou -. Aprovar fixa a revisão e abre a ciência dos ocupantes.</p>'
+    +'<div class="field"><label>Subordinação direta</label><input id="rcf-sub" value="'+esc(r.subordinacao)+'"></div>'
+    +ta("rcf-mis","Missão do cargo",esc(r.missao),3)+ta("rcf-ind","Indicadores (um por linha)",ln(r.indicadores),3)
+    +ta("rcf-jr","Responsabilidades — Júnior",ln(r.niveis.jr),6)+ta("rcf-pl","Responsabilidades — Pleno",ln(r.niveis.pl),6)+ta("rcf-sr","Responsabilidades — Sênior",ln(r.niveis.sr),5)
+    +ta("rcf-con","Conhecimentos específicos (item | Jr | Pl | Sr)",mx(r.conhecimentos),6)+ta("rcf-sof","Soft skills (item | Jr | Pl | Sr)",mx(r.soft),6)
+    +'<div class="row" style="gap:8px;flex-wrap:wrap">'+["educacao:Educação","experiencia:Experiência","treinamento:Treinamento","habilidade:Habilidade"].map(function(x){var k=x.split(":");return '<div class="field" style="flex:1;min-width:180px"><label>'+k[1]+'</label><input id="rcf-ex-'+k[0]+'" value="'+esc(ex[k[0]]||"")+'"></div>';}).join("")+'</div>'
+    +'<div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0"><label><input type="checkbox" id="rcf-apr"'+(r.status==="aprovado"?' checked':'')+' style="width:auto"> Aprovado</label>'
+    +(r.status==="aprovado"?'<label><input type="checkbox" id="rcf-nova" style="width:auto"> Nova revisão (pede nova ciência de todos)</label>':'')+'</div>'
+    +'<div class="row" style="gap:8px"><button class="btn" id="rcf-sv">Salvar RCF</button><button class="btn sec" id="rcf-cc">Cancelar</button><span id="rcf-msg" class="muted"></span></div>');
+  var L=function(id){return $("#"+id).value.split("\n").map(function(x){return x.trim();}).filter(Boolean);};
+  var M=function(id){return L(id).map(function(l){var p=l.split("|").map(function(x){return x.trim();});return {item:p[0],jr:p[1]||"-",pl:p[2]||"-",sr:p[3]||"-"};});};
+  $("#rcf-cc").onclick=function(){_rcfAbrir(cid);};
+  $("#rcf-sv").onclick=function(){
+    var rcf={status:$("#rcf-apr").checked?"aprovado":"rascunho",subordinacao:$("#rcf-sub").value,missao:$("#rcf-mis").value,indicadores:L("rcf-ind"),
+      niveis:{jr:L("rcf-jr"),pl:L("rcf-pl"),sr:L("rcf-sr")},conhecimentos:M("rcf-con"),soft:M("rcf-sof"),
+      exigencias:{educacao:$("#rcf-ex-educacao").value,experiencia:$("#rcf-ex-experiencia").value,treinamento:$("#rcf-ex-treinamento").value,habilidade:$("#rcf-ex-habilidade").value}};
+    var nv=$("#rcf-nova");$("#rcf-msg").textContent="Salvando…";
+    api("rcfSet",{cid:cid,rcf:rcf,novaRevisao:!!(nv&&nv.checked)}).then(function(){toast("RCF salvo.");_rcfAbrir(cid);}).catch(function(e){$("#rcf-msg").textContent=e.message||"Erro";});
+  };
+}
+/* ===== Contratos e acordos dos colaboradores (sem valores) ===== */
+var RH_TIPOS_CT=["CLT","PJ","Estágio","Sócio","Temporário","Outro"],RH_TIPOS_AC=["Banco de horas","Home office","Jornada reduzida","Ajuda de custo","Bônus / PLR","Confidencialidade (NDA)","Outro"];
+function _brD(d){return d?String(d).slice(0,10).split("-").reverse().join("/"):"—";}
+function _rhContratos(){
+  Promise.all([api("rhContratos"),api("rhmembros").catch(function(){return {membros:[]};})]).then(function(rs){
+    var j=rs[0],ms=(rs[1].membros||[]).filter(function(m){return m.papel!=="cliente"&&m.papel!=="fornecedor";}),box=$("#rh-ct");if(!box)return;
+    var nome=function(s){var m=ms.filter(function(x){return x.slug===s;})[0];return m?m.nome:s;},pode=!!j.podeEditar;
+    var nivCor={vencido:"var(--crit,#b3372a)",critico:"var(--crit,#b3372a)",atencao:"var(--warn,#a8610f)"};
+    var alertas=(j.alertas||[]).map(function(a){return '<li style="color:'+nivCor[a.nivel]+'"><b>'+esc(nome(a.slug))+'</b> · '+esc(a.origem)+' '+esc(a.tipo)+' — '+(a.dias<0?'venceu há '+(-a.dias)+' dia(s)':'vence em '+a.dias+' dia(s)')+' ('+_brD(a.fim)+')</li>';}).join("");
+    var slugs=Array.from(new Set(ms.filter(function(m){return m.ativo;}).map(function(m){return m.slug;}).concat((j.contratos||[]).map(function(c){return c.slug;})))).filter(function(s){return pode||s===state.slug;});
+    var blocos=slugs.map(function(s){
+      var cs=(j.contratos||[]).filter(function(c){return c.slug===s;}),as=(j.acordos||[]).filter(function(a){return a.slug===s;}),v=(j.vigentes||{})[s];
+      var lc=cs.map(function(c){return '<tr><td>'+esc(c.tipo)+'</td><td>'+_brD(c.inicio)+' a '+(c.fim?_brD(c.fim):'indeterminado')+(Number(c.renovacao_auto)?' · renova':'')+'</td><td>'+(Number(c.carga_semanal)||0)+' h/sem</td><td>'+(c.doc_url?'<a href="'+esc(c.doc_url)+'" target="_blank" rel="noopener">documento</a>':'—')+'</td><td>'+esc(c.obs||"")+'</td>'+(pode?'<td><a href="#" data-ctdel="'+esc(c.id)+'">excluir</a></td>':'')+'</tr>';}).join("");
+      var la=as.map(function(a){return '<tr><td>'+esc(a.tipo)+'</td><td>'+_brD(a.inicio)+' a '+(a.fim?_brD(a.fim):'indeterminado')+'</td><td colspan="2">'+esc(a.descricao)+'</td><td>'+(a.doc_url?'<a href="'+esc(a.doc_url)+'" target="_blank" rel="noopener">documento</a>':'—')+'</td>'+(pode?'<td><a href="#" data-acdel="'+esc(a.id)+'">excluir</a></td>':'')+'</tr>';}).join("");
+      return '<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b>'+esc(nome(s))+'</b><span class="muted" style="font-size:.8rem">'+(v?'Vigente: '+esc(v.tipo)+' · '+(Number(v.carga_semanal)||0)+' h/sem'+(v.fim?' · até '+_brD(v.fim):''):'<span style="color:var(--warn,#a8610f)">sem contrato vigente cadastrado</span>')+'</span></div>'
+        +((lc||la)?'<div class="table-card" style="margin-top:6px"><table><thead><tr><th>Tipo</th><th>Vigência</th><th>Carga / acordo</th><th></th><th></th>'+(pode?'<th></th>':'')+'</tr></thead><tbody>'+lc+la+'</tbody></table></div>':'')+'</div>';
+    }).join("");
+    var opts=ms.filter(function(m){return m.ativo;}).map(function(m){return '<option value="'+esc(m.slug)+'">'+esc(m.nome)+'</option>';}).join("");
+    var forms=pode?'<div class="card" style="margin-bottom:12px"><b>Novo contrato</b><div class="row" style="gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">'
+        +'<div class="field" style="margin:0"><label>Colaborador</label><select id="ct-slug">'+opts+'</select></div>'
+        +'<div class="field" style="margin:0"><label>Tipo</label><select id="ct-tp">'+RH_TIPOS_CT.map(function(t){return '<option>'+t+'</option>';}).join("")+'</select></div>'
+        +'<div class="field" style="margin:0"><label>Início</label><input type="date" id="ct-ini"></div><div class="field" style="margin:0"><label>Fim (opcional)</label><input type="date" id="ct-fim"></div>'
+        +'<div class="field" style="margin:0;max-width:110px"><label>Carga h/sem</label><input type="number" id="ct-ch" min="0" max="60" step="0.5"></div>'
+        +'<label style="margin-bottom:8px"><input type="checkbox" id="ct-ren" style="width:auto"> renova automaticamente</label>'
+        +'<div class="field" style="margin:0;flex:1;min-width:200px"><label>Link do documento (https)</label><input id="ct-doc" placeholder="https://drive.google.com/…"></div>'
+        +'<div class="field" style="margin:0;flex:1;min-width:160px"><label>Observação</label><input id="ct-obs"></div>'
+        +'<button class="btn sm" id="ct-ok">Salvar contrato</button></div>'
+        +'<p class="muted" style="font-size:.74rem;margin:6px 0 0">Sem valores: salário, valor PJ e bolsa ficam no Financeiro. A carga semanal passa a ser a capacidade da pessoa a partir do início do contrato.</p></div>'
+      +'<div class="card" style="margin-bottom:12px"><b>Novo acordo</b><div class="row" style="gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">'
+        +'<div class="field" style="margin:0"><label>Colaborador</label><select id="ac-slug">'+opts+'</select></div>'
+        +'<div class="field" style="margin:0"><label>Tipo</label><select id="ac-tp">'+RH_TIPOS_AC.map(function(t){return '<option>'+t+'</option>';}).join("")+'</select></div>'
+        +'<div class="field" style="margin:0;flex:1;min-width:200px"><label>Descrição</label><input id="ac-desc"></div>'
+        +'<div class="field" style="margin:0"><label>Início</label><input type="date" id="ac-ini"></div><div class="field" style="margin:0"><label>Fim (opcional)</label><input type="date" id="ac-fim"></div>'
+        +'<div class="field" style="margin:0;flex:1;min-width:180px"><label>Link do documento (https)</label><input id="ac-doc"></div>'
+        +'<button class="btn sm" id="ac-ok">Salvar acordo</button></div></div>':'';
+    box.innerHTML=(pode?'<div class="card" style="margin-bottom:12px"><b>Alertas de vencimento</b>'+(alertas?'<ul style="margin:6px 0 0 18px;padding:0">'+alertas+'</ul>':'<p class="muted" style="margin:4px 0 0">Nenhum contrato ou acordo vencendo nos próximos 30 dias.</p>')+'</div>':'')+forms+blocos;
+    var V=function(id){var e=$("#"+id);return e?e.value:"";},msg=function(e){alert(e.message||"Erro");};
+    var ok=$("#ct-ok");if(ok)ok.onclick=function(){api("rhContratoSet",{slug:V("ct-slug"),tipo:V("ct-tp"),inicio:V("ct-ini"),fim:V("ct-fim"),carga_semanal:V("ct-ch"),renovacao_auto:$("#ct-ren").checked,doc_url:V("ct-doc"),obs:V("ct-obs")}).then(function(){toast("Contrato salvo.");_rhContratos();}).catch(msg);};
+    var oa=$("#ac-ok");if(oa)oa.onclick=function(){api("rhAcordoSet",{slug:V("ac-slug"),tipo:V("ac-tp"),descricao:V("ac-desc"),inicio:V("ac-ini"),fim:V("ac-fim"),doc_url:V("ac-doc")}).then(function(){toast("Acordo salvo.");_rhContratos();}).catch(msg);};
+    box.querySelectorAll("[data-ctdel]").forEach(function(a){a.onclick=function(ev){ev.preventDefault();if(confirm("Excluir este contrato?"))api("rhContratoDel",{id:a.getAttribute("data-ctdel")}).then(_rhContratos).catch(msg);};});
+    box.querySelectorAll("[data-acdel]").forEach(function(a){a.onclick=function(ev){ev.preventDefault();if(confirm("Excluir este acordo?"))api("rhAcordoDel",{id:a.getAttribute("data-acdel")}).then(_rhContratos).catch(msg);};});
+  }).catch(function(e){var b=$("#rh-ct");if(b)b.innerHTML='<p class="err" style="padding:8px 0">'+esc(e.message||e)+'</p>';});
+}
+/* Minha ficha: o RCF do meu cargo (com ciência) e o meu contrato vigente. */
+function _fichaRcf(){
+  var box=document.getElementById("ficha-rcf");if(!box)return;
+  Promise.all([api("rcfMeu"),api("rhContratos").catch(function(){return {contratos:[],acordos:[],vigentes:{}};})]).then(function(rs){
+    var j=rs[0],ct=rs[1],v=(ct.vigentes||{})[state.slug];
+    var cargos=(j.cargos||[]).map(function(c){var r=c.rcf;
+      var status=r.status!=="aprovado"?'<span class="tag s-PENDENTE">RCF em revisão pelo RH</span>':(c.cienciaEmDia?'<span class="tag s-APROVADO">ciência em '+_brD(c.cienteEm)+'</span>':'<button class="btn sm" data-ciente="'+esc(c.cid)+'">Li e dou ciência</button>');
+      return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0"><b>'+esc(c.nome)+'</b>'+status+'<button class="btn sm sec" data-verrcf="'+esc(c.cid)+'">Ver RCF</button></div>';}).join("")||'<p class="muted">Nenhum cargo atribuído ainda.</p>';
+    box.innerHTML='<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:4px">Meu cargo (RCF)</div>'+cargos
+      +'<div class="muted" style="font-size:.82rem;margin-top:8px">Meu contrato: '+(v?esc(v.tipo)+' · '+(Number(v.carga_semanal)||0)+' h/semana'+(v.fim?' · até '+_brD(v.fim):''):'não cadastrado')+'</div></div>';
+    box.querySelectorAll("[data-verrcf]").forEach(function(b){b.onclick=function(){_rcfAbrir(b.getAttribute("data-verrcf"));};});
+    box.querySelectorAll("[data-ciente]").forEach(function(b){b.onclick=function(){if(!confirm("Confirmo que li o RCF do meu cargo e estou ciente das responsabilidades."))return;api("rcfCiencia",{cid:b.getAttribute("data-ciente")}).then(function(){toast("Ciência registrada.");_fichaRcf();}).catch(function(e){alert(e.message||"Erro");});};});
+  }).catch(function(){box.innerHTML="";});
+}
 function viewFicha(el){
   el.innerHTML=viewHead("Pessoas","Ficha da Pessoa",
     "Seu currículo, Lattes, habilidades, metas e treinamentos — com a evolução alimentada pelas horas que você apontou. Dados pessoais: só você e o RH têm acesso.")+
-    '<div id="ficha-sel"></div><div id="ficha-box"><p class="muted" style="padding:8px 0">Carregando ficha…</p></div>';
+    '<div id="ficha-sel"></div><div id="ficha-rcf"></div><div id="ficha-box"><p class="muted" style="padding:8px 0">Carregando ficha…</p></div>';
+  _fichaRcf();
   // Seletor de pessoa (só para RH/coordenação/dono).
   if((state&&state.coord)||temCap('rh.ver')||temCap('pessoas.cargo_atribuir')){
     api("rhmembros").then(function(j){
@@ -3505,8 +3623,13 @@ function _fichaRender(j){
 function viewRh(el){
   el.innerHTML=viewHead("Gestão","RH, Cargos e Rotinas",
     "O que se espera de cada função na casa: missão, responsabilidades, entregáveis, rotinas, cadência e onboarding. A Coordenação edita; o vínculo de cada pessoa ao cargo vem do cadastro de colaboradores.")+
-    '<div id="rh-box"><p class="muted" style="padding:8px 0">Carregando cargos…</p></div>';
-  _rhLoad();
+    '<div class="tabs"><nav class="subnav" role="tablist">'+
+      '<button class="subnav-btn is-active" data-tab="rh-tab-cargos" type="button">Cargos &amp; RCF</button>'+
+      '<button class="subnav-btn" data-tab="rh-tab-ct" type="button">Contratos &amp; acordos</button>'+
+    '</nav>'+
+    '<section class="tabpanel" id="rh-tab-cargos"><div id="rh-box"><p class="muted" style="padding:8px 0">Carregando cargos…</p></div></section>'+
+    '<section class="tabpanel hidden" id="rh-tab-ct"><div id="rh-ct"><p class="muted" style="padding:8px 0">Carregando contratos…</p></div></section></div>';
+  _rhLoad();_rhContratos();
 }
 function _rhSec(t,v){var xs=String(v||"").split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean);if(!xs.length)return "";return '<div style="margin-top:8px"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em">'+esc(t)+'</div><ul style="margin:3px 0 0;padding-left:18px">'+xs.map(function(s){return '<li style="font-size:.86rem">'+esc(s)+'</li>';}).join("")+'</ul></div>';}
 function _rhChip(txt){return '<span style="display:inline-block;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.76rem;margin:0 4px 4px 0">'+esc(txt)+'</span>';}
@@ -3535,6 +3658,7 @@ function _rhLoad(){
         _rhSec("Metas e KPIs",c.metas)+
         ((c.caps&&c.caps.length)?'<div style="margin-top:10px"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Acesso (capabilities)</div>'+c.caps.map(function(cp){return '<span style="display:inline-block;font-family:var(--mono,monospace);font-size:.72rem;background:var(--surf2,var(--surf));border:1px solid var(--line);border-radius:6px;padding:1px 7px;margin:0 4px 4px 0">'+esc(cp)+'</span>';}).join('')+'</div>':'')+
         '<div style="margin-top:12px"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Quem ocupa</div>'+chips+'</div>'+
+        '<div style="margin-top:10px"><button class="btn sm" type="button" data-rcf="'+esc(c.cid)+'">RCF do cargo</button></div>'+
         acoes+
       '</div>';
     }).join("");
@@ -3580,6 +3704,7 @@ function _rhLoad(){
     box.querySelectorAll(".rh-mc-focosave").forEach(function(b){b.onclick=function(){var inp=box.querySelector('.rh-mc-foco[data-slug="'+b.getAttribute("data-slug")+'"][data-cid="'+b.getAttribute("data-cid")+'"]');_rhMsg("Salvando…");api("rhcargofoco",{alvo:b.getAttribute("data-slug"),cid:b.getAttribute("data-cid"),foco:inp?inp.value:""}).then(function(){_rhMsg("Foco salvo.");}).catch(function(e){_rhMsg(e.message||"Erro",1);});};});
     if(pode){
       $("#rh-novo").onclick=function(){_rhForm(null);};
+      box.querySelectorAll("[data-rcf]").forEach(function(b){b.onclick=function(){_rcfAbrir(b.getAttribute("data-rcf"));};});
       box.querySelectorAll("[data-ed]").forEach(function(b){b.onclick=function(){var cid=b.getAttribute("data-ed");_rhForm(cs.filter(function(x){return x.cid===cid;})[0]||null);};});
       box.querySelectorAll("[data-del]").forEach(function(b){b.onclick=function(){var cid=b.getAttribute("data-del");if(!confirm("Remover este cargo do catálogo de RH?"))return;api("rhdel",{cid:cid}).then(_rhLoad).catch(function(e){alert(e.message||e);});};});
     }
