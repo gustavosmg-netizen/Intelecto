@@ -10,9 +10,11 @@ import { deveRodar, nivelEstouro, periodoSemanaISO, notifStatements } from "./on
 import { montaPromptSugestaoCC, parseSugestaoCC, selecionaCandidatos } from "./onda3c.mjs";
 import { querManter, sessaoExpirada, cookieSessao } from "./sessao.mjs";
 import { destinoMovimento, validaTag, normalizaFiltro, validaAtividade, proximosPassos, rotuloSt } from "./crm.mjs";
-import { validaLote, planoLote, normalizaFiltroFin } from "./fin.mjs";
+import { validaLote, planoLote, normalizaFiltroFin, visaoFinanceira } from "./fin.mjs";
 import { horasPorMes, rateioFixosMensal, receitaRecorrente, ym, regrasLogica } from "./apropriacao.mjs";
 import { normalizaLinhas, diffLancamentos, resumoNovos } from "./importa.mjs";
+import { normalizaRcf, cienciaEmDia, validaContrato, validaAcordo, contratoVigente, alertasRh } from "./rh.mjs";
+import { RCF_SEED } from "./rcf_seed.mjs";
 
 /* Adaptacao Val Town -> Cloudflare Workers (Rev00 2026-09-10).
    ENV preenchido por middleware app.use("*"). Bindings (wrangler.toml): DB (D1), ASSETS (./public), BLOB (R2, opcional).
@@ -312,7 +314,7 @@ const RESTRITAS = ["financeiro", "comercial", "juridico"];
  * schema mudar e a sentinela NAO for bumpada, as instancias que ja gravaram a
  * sentinela antiga vao PULAR o setup e os ALTER novos nunca rodarao naquele D1.
  * O valor so precisa ser diferente do anterior; a data + sufixo e convencao. */
-const SCHEMA_VER = "2026-10-30b";
+const SCHEMA_VER = "2026-10-30c";
 /* E-06 — CONTRATO DE API VERSIONADO. Toda resposta de /api carrega `apiVer`. O front guarda o
  * valor do boot e, se uma resposta vier com outro, sabe que o Worker foi atualizado por baixo
  * (front servido do cache antigo vs API nova) e pede recarregar — evitando chamadas silenciosas
@@ -1060,6 +1062,28 @@ function ensureSchema(): Promise<void> {
       // Metas e KPIs esperados do cargo (texto livre, editavel no RH). Da ao RH o "tabuleiro" de
       // metas/indicadores por funcao. ALTER idempotente.
       try { await sqlite.execute("ALTER TABLE rh_cargo ADD COLUMN metas TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+      // RCF digital (Responsabilidades, Cargos e Funções — modelo da casa) como JSON normalizado
+      // por src/rh.mjs; ciência por pessoa e por revisão; contratos e acordos de colaboradores SEM
+      // valores (R$ fica no Financeiro). Migração 0017.
+      try { await sqlite.execute("ALTER TABLE rh_cargo ADD COLUMN rcf TEXT DEFAULT ''"); } catch (_) { /* ja existe */ }
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS rh_rcf_ciencia (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', slug TEXT NOT NULL, cid TEXT NOT NULL, revisao TEXT NOT NULL DEFAULT '',
+        ciente_em TEXT DEFAULT '', PRIMARY KEY (tenant_id, slug, cid, revisao))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS rh_contrato (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'CLT',
+        inicio TEXT DEFAULT '', fim TEXT DEFAULT '', renovacao_auto INTEGER DEFAULT 0, carga_semanal REAL DEFAULT 0,
+        doc_url TEXT DEFAULT '', obs TEXT DEFAULT '', u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '',
+        PRIMARY KEY (tenant_id, id))`);
+      await sqlite.execute(`CREATE TABLE IF NOT EXISTS rh_acordo (
+        tenant_id TEXT NOT NULL DEFAULT 'intelecto', id TEXT NOT NULL, slug TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Outro',
+        descricao TEXT DEFAULT '', inicio TEXT DEFAULT '', fim TEXT DEFAULT '', doc_url TEXT DEFAULT '',
+        u TEXT DEFAULT '', criado TEXT DEFAULT '', atualizado TEXT DEFAULT '', PRIMARY KEY (tenant_id, id))`);
+      // RCFs iniciais (src/rcf_seed.mjs): os 3 aprovados da casa + rascunhos para revisão. Só
+      // preenche cargo SEM RCF — nunca sobrescreve o que o RH editou.
+      await sqlite.batch(Object.entries(RCF_SEED).map(([cid, r]) => ({
+        sql: "UPDATE rh_cargo SET rcf = ? WHERE tenant_id = ? AND cid = ? AND COALESCE(rcf,'') = ''",
+        args: [JSON.stringify(normalizaRcf(r)), TENANT_INTELECTO, cid],
+      })));
       // Semeadura ADITIVA e idempotente: INSERT OR IGNORE garante que TODOS os cargos do modelo
       // existam, sem sobrescrever os que a Coordenacao ja editou (preserva edicoes) nem apagar
       // cargos criados a mao. Socios nascem com vinculo Sociedade; os demais, Contratado (8h/dia,
@@ -1914,6 +1938,19 @@ async function rateioFixosCarteira(tenant: string): Promise<{ fixosTotal: number
 /* CAPACIDADE × APONTADO (horas extras / déficit). Capacidade estagiário = 20h/sem (4h/dia); demais
  * 40h/sem (8h/dia). Ajustável aqui até virar campo de cargo. */
 const CAP20 = new Set<string>(["cecilia", "david"]);
+/** Os n meses (YYYY-MM) que terminam em ateYm, do mais antigo ao mais recente. */
+function ultimosMeses(n: number, ateYm: string): string[] {
+  const [y, m] = ateYm.split("-").map(Number); const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(Date.UTC(y, m - 1 - i, 1)); out.push(d.toISOString().slice(0, 7)); }
+  return out;
+}
+/** Dias úteis (seg–sex) do mês até a data (inclusive) — o mês corrente só cobra até hoje. */
+function diasUteisAte(ym: string, ateIso: string): number {
+  const [y, m] = ym.split("-").map(Number); if (!y || !m) return 0;
+  let n = 0; const d = new Date(Date.UTC(y, m - 1, 1));
+  while (d.getUTCMonth() === m - 1 && d.toISOString().slice(0, 10) <= ateIso) { const w = d.getUTCDay(); if (w >= 1 && w <= 5) n++; d.setUTCDate(d.getUTCDate() + 1); }
+  return n;
+}
 function diasUteisMes(ym: string): number {
   const [y, m] = ym.split("-").map(Number); if (!y || !m) return 0;
   let n = 0; const d = new Date(Date.UTC(y, m - 1, 1));
@@ -1923,7 +1960,7 @@ function diasUteisMes(ym: string): number {
 /* Saldo capacidade×apontado por colaborador/mês, derivado do lanc (feriado/férias/ausência pelos
  * rótulos da atividade t). Esperado = dias úteis×h/dia − feriado − férias − ausência JUSTIFICADA;
  * Realizado = trabalho (tudo menos os 4 rótulos); Saldo = Realizado − Esperado (>0 extra, <0 déficit;
- * ausência NÃO justificada puxa p/ déficit). Custo da extra = saldo+ × custo/hora vigente no mês. */
+ * ausência NÃO justificada puxa p/ déficit). Banco = saldo acumulado; sem custo (só horas). */
 /** Classes de atividade não-trabalho do tenant (feriado/férias/ausências), do CATÁLOGO editável.
  *  Devolve os padrões de texto por classe. Fallback para os termos padrão se a tabela estiver vazia. */
 async function classesNaoTrabalho(tenant: string): Promise<{ feriado: string[]; ferias: string[]; aus_just: string[]; aus_naojust: string[] }> {
@@ -1958,11 +1995,11 @@ async function capacidadeApontado(tenant: string): Promise<P[]> {
     : "SUM(h) trab";
   const sql = "SELECT slug, substr(d,1,7) ym, " + [colFer, colFrs, colAj, colAn, trabCol].join(", ")
     + " FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' GROUP BY slug, ym";
-  const r = await sqlite.execute({ sql, args: [...selArgs, tenant] });
-  const cvr = await sqlite.execute({ sql: "SELECT slug, desde, valor FROM custohora_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
-  const vig: Record<string, { desde: string; valor: number }[]> = {};
-  for (const x of cvr.rows as P[]) { (vig[String(x.slug)] = vig[String(x.slug)] || []).push({ desde: String(x.desde), valor: Number(x.valor) || 0 }); }
-  const taxaEm = (slug: string, ym: string) => { let v = 0; const ref = ym + "-01"; for (const e of (vig[slug] || [])) { if (e.desde <= ref) v = e.valor; else break; } return v; };
+  // BANCO DE HORAS (decisão do dono, 2026-10-30): sem análise de custo. Meses em ordem; o mês
+  // corrente só cobra os dias úteis ATÉ HOJE (antes cobrava o mês inteiro e todos apareciam em
+  // déficit até o fim do mês); o saldo acumulado mês a mês é o banco.
+  const r = await sqlite.execute({ sql: sql + " ORDER BY slug, ym", args: [...selArgs, tenant] });
+  const hojeIso = new Date().toISOString().slice(0, 10), mesAtual = hojeIso.slice(0, 7);
   // CAPACIDADE COM VIGÊNCIA (tabela, não mais CAP20): horas/semana datadas por pessoa → hdia = h/5.
   const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde", args: [tenant] });
   const capv: Record<string, { desde: string; hsem: number }[]> = {};
@@ -1974,14 +2011,16 @@ async function capacidadeApontado(tenant: string): Promise<P[]> {
     const hsemMes = hsemEm(slug, ym); const hsem = Number.isNaN(hsemMes) ? 40 : hsemMes; // fallback 40h/sem
     const hdia = arred2(hsem / 5);
     const feriado = arred2(Number(row.feriado) || 0), ferias = arred2(Number(row.ferias) || 0), ausj = arred2(Number(row.ausj) || 0), ausn = arred2(Number(row.ausn) || 0), trab = arred2(Number(row.trab) || 0);
-    const esperado = arred2(diasUteisMes(ym) * hdia - feriado - ferias - ausj);
+    if (ym > mesAtual) continue; // lançamento futuro não entra no banco
+    const dias = ym === mesAtual ? diasUteisAte(ym, hojeIso) : diasUteisMes(ym);
+    const esperado = arred2(Math.max(0, dias * hdia - feriado - ferias - ausj));
     const saldo = arred2(trab - esperado);
-    const custoExtra = saldo > 0 ? arred2(saldo * taxaEm(slug, ym)) : 0;
-    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tCustoExtra: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
+    const o = porSlug[slug] = porSlug[slug] || { slug, nome: NOMES[slug] || slug, hsem, meses: [] as P[], tEsper: 0, tReal: 0, tSaldo: 0, tExtra: 0, tDef: 0, tFeriado: 0, tFerias: 0, tAusJ: 0, tAusN: 0 };
     o.hsem = hsem;
-    (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, custoExtra });
-    o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = arred2(o.tSaldo + saldo);
-    o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0)); o.tCustoExtra = arred2(o.tCustoExtra + custoExtra);
+    const banco = arred2(o.tSaldo + saldo); // saldo acumulado até este mês
+    (o.meses as P[]).push({ ym, esperado, realizado: trab, feriado, ferias, ausj, ausn, saldo, banco, parcial: ym === mesAtual ? 1 : 0 });
+    o.tEsper = arred2(o.tEsper + esperado); o.tReal = arred2(o.tReal + trab); o.tSaldo = banco;
+    o.tExtra = arred2(o.tExtra + (saldo > 0 ? saldo : 0)); o.tDef = arred2(o.tDef + (saldo < 0 ? -saldo : 0));
     o.tFeriado = arred2(o.tFeriado + feriado); o.tFerias = arred2(o.tFerias + ferias); o.tAusJ = arred2(o.tAusJ + ausj); o.tAusN = arred2(o.tAusN + ausn);
   }
   return Object.values(porSlug).sort((a: any, b: any) => (b.tSaldo as number) - (a.tSaldo as number));
@@ -2018,7 +2057,18 @@ async function resumoExecutivo(tenant: string): Promise<P> {
   const fx = await sqlite.execute({ sql: "SELECT tipo, status, COALESCE(SUM(valor),0) v, COUNT(*) n FROM fluxo WHERE tenant_id = ? GROUP BY tipo, status", args: [tenant] });
   let fxEP = 0, fxSP = 0, fxER = 0, fxSR = 0, fxN = 0;
   for (const r of fx.rows as P[]) { const v = Number(r.v) || 0; fxN += Number(r.n) || 0; const st = String(r.status); const entrada = String(r.tipo) === "entrada"; if (st === "realizado") { entrada ? (fxER += v) : (fxSR += v); } else if (st === "previsto") { entrada ? (fxEP += v) : (fxSP += v); } }
+  // (5) Séries mensais (últimos 12 meses) p/ os gráficos: horas apontadas e caixa (entradas ×
+  // saídas, realizado pela data real, previsto pela data prevista; cancelado fora).
+  const meses = ultimosMeses(12, new Date().toISOString().slice(0, 7));
+  const ini = meses[0];
+  const hm = await sqlite.execute({ sql: "SELECT substr(d,1,7) ym, COALESCE(SUM(h),0) h FROM lanc WHERE tenant_id = ? AND s IN ('APROVADO','LANÇADO') AND substr(d,1,7) >= ? GROUP BY ym", args: [tenant, ini] });
+  const fm = await sqlite.execute({ sql: "SELECT substr(CASE WHEN status = 'realizado' AND data_real <> '' THEN data_real ELSE data_prev END,1,7) ym, tipo, COALESCE(SUM(valor),0) v FROM fluxo WHERE tenant_id = ? AND status <> 'cancelado' GROUP BY ym, tipo", args: [tenant] });
+  const hPor: Record<string, number> = {}; for (const x of hm.rows as P[]) hPor[String(x.ym)] = Number(x.h) || 0;
+  const ePor: Record<string, number> = {}, sPor: Record<string, number> = {};
+  for (const x of fm.rows as P[]) { const k = String(x.ym); if (String(x.tipo) === "entrada") ePor[k] = Number(x.v) || 0; else sPor[k] = Number(x.v) || 0; }
+  const serie = meses.map((ym) => ({ ym, horas: arred2(hPor[ym] || 0), entradas: arred2(ePor[ym] || 0), saidas: arred2(sPor[ym] || 0) }));
   return {
+    serie,
     fin: { contratado: arred2(contratado), custoTotal: arred2(custoTotal), margem: arred2(margem), margemPct, nProj, nPrej, overhead: rf.fixosTotal },
     pipeline: { dealsN, funil, assinN, assinVal: arred2(assinVal), pipeAberto: arred2(pipeAberto) },
     horas: { horasTotais: arred2(horasTotais), moTotal: arred2(moTotal) },
@@ -2047,7 +2097,7 @@ const PUBLICAS = new Set<string>(["ping", "haspin", "setpin", "login", "recupera
 const MIN: Record<string, Papel> = {
   // leitura comum e acoes do proprio usuario (piso = equipe)
   escritorio: "equipe", hist: "equipe", solicitar: "equipe", solListar: "equipe",
-  comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
+  prazos: "equipe", comercial: "equipe", funnel_pull: "equipe", funnel_push: "equipe", crm: "equipe", crmDealSet: "equipe", crmMetasSet: "equipe", crmDealStage: "equipe", crmLeadAprovar: "equipe",
   // CRM na casca nova: tags/filtros por pessoa e atividades do negócio. Gate fino na ação (comercial.*).
   crmTagSet: "equipe", crmTagDel: "equipe", crmDealTag: "equipe", crmAtividades: "equipe", crmAtividadeSet: "equipe",
   crmAtividadeFeita: "equipe", crmAtividadeDel: "equipe", filtroList: "equipe", filtroSet: "equipe", filtroDel: "equipe",
@@ -2140,11 +2190,14 @@ const MIN: Record<string, Papel> = {
   contratoList: "coordenacao", contratoSet: "coordenacao", impostoPadraoSet: "coordenacao",
   // Resumo executivo materializado + base do fluxo de caixa: mesmo piso 'coordenacao', recorte
   // fino isOwner || financeiro.ver/editar DENTRO de cada branch (igual ao resto do Financeiro).
-  resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
+  finVisao: "coordenacao", resumoExec: "coordenacao", resumoExecFechar: "coordenacao", resumoExecHist: "coordenacao",
   fluxoList: "coordenacao", fluxoSet: "coordenacao", fluxoDel: "coordenacao", fluxoCc: "coordenacao",
   // Quadro de contas (casca nova): leitura, tags por pessoa e operação em lote (esta com reauth: SENSIVEIS).
   // Importação da planilha Calendário Engenharia (prévia lê; importar grava em lote, com reauth).
   planilhaPrevia: "coordenacao", planilhaImportar: "coordenacao",
+  // RH: RCF (leitura e ciência para todos; edição só RH) e contratos/acordos (RH vê todos; cada um, o próprio).
+  rcfGet: "equipe", rcfMeu: "equipe", rcfCiencia: "equipe", rcfSet: "equipe",
+  rhContratos: "equipe", rhContratoSet: "equipe", rhContratoDel: "equipe", rhAcordoSet: "equipe", rhAcordoDel: "equipe",
   finQuadro: "coordenacao", finTagSet: "coordenacao", finTagDel: "coordenacao", fluxoTag: "coordenacao", fluxoLote: "coordenacao",
   conciliacao: "coordenacao", conciliaSugerir: "coordenacao", parcelaList: "coordenacao", parcelaSet: "coordenacao", parcelaBaixar: "coordenacao",
   atividadeClasseSet: "coordenacao", capacidadeSet: "coordenacao",
@@ -2988,7 +3041,19 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     for (const r of dt.rows as P[]) (dealTags[String(r.deal_id)] = dealTags[String(r.deal_id)] || []).push(String(r.tag_id));
     const ta = await sqlite.execute({ sql: "SELECT id, deal_id, tipo, feito, prazo, texto, resp FROM crm_atividade WHERE tenant_id = ? AND tipo = 'tarefa' AND feito = 0", args: [u.tenant_id] });
     const prox = proximosPassos(ta.rows as any);
-    return { ok: true, deals: dr.rows, leads: lr.rows, time: tr.rows, funil, podeGerir: await crmPodeGerir(u), eu: u.slug, tags: tg.rows, dealTags, prox };
+    const mv = await cfgGet("crm_metas", u.tenant_id);
+    let metas: P | null = null; try { metas = mv ? JSON.parse(String(mv)) : null; } catch { metas = null; }
+    return { ok: true, deals: dr.rows, leads: lr.rows, time: tr.rows, funil, podeGerir: await crmPodeGerir(u), eu: u.slug, tags: tg.rows, dealTags, prox, metas };
+  }
+  /* CRM — metas mensais do funil (por empresa), editáveis por quem gere o CRM. */
+  if (action === "crmMetasSet") {
+    const u = await auth(p);
+    if (!(await podeComercial(u.slug)) && !temCapSet(await capsAtribuidas(u), "comercial.gerir")) throw new Error("Sem permissão para editar as metas.");
+    const m: P = {};
+    for (const k of ["leads", "qualif", "prop", "negoc", "fech", "vendas"]) { const v = Math.floor(Number(p[k])); if (!Number.isFinite(v) || v < 0 || v > 1e9) throw new Error("Meta inválida: " + k + "."); m[k] = v; }
+    await cfgSet("crm_metas", JSON.stringify(m), u.tenant_id);
+    await audit("crm_metas", u.slug, JSON.stringify(m), ip);
+    return { ok: true, metas: m };
   }
   /* CRM — criar/editar negócio (E5). Upsert: em edição só toca os campos do formulário
      (preserva cc/history/d4date/autuacao). Gate comercial.gerir. */
@@ -3011,6 +3076,13 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         + (isNew ? "" : "") ,
       args: [u.tenant_id, id, st, co, g("city"), g("seg"), g("prod"), val, g("owner", 60), g("pri", 20), g("contact"), g("role"), g("email", 160), g("phone", 60), g("src"), g("pain", 2000), entry, dt("sentdate"), dt("signeddate"), dt("lastdate"), g("last", 2000), dt("nextdate"), g("next", 2000), g("lossreason", 300), g("temp", 20), now],
     });
+    // Vínculo com o projeto (centro de custo): só quando o formulário manda `cc`. Vazio desliga;
+    // um cc precisa existir na carteira. É o elo negócio ganho → projeto/contrato.
+    if (p.cc !== undefined) {
+      const cc = String(p.cc || "").trim().slice(0, 40);
+      if (cc) { const ex = await sqlite.execute({ sql: "SELECT 1 FROM proj WHERE tenant_id = ? AND cc = ?", args: [u.tenant_id, cc] }); if (!ex.rows.length) throw new Error("Centro de custo " + cc + " não está na carteira."); }
+      await sqlite.execute({ sql: "UPDATE crm_deal SET cc = ? WHERE tenant_id = ? AND id = ?", args: [cc, u.tenant_id, id] });
+    }
     await audit("crm_deal", u.slug, (isNew ? "novo " : "edit ") + id + ": " + co.slice(0, 60), ip);
     return { ok: true, id, isNew };
   }
@@ -3054,6 +3126,99 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     await sqlite.execute({ sql: "UPDATE crm_lead SET status = 'aprovado', dealid = ?, aprovado = ? WHERE tenant_id = ? AND id = ?", args: [did, now.slice(0, 10), u.tenant_id, lid] });
     await audit("crm_lead_aprovar", u.slug, lid + " -> " + did, ip);
     return { ok: true, dealid: did };
+  }
+
+  /* ===== RH — RCF digital (modelo da casa) + ciência; contratos e acordos (sem valores) =====
+     Regras em src/rh.mjs. Editar = Coordenação ou quem gere o quadro (pessoas.cargo_atribuir). */
+  if (action === "rcfGet" || action === "rcfSet" || action === "rcfMeu" || action === "rcfCiencia") {
+    const u = await auth(p);
+    const podeRh = u.coord || temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "pessoas.cargo_atribuir");
+    const hoje = new Date().toISOString().slice(0, 10);
+    const ler = (x: P) => { let j: any = {}; try { j = JSON.parse(String(x.rcf || "{}")); } catch { j = {}; } return normalizaRcf(j); };
+    if (action === "rcfMeu") {
+      const mc = await sqlite.execute({ sql: "SELECT c.cid, c.nome, c.area, c.rcf FROM membro_cargo m JOIN rh_cargo c ON c.cid = m.cid AND c.tenant_id = m.tenant_id WHERE m.tenant_id = ? AND m.slug = ? ORDER BY m.principal DESC, m.prioridade", args: [u.tenant_id, u.slug] });
+      const ci = await sqlite.execute({ sql: "SELECT cid, revisao, ciente_em FROM rh_rcf_ciencia WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, u.slug] });
+      const cs = ci.rows as P[];
+      return { ok: true, cargos: (mc.rows as P[]).map((x) => { const rcf = ler(x); const minhas = cs.filter((c) => String(c.cid) === String(x.cid)) as any; const ult = minhas.find((c: P) => String(c.revisao) === rcf.revisao);
+        return { cid: x.cid, nome: x.nome, area: x.area, rcf, cienciaEmDia: rcf.status === "aprovado" && cienciaEmDia(rcf, minhas), cienteEm: ult ? String(ult.ciente_em) : "" }; }) };
+    }
+    const cid = String(p.cid || "").trim();
+    const cr = await sqlite.execute({ sql: "SELECT cid, nome, area, rcf FROM rh_cargo WHERE tenant_id = ? AND cid = ?", args: [u.tenant_id, cid] });
+    if (!cr.rows.length) throw new Error("Cargo não encontrado.");
+    const cargo = cr.rows[0] as P;
+    if (action === "rcfGet") {
+      const oc = await sqlite.execute({ sql: "SELECT m.slug, COALESCE(mb.nome, m.slug) AS nome FROM membro_cargo m LEFT JOIN membro mb ON mb.slug = m.slug AND mb.tenant_id = m.tenant_id WHERE m.tenant_id = ? AND m.cid = ? AND COALESCE(mb.ativo,1) = 1", args: [u.tenant_id, cid] });
+      const rcf = ler(cargo);
+      const ci = await sqlite.execute({ sql: "SELECT slug, ciente_em FROM rh_rcf_ciencia WHERE tenant_id = ? AND cid = ? AND revisao = ?", args: [u.tenant_id, cid, rcf.revisao] });
+      const ciMap: Record<string, string> = {}; for (const x of ci.rows as P[]) ciMap[String(x.slug)] = String(x.ciente_em);
+      return { ok: true, cid, nome: cargo.nome, area: cargo.area, rcf, podeEditar: podeRh, ocupantes: (oc.rows as P[]).map((x) => ({ slug: x.slug, nome: x.nome, cienteEm: ciMap[String(x.slug)] || "" })) };
+    }
+    if (action === "rcfSet") {
+      if (!podeRh) throw new Error("Só o RH ou a Coordenação editam o RCF.");
+      const atual = ler(cargo);
+      const novo = normalizaRcf(p.rcf);
+      // Aprovar fixa a revisão (data); "nova revisão" pede nova ciência de todos os ocupantes.
+      if (novo.status === "aprovado" && (p.novaRevisao === true || !atual.revisao || atual.status !== "aprovado")) novo.revisao = hoje;
+      else novo.revisao = atual.revisao || (novo.status === "aprovado" ? hoje : "");
+      await sqlite.execute({ sql: "UPDATE rh_cargo SET rcf = ?, atualizado = ?, u = ? WHERE tenant_id = ? AND cid = ?", args: [JSON.stringify(novo), new Date().toISOString(), u.slug, u.tenant_id, cid] });
+      await audit("rh_rcf", u.slug, cid + " " + novo.status + " rev " + novo.revisao, ip);
+      return { ok: true, rcf: novo };
+    }
+    // rcfCiencia: só quem ocupa o cargo, só em RCF aprovado, na revisão vigente.
+    const rcf = ler(cargo);
+    if (rcf.status !== "aprovado" || !rcf.revisao) throw new Error("Este RCF ainda está em rascunho; a ciência abre quando o RH aprovar.");
+    const oc = await sqlite.execute({ sql: "SELECT 1 FROM membro_cargo WHERE tenant_id = ? AND slug = ? AND cid = ?", args: [u.tenant_id, u.slug, cid] });
+    if (!oc.rows.length) throw new Error("Você não ocupa este cargo.");
+    await sqlite.execute({ sql: "INSERT OR IGNORE INTO rh_rcf_ciencia (tenant_id, slug, cid, revisao, ciente_em) VALUES (?,?,?,?,?)", args: [u.tenant_id, u.slug, cid, rcf.revisao, new Date().toISOString()] });
+    await audit("rh_rcf_ciencia", u.slug, cid + " rev " + rcf.revisao, ip);
+    return { ok: true };
+  }
+  if (action === "rhContratos" || action === "rhContratoSet" || action === "rhContratoDel" || action === "rhAcordoSet" || action === "rhAcordoDel") {
+    const u = await auth(p);
+    const podeRh = u.coord || temCapSet(await capsDe({ slug: u.slug, papel: u.papel }), "pessoas.cargo_atribuir");
+    const hoje = new Date().toISOString().slice(0, 10);
+    if (action === "rhContratos") {
+      // RH vê o quadro inteiro e os alertas; os demais, só os próprios contratos/acordos.
+      const filtro = podeRh ? "" : " AND slug = ?";
+      const args = podeRh ? [u.tenant_id] : [u.tenant_id, u.slug];
+      const c = await sqlite.execute({ sql: "SELECT id, slug, tipo, inicio, fim, renovacao_auto, carga_semanal, doc_url, obs FROM rh_contrato WHERE tenant_id = ?" + filtro + " ORDER BY slug, inicio DESC", args });
+      const a = await sqlite.execute({ sql: "SELECT id, slug, tipo, descricao, inicio, fim, doc_url FROM rh_acordo WHERE tenant_id = ?" + filtro + " ORDER BY slug, inicio DESC", args });
+      const contratos = c.rows as P[], acordos = a.rows as P[];
+      const vigentes: Record<string, any> = {};
+      const porSlug: Record<string, P[]> = {}; for (const x of contratos) (porSlug[String(x.slug)] = porSlug[String(x.slug)] || []).push(x);
+      for (const s in porSlug) vigentes[s] = contratoVigente(porSlug[s] as any, hoje);
+      return { ok: true, podeEditar: podeRh, contratos, acordos, vigentes, alertas: alertasRh(contratos, acordos, hoje) };
+    }
+    if (!podeRh) throw new Error("Só o RH ou a Coordenação gerem contratos e acordos.");
+    const id0 = String(p.id || "").trim();
+    if (action === "rhContratoDel" || action === "rhAcordoDel") {
+      const tab = action === "rhContratoDel" ? "rh_contrato" : "rh_acordo";
+      await sqlite.execute({ sql: "DELETE FROM " + tab + " WHERE tenant_id = ? AND id = ?", args: [u.tenant_id, id0] });
+      await audit(tab + "_del", u.slug, id0, ip);
+      return { ok: true };
+    }
+    const slug = String(p.slug || "").trim();
+    const mb = await sqlite.execute({ sql: "SELECT 1 FROM membro WHERE tenant_id = ? AND slug = ?", args: [u.tenant_id, slug] });
+    if (!mb.rows.length) throw new Error("Colaborador não encontrado.");
+    const now = new Date().toISOString();
+    if (action === "rhAcordoSet") {
+      const a = validaAcordo(p);
+      const id = id0 || "AC-" + crypto.randomUUID().slice(0, 12);
+      await sqlite.execute({ sql: "INSERT INTO rh_acordo (tenant_id,id,slug,tipo,descricao,inicio,fim,doc_url,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET slug=excluded.slug,tipo=excluded.tipo,descricao=excluded.descricao,inicio=excluded.inicio,fim=excluded.fim,doc_url=excluded.doc_url,u=excluded.u,atualizado=excluded.atualizado",
+        args: [u.tenant_id, id, slug, a.tipo, a.descricao, a.inicio, a.fim, a.doc_url, u.slug, now, now] });
+      await audit("rh_acordo", u.slug, slug + " " + a.tipo, ip);
+      return { ok: true, id };
+    }
+    const c = validaContrato(p);
+    const id = id0 || "CO-" + crypto.randomUUID().slice(0, 12);
+    await sqlite.execute({ sql: "INSERT INTO rh_contrato (tenant_id,id,slug,tipo,inicio,fim,renovacao_auto,carga_semanal,doc_url,obs,u,criado,atualizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,id) DO UPDATE SET slug=excluded.slug,tipo=excluded.tipo,inicio=excluded.inicio,fim=excluded.fim,renovacao_auto=excluded.renovacao_auto,carga_semanal=excluded.carga_semanal,doc_url=excluded.doc_url,obs=excluded.obs,u=excluded.u,atualizado=excluded.atualizado",
+      args: [u.tenant_id, id, slug, c.tipo, c.inicio, c.fim, c.renovacao_auto, c.carga_semanal, c.doc_url, c.obs, u.slug, now, now] });
+    // A carga semanal do contrato passa a ser a CAPACIDADE da pessoa a partir do início do contrato
+    // (vigência de capacidade, mesma tabela da tela Capacidade × apontado). Carga 0 não mexe.
+    if (c.carga_semanal > 0) await sqlite.execute({ sql: "INSERT INTO capacidade_vig (tenant_id, slug, desde, horas_semana, u, criado) VALUES (?,?,?,?,?,?) ON CONFLICT(tenant_id, slug, desde) DO UPDATE SET horas_semana = excluded.horas_semana, u = excluded.u",
+      args: [u.tenant_id, slug, c.inicio, c.carga_semanal, "contrato:" + u.slug, now] });
+    await audit("rh_contrato", u.slug, slug + " " + c.tipo + " " + c.inicio + (c.fim ? "→" + c.fim : "") + " " + c.carga_semanal + "h", ip);
+    return { ok: true, id };
   }
 
   /* ===== IMPORTAÇÃO DA PLANILHA "Calendário Engenharia" (aba Dados Estruturados) =====
@@ -4130,7 +4295,9 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   }
   /* CAPACIDADE × APONTADO — horas extras / déficit por colaborador e mês (derivado do lanc). Leitura restrita. */
   if (action === "capacidade") {
-    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    // Banco de horas mora no RH (só horas, sem valor): RH ou financeiro leem.
+    const u = await auth(p); const cb = await capsAtribuidas(u);
+    if (!(isOwner(u.slug) || temCapSet(cb, "rh.ver") || temCapSet(cb, "financeiro.ver"))) throw new Error("Banco de horas restrito ao RH e à direção.");
     const pessoas = await capacidadeApontado(u.tenant_id);
     const capr = await sqlite.execute({ sql: "SELECT slug, desde, horas_semana FROM capacidade_vig WHERE tenant_id = ? ORDER BY slug, desde DESC", args: [u.tenant_id] });
     const capAtual: Record<string, number> = {};
@@ -4141,7 +4308,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* CATÁLOGO DE CLASSES DE ATIVIDADE — editar os padrões de texto que marcam feriado/férias/ausência
      (reaproveitável por empresa). Gate coordenação (financeiro.editar). Auditado. */
   if (action === "atividadeClasseSet") {
-    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const u = await auth(p); const cb = await capsAtribuidas(u); if (!(isOwner(u.slug) || temCapSet(cb, "rh.editar") || temCapSet(cb, "financeiro.editar"))) throw new Error("Edição restrita ao RH ou à direção.");
     const cid = String(p.cid || "").trim(); if (!cid) throw new Error("Classe ausente.");
     const padroes = String(p.padroes || "").slice(0, 400);
     const nome = String(p.nome || "").slice(0, 80);
@@ -4156,7 +4323,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   /* CAPACIDADE COM VIGÊNCIA — registrar horas/semana de uma pessoa a partir de uma data (histórico
      preservado, como o custo/hora). Gate coordenação. Auditado. */
   if (action === "capacidadeSet") {
-    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.editar"))) throw new Error("Edição restrita à direção ou coordenação.");
+    const u = await auth(p); const cb = await capsAtribuidas(u); if (!(isOwner(u.slug) || temCapSet(cb, "rh.editar") || temCapSet(cb, "financeiro.editar"))) throw new Error("Edição restrita ao RH ou à direção.");
     const slug = String(p.slug || "").trim(); if (!slug) throw new Error("Colaborador ausente.");
     const desde = String(p.desde || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) throw new Error("Data de vigência inválida (AAAA-MM-DD).");
     const hs = Math.max(0, Math.min(80, Number(p.horas_semana) || 0));
@@ -4169,6 +4336,19 @@ async function route(action: string, p: P, ip: string): Promise<P> {
   }
   /* RESUMO EXECUTIVO — consolidado ao vivo (financeiro + pipeline + horas + fluxo). Leitura
      restrita ao dono / coord. financeira. Devolve também o último snapshot materializado. */
+  /* VISÃO GERAL DAS FINANÇAS — faturamento × gastos por mês, filtrável (período, situação,
+     categorias). Agrega no D1 por mês/tipo/categoria/status e classifica pela regra pura (fin.mjs). */
+  if (action === "finVisao") {
+    const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
+    const ym = (x: unknown) => { const v = String(x || "").slice(0, 7); return /^\d{4}-\d{2}$/.test(v) ? v : ""; };
+    const mesAtual = new Date().toISOString().slice(0, 7);
+    const ate = ym(p.ate) || mesAtual, de = ym(p.de) || ultimosMeses(12, ate)[0];
+    if (de > ate) throw new Error("Período inválido: o início é depois do fim.");
+    const r = await sqlite.execute({ sql: "SELECT substr(CASE WHEN status = 'realizado' AND data_real <> '' THEN data_real ELSE data_prev END,1,7) ym, tipo, categoria, status, COALESCE(SUM(valor),0) v, COUNT(*) n FROM fluxo WHERE tenant_id = ? GROUP BY ym, tipo, categoria, status", args: [u.tenant_id] });
+    const cats = Array.isArray(p.categorias) ? (p.categorias as unknown[]).map((x) => String(x).slice(0, 80)).slice(0, 60) : [];
+    const visao = visaoFinanceira(r.rows as any, { de, ate, situacao: String(p.situacao || "realizado"), categorias: cats });
+    return { ok: true, de, ate, ...visao };
+  }
   if (action === "resumoExec") {
     const u = await auth(p); if (!(isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver"))) throw new Error("Acesso ao financeiro restrito à direção ou coordenação financeira.");
     const resumo = await resumoExecutivo(u.tenant_id);
@@ -4868,6 +5048,45 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     return { ok: true, eventos: r.rows };
   }
 
+  /* PRAZOS E VENCIMENTOS (Agenda) — derivados dos módulos, cada fonte com o seu recorte de acesso:
+     prazo previsto dos projetos ativos (todos); próximas ações e tarefas do CRM (comercial);
+     contratos e acordos de colaboradores (RH); contas a pagar/receber previstas (financeiro, sem
+     valor — o valor fica no Financeiro). Janela: vencidos + próximos `dias` (padrão 30). */
+  if (action === "prazos") {
+    const u = await auth(p);
+    const caps = await capsDe(u);
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dias = Math.max(7, Math.min(120, Math.floor(Number(p.dias) || 30)));
+    const ate = new Date(Date.parse(hoje + "T00:00:00Z") + dias * 86400000).toISOString().slice(0, 10);
+    const desde = new Date(Date.parse(hoje + "T00:00:00Z") - 90 * 86400000).toISOString().slice(0, 10); // vencidos: até 90 dias atrás
+    const itens: P[] = [];
+    const pr = await sqlite.execute({ sql: "SELECT cc, projeto, status, previsto FROM proj WHERE tenant_id = ? AND registro = 'ATIVO' AND status NOT LIKE 'CONCLU%' AND status NOT LIKE 'CANCEL%'", args: [u.tenant_id] });
+    let semPrazo = 0;
+    for (const x of pr.rows as P[]) {
+      const d = String(x.previsto || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { if (String(x.status) === "EM ANDAMENTO") semPrazo++; continue; }
+      if (d < desde || d > ate) continue;
+      itens.push({ d, tipo: "projeto", titulo: String(x.projeto || x.cc), sub: "Prazo previsto · " + x.cc + " · " + x.status, ref: String(x.cc) });
+    }
+    if ((await podeComercial(u.slug)) || temCapSet(caps, "comercial.ver")) {
+      const dr = await sqlite.execute({ sql: "SELECT id, co, next, nextdate, owner FROM crm_deal WHERE tenant_id = ? AND nextdate >= ? AND nextdate <= ? AND COALESCE(next,'') <> ''", args: [u.tenant_id, desde, ate] });
+      for (const x of dr.rows as P[]) itens.push({ d: String(x.nextdate).slice(0, 10), tipo: "crm", titulo: String(x.co || x.id), sub: "Próxima ação: " + String(x.next).slice(0, 120) + (x.owner ? " · " + x.owner : ""), ref: String(x.id) });
+      const ta = await sqlite.execute({ sql: "SELECT a.deal_id, a.texto, a.prazo, a.resp, d.co FROM crm_atividade a LEFT JOIN crm_deal d ON d.tenant_id = a.tenant_id AND d.id = a.deal_id WHERE a.tenant_id = ? AND a.tipo = 'tarefa' AND a.feito = 0 AND a.prazo >= ? AND a.prazo <= ?", args: [u.tenant_id, desde, ate] });
+      for (const x of ta.rows as P[]) itens.push({ d: String(x.prazo).slice(0, 10), tipo: "crm", titulo: String(x.co || x.deal_id), sub: "Tarefa: " + String(x.texto || "").slice(0, 120) + (x.resp ? " · " + x.resp : ""), ref: String(x.deal_id) });
+    }
+    if (u.coord || temCapSet(caps, "pessoas.cargo_atribuir") || temCapSet(caps, "rh.ver")) {
+      const c = await sqlite.execute({ sql: "SELECT id, slug, tipo, inicio, fim, renovacao_auto FROM rh_contrato WHERE tenant_id = ?", args: [u.tenant_id] });
+      const a = await sqlite.execute({ sql: "SELECT id, slug, tipo, inicio, fim FROM rh_acordo WHERE tenant_id = ?", args: [u.tenant_id] });
+      for (const x of alertasRh(c.rows as any, a.rows as any, hoje) as P[])
+        itens.push({ d: String(x.fim), tipo: "rh", titulo: (NOMES[String(x.slug)] || x.slug) + " — " + x.tipo, sub: (x.origem === "acordo" ? "Acordo" : "Contrato") + (Number(x.dias) < 0 ? " vencido" : " vence"), ref: String(x.slug) });
+    }
+    if (isOwner(u.slug) || temCapSet(await capsAtribuidas(u), "financeiro.ver")) {
+      const fx = await sqlite.execute({ sql: "SELECT id, tipo, descricao, categoria, data_prev FROM fluxo WHERE tenant_id = ? AND status = 'previsto' AND data_prev >= ? AND data_prev <= ?", args: [u.tenant_id, desde, ate] });
+      for (const x of fx.rows as P[]) itens.push({ d: String(x.data_prev), tipo: "conta", titulo: String(x.descricao || x.categoria || "Lançamento"), sub: (String(x.tipo) === "entrada" ? "A receber" : "A pagar") + (x.categoria ? " · " + x.categoria : ""), ref: String(x.id) });
+    }
+    itens.sort((a, b) => String(a.d).localeCompare(String(b.d)) || String(a.tipo).localeCompare(String(b.tipo)));
+    return { ok: true, hoje, ate, itens: itens.slice(0, 600), semPrazo };
+  }
   if (action === "addevento") {
     const u = await auth(p);
     if (!temCapSet(await capsDe(u), "agenda.editar")) throw new Error("Seu cargo não permite criar ou alterar eventos da agenda.");
@@ -5214,9 +5433,18 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       if (princ) atrib[s] = princ.cid; // compat: cid PRINCIPAL por pessoa
       for (const z of lista) { headcount[z.cid] = (headcount[z.cid] || 0) + 1; const nm = nomeCid[z.cid]; if (nm) (pessoas[nm] = pessoas[nm] || []).push(NOMES[s] || s); }
     }
+    // FONTE ÚNICA DE CAPACIDADE: a carga vigente de cada pessoa em capacidade_vig (alimentada pelo
+    // contrato do RH e pelo editor do banco de horas); a jornada do cargo é só a referência para
+    // quem ainda não tem carga cadastrada. A mesma regra do banco de horas.
+    const hojeCap = new Date().toISOString().slice(0, 10);
+    const cv = await sqlite.execute({ sql: "SELECT slug, horas_semana FROM capacidade_vig WHERE tenant_id = ? AND desde <= ? ORDER BY slug, desde", args: [u.tenant_id, hojeCap] });
+    const hsemVig: Record<string, number> = {}; for (const x of cv.rows as P[]) hsemVig[String(x.slug)] = Number(x.horas_semana) || 0;
+    const hdPessoa = (slug: string, cid: string) => (hsemVig[slug] != null ? Math.round((hsemVig[slug] / 5) * 10) / 10 : (hdCid[cid] || 0));
+    const capCid: Record<string, number> = {};
+    for (const sl in porSlug) { const lista = porSlug[sl]; const princ = (lista.find((z) => z.principal) || lista[0]); if (princ) capCid[princ.cid] = (capCid[princ.cid] || 0) + hdPessoa(sl, princ.cid); }
     const cargos = (r.rows as P[]).map((x) => {
       const cid = String(x.cid); const hd = Number(x.horas_dia) || 0; const n = headcount[cid] || 0;
-      return { cid, nome: x.nome, area: x.area, missao: x.missao, responsabilidades: x.responsabilidades, entregaveis: x.entregaveis, rotinas: x.rotinas, cadencia: x.cadencia, onboarding: x.onboarding, metas: x.metas || "", atualizado: x.atualizado, horas_dia: hd, vinculo: String(x.vinculo || "Contratado"), pessoas_no_cargo: n, capacidade_dia: Math.round(n * hd * 10) / 10, caps: (CARGO_CAPS_DEFAULT[cid] || []) };
+      return { cid, nome: x.nome, area: x.area, missao: x.missao, responsabilidades: x.responsabilidades, entregaveis: x.entregaveis, rotinas: x.rotinas, cadencia: x.cadencia, onboarding: x.onboarding, metas: x.metas || "", atualizado: x.atualizado, horas_dia: hd, vinculo: String(x.vinculo || "Contratado"), pessoas_no_cargo: n, capacidade_dia: Math.round((capCid[cid] || 0) * 10) / 10, caps: (CARGO_CAPS_DEFAULT[cid] || []) };
     });
     const podeAtribuir = temCapSet(caps, "pessoas.cargo_atribuir");
     // Colaboradores ativos + cargos atribuidos (painel de atribuicao da Coord. Adm/RH).
@@ -5229,7 +5457,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     let totPessoas = 0, totHoras = 0, totSoc = 0, totSocH = 0;
     for (const s in porSlug) {
       const lista = porSlug[s]; const princ = (lista.find((z) => z.principal) || lista[0]); if (!princ) continue;
-      const hd = hdCid[princ.cid] || 0; totPessoas += 1; totHoras += hd;
+      const hd = hdPessoa(s, princ.cid); totPessoas += 1; totHoras += hd;
       if (vincCid[princ.cid] === "Sociedade") { totSoc += 1; totSocH += hd; }
     }
     const capacidade = {
@@ -6022,7 +6250,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
         sql: "SELECT COUNT(*) n FROM cc_contrato c WHERE c.tenant_id = ? AND c.status='confirmado' AND NOT EXISTS (SELECT 1 FROM contrato_parcela pp WHERE pp.contrato_id=c.id AND pp.tenant_id=c.tenant_id)", args: [T] },
       { rule: "C14", titulo: "Parcela prevista vencida e não recebida", sev: "alto", dono: "Financeiro", atalho: "Financeiro › Conciliação",
         sql: "SELECT COUNT(*) n FROM contrato_parcela WHERE tenant_id = ? AND status='prevista' AND venc_prev <> '' AND venc_prev < date('now')", args: [T] },
-      { rule: "C15", titulo: "Pessoa com horas e sem capacidade cadastrada", sev: "medio", dono: "RH", atalho: "Financeiro › Capacidade",
+      { rule: "C15", titulo: "Pessoa com horas e sem capacidade cadastrada", sev: "medio", dono: "RH", atalho: "RH › Banco de horas",
         sql: "SELECT COUNT(*) n FROM (SELECT DISTINCT l.slug FROM lanc l JOIN membro m ON m.slug=l.slug AND m.tenant_id=l.tenant_id WHERE l.tenant_id = ? AND m.ativo=1) a WHERE NOT EXISTS (SELECT 1 FROM capacidade_vig c WHERE c.slug=a.slug AND c.tenant_id = ?)", args: [T, T] },
       { rule: "C16", titulo: "Segundo livro de horas a migrar (crm_time)", sev: "medio", dono: "Comercial", atalho: "Comercial › Horas",
         sql: "SELECT COUNT(*) n FROM crm_time WHERE tenant_id = ? AND deleted=0 AND hours>0", args: [T] },
@@ -6357,7 +6585,7 @@ async function route(action: string, p: P, ip: string): Promise<P> {
     const u = await auth(p);
     const gerir = !!u.coord;
     const r = await sqlite.execute({
-      sql: "SELECT cid, titulo, cliente_cc, area, resumo, capa, capa_fonte, publicado, ordem, atualizado FROM vitrine_case WHERE tenant_id = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo",
+      sql: "SELECT cid, titulo, cliente_cc, area, resumo, capa, capa_fonte, publicado, ordem, atualizado, LENGTH(COALESCE(corpo,'')) AS corpo_len FROM vitrine_case WHERE tenant_id = ? AND ativo = 1" + (gerir ? "" : " AND publicado = 1") + " ORDER BY ordem, titulo",
       args: [u.tenant_id],
     });
     // Contagem de produtos por case (p/ o badge do card), em 1 consulta.
@@ -6368,6 +6596,8 @@ async function route(action: string, p: P, ip: string): Promise<P> {
       cid: x.cid, titulo: x.titulo, cliente_cc: x.cliente_cc, area: x.area, resumo: x.resumo,
       capa: x.capa, capa_fonte: x.capa_fonte, publicado: Number(x.publicado) ? 1 : 0, ordem: Number(x.ordem) || 0,
       atualizado: x.atualizado, produtos: nprod[String(x.cid)] || 0,
+      // Gate da vitrine real: há apresentação (corpo) de verdade? (o corpo em si não vai na lista)
+      temCorpo: (Number(x.corpo_len) || 0) >= 80 ? 1 : 0,
     }));
     return { ok: true, cases, podeGerir: gerir };
   }

@@ -1429,3 +1429,49 @@ tbody tr[data-cc] { cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 12px; border-top: 1px solid var(--line);
 }
+
+/* ===== GRÁFICOS (dashboards) — paleta categórica VALIDADA (validate_palette.js: lightness, chroma,
+   CVD ΔE ≥ 8, normal-vision ≥ 15) contra a superfície do portal em cada tema. Ordem fixa, nunca
+   ciclada. As séries antigas --s1..6 (tons de verde/ocre) falham em daltonismo e ficam para a marca.
+   Claro: 3 cores abaixo de 3:1 → todo gráfico traz valores escritos e "ver tabela" (regra de alívio).
+   Divergente (saldo +/−): --vz-pos / --vz-neg com cinza no zero. Status segue --ok/--warn/--crit. */
+:root {
+  --vz-1: #2a78d6; --vz-2: #eb6834; --vz-3: #1baf7a; --vz-4: #eda100; --vz-5: #e87ba4; --vz-6: #008300;
+  --vz-pos: #2a78d6; --vz-neg: #eb6834; --vz-zero: #c9ccc6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --vz-1: #3987e5; --vz-2: #d95926; --vz-3: #199e70; --vz-4: #c98500; --vz-5: #d55181; --vz-6: #008300;
+    --vz-pos: #3987e5; --vz-neg: #d95926; --vz-zero: #3a453d;
+  }
+}
+:root[data-theme="dark"] {
+  --vz-1: #3987e5; --vz-2: #d95926; --vz-3: #199e70; --vz-4: #c98500; --vz-5: #d55181; --vz-6: #008300;
+  --vz-pos: #3987e5; --vz-neg: #d95926; --vz-zero: #3a453d;
+}
+.vz-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.vz-card h4 { margin: 0; font-size: .92rem; color: var(--ink); }
+.vz-sub { color: var(--muted); font-size: .76rem; margin: 2px 0 8px; }
+.vz-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.vz-svg text { fill: var(--muted); font: 500 11px var(--sans); }
+.vz-svg .vz-val { fill: var(--ink2, var(--ink)); font-weight: 600; }
+.vz-svg .vz-grid { stroke: var(--line); stroke-width: 1; }
+.vz-svg .vz-zero { stroke: var(--vz-zero); stroke-width: 1.5; }
+.vz-svg [data-tip]:hover { opacity: .82; }
+.vz-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 0; font-size: .76rem; color: var(--ink2, var(--ink)); }
+.vz-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.vz-tablink { font-size: .72rem; color: var(--brand); cursor: pointer; background: none; border: 0; padding: 0; margin-top: 6px; }
+.vz-table { width: 100%; border-collapse: collapse; font-size: .78rem; margin-top: 6px; }
+.vz-table th, .vz-table td { border-top: 1px solid var(--line); padding: 3px 6px; text-align: right; }
+.vz-table th:first-child, .vz-table td:first-child { text-align: left; }
+.vz-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(320px, calc(50% - 7px)), 1fr)); gap: 14px; align-items: start; }
+.kpis.kpis-brl .kpi .v { font-size: 1.25rem; white-space: nowrap; }
+#vz-tip { position: fixed; z-index: 90; pointer-events: none; background: var(--ink); color: var(--surface); font: 500 12px var(--sans); padding: 6px 9px; border-radius: 8px; box-shadow: var(--shadow-md); max-width: 260px; display: none; white-space: pre-line; }
+@media (forced-colors: active) { .vz-svg rect, .vz-svg path, .vz-svg circle { forced-color-adjust: none; stroke: CanvasText; } }
+/* Chips de filtro (visão financeira) e alvos clicáveis dos gráficos. */
+.chip-f { font: inherit; font-size: .76rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip-f:hover { border-color: var(--brand); }
+.chip-f.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chip-f:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.vz-svg .vz-hit { cursor: pointer; }
+.vz-svg .vz-hit:hover { fill: var(--ink); fill-opacity: .05; }

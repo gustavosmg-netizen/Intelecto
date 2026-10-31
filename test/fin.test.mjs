@@ -117,3 +117,68 @@ test("Worker: filtro salvo do Financeiro é normalizado e o schema tem migraçã
     assert.match(ts, new RegExp("CREATE TABLE IF NOT EXISTS " + t + " "));
   }
 });
+
+// ---------- Visão geral das finanças ----------
+import { grupoFin, visaoFinanceira } from "../src/fin.mjs";
+
+test("grupoFin: faturamento só RECEITAS; sócios, empréstimos e investimentos à parte; transferência fora", () => {
+  assert.equal(grupoFin("entrada", "RECEITAS"), "faturamento");
+  assert.equal(grupoFin("entrada", "INVESTIMENTOS"), "outras_entradas");
+  assert.equal(grupoFin("entrada", "OUTRAS ENTRADAS"), "outras_entradas");
+  assert.equal(grupoFin("entrada", "EMPRÉSTIMOS"), "emprestimos_in");
+  assert.equal(grupoFin("entrada", "SALDO"), "fora");
+  assert.equal(grupoFin("entrada", "TRANSF. ENTRE CONTAS BANCÁRIAS"), "fora");
+  assert.equal(grupoFin("saida", "TRANSF. ENTRE CONTAS BANCÁRIAS"), "fora");
+  assert.equal(grupoFin("saida", "SAQUE"), "fora");
+  assert.equal(grupoFin("saida", "RETIRADA DE SÓCIOS"), "socios");
+  assert.equal(grupoFin("saida", "EMPRÉSTIMOS"), "emprestimos_out");
+  assert.equal(grupoFin("saida", "INVESTIMENTOS"), "investimentos");
+  for (const c of ["CUSTOS FIXOS", "CUSTOS VARIÁVEIS", "IMPOSTOS S/VENDAS", "DESPESAS BANCÁRIAS", ""]) assert.equal(grupoFin("saida", c), "gastos", c);
+});
+
+test("visaoFinanceira: meses preenchidos, situação, resultado, margem e filtro por lado", () => {
+  const L = [
+    { ym: "2026-09", tipo: "entrada", categoria: "RECEITAS", status: "realizado", v: 1000 },
+    { ym: "2026-09", tipo: "entrada", categoria: "TRANSF. ENTRE CONTAS BANCÁRIAS", status: "realizado", v: 9999 },
+    { ym: "2026-09", tipo: "saida", categoria: "CUSTOS FIXOS", status: "realizado", v: 300 },
+    { ym: "2026-09", tipo: "saida", categoria: "CUSTOS VARIÁVEIS", status: "realizado", v: 100 },
+    { ym: "2026-09", tipo: "saida", categoria: "RETIRADA DE SÓCIOS", status: "realizado", v: 200 },
+    { ym: "2026-10", tipo: "entrada", categoria: "RECEITAS", status: "previsto", v: 500 },
+    { ym: "2026-10", tipo: "saida", categoria: "CUSTOS FIXOS", status: "cancelado", v: 777 },
+    { ym: "2025-01", tipo: "entrada", categoria: "RECEITAS", status: "realizado", v: 5 },
+  ];
+  const v = visaoFinanceira(L, { de: "2026-08", ate: "2026-10" });
+  assert.deepEqual(v.meses.map((m) => m.ym), ["2026-08", "2026-09", "2026-10"]);
+  assert.equal(v.tot.faturamento, 1000); // previsto e fora do período não entram; transferência fora
+  assert.equal(v.tot.gastos, 400);
+  assert.equal(v.tot.socios, 200);
+  assert.equal(v.resultado, 600);
+  assert.equal(v.margemPct, 60);
+  assert.equal(v.meses[1].resultado, 600);
+  assert.deepEqual(v.gastosPorCategoria.map((x) => x.categoria), ["CUSTOS FIXOS", "CUSTOS VARIÁVEIS"]);
+  assert.equal(v.porMes["2026-09"].gastos[0].v, 300);
+  assert.equal(visaoFinanceira(L, { de: "2026-08", ate: "2026-10", situacao: "previsto" }).tot.faturamento, 500);
+  assert.equal(visaoFinanceira(L, { de: "2026-08", ate: "2026-10", situacao: "tudo" }).tot.faturamento, 1500);
+  // filtrar um gasto recorta só as saídas: faturamento segue; o gráfico por categoria mantém todas
+  const f = visaoFinanceira(L, { de: "2026-08", ate: "2026-10", categorias: ["custos fixos"] });
+  assert.equal(f.tot.faturamento, 1000);
+  assert.equal(f.tot.gastos, 300);
+  assert.equal(f.tot.socios, 0);
+  assert.equal(f.gastosPorCategoria.length, 2);
+  assert.equal(visaoFinanceira([], { de: "2026-10", ate: "2026-09" }).meses.length, 0);
+  assert.equal(visaoFinanceira([], { de: "2026-01", ate: "2026-03" }).margemPct, null);
+});
+
+test("Worker/UI: finVisao restrito ao financeiro; aba Visão geral abre o Financeiro", async () => {
+  const { readFileSync } = await import("node:fs");
+  const ts = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const i = ts.indexOf('if (action === "finVisao")'); const b = ts.slice(i, ts.indexOf("\n  }\n", i));
+  assert.match(b, /financeiro\.ver/);
+  assert.match(b, /visaoFinanceira\(/);
+  assert.match(ts, /finVisao: "coordenacao"/);
+  assert.match(html, /class="subnav-btn is-active" data-tab="fin-tab-vg" type="button">Visão geral</);
+  assert.match(html, /api\("finVisao",\{de:pr\.de,ate:pr\.ate,situacao:FINVG\.sit,categorias:FINVG\.cats\}\)/);
+  assert.match(html, /data-ci="'\+ci\+'"/); // colunas clicáveis
+  assert.match(html, /data-bi="'\+i\+'"/); // barras clicáveis
+});

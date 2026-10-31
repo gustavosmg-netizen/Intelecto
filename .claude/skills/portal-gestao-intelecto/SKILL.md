@@ -68,7 +68,7 @@ Verificação local completa (o mesmo do CI): `npm ci && npm run verify && npm r
 - `ensureSchema()` cria/ajusta tabelas em runtime no 1º request após mudança de `SCHEMA_VER`
   (`src/index.ts`, `const SCHEMA_VER`). **Toda mudança de schema exige bump de `SCHEMA_VER`** — sem o
   bump o D1 existente pula o setup e a tabela nunca nasce em produção.
-- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0016 `membro_saida`). Toda
+- Espelho versionado em `migrations/NNNN_*.sql` (0001 baseline … 0017 `rh_rcf_contratos`). Toda
   tabela nova ganha migração própria, idempotente (`IF NOT EXISTS`, sem `DROP`/`DELETE`). Numerar em
   sequência e checar se outro PR aberto já usou o número.
 - D1 `--remote` rejeita `BEGIN/COMMIT/PRAGMA`; `DELETE` em massa é feito pelo dono no terminal dele.
@@ -168,12 +168,43 @@ Confirme o estado real pela ação de flags antes de afirmar; a tabela acima é 
   "Contas a pagar/receber" (`_finContas`); Cadastro › "Importar planilha" (lê a aba Dados
   Estruturados do .xlsx no navegador; `planilhaPrevia`/`planilhaImportar`, idempotente); RH com
   **data de saída** (`membro.saida`; cron diário efetiva o desligamento).
+- **RH (src/rh.mjs, src/rcf_seed.mjs)**: RCF digital por cargo no modelo da casa (missão,
+  indicadores, responsabilidades Jr/Pl/Sr, matrizes 1–3 de conhecimentos e soft skills,
+  exigências; `rh_cargo.rcf`), aprovado → ciência do ocupante por revisão (`rh_rcf_ciencia`, botão
+  na Minha ficha). Contratos e acordos de colaboradores **sem valores** (`rh_contrato`,
+  `rh_acordo`) com alertas 30/15 dias, vencidos e estágio perto de 2 anos; a carga semanal do
+  contrato vira a capacidade (`capacidade_vig`). RCFs da casa (Drive): Engenheiro, Analista
+  Ambiental, Estágio em Química; demais cargos semeados como rascunho para revisão.
 - **Apropriação (src/apropriacao.mjs)**: custos fixos mensais com vigência rateados por horas do
   mês; contrato recorrente (cliente + valor mensal) distribuído pelas horas do mês entre os
   projetos do cliente; projeto sem horas contratadas = "sem contrato", nunca estouro.
 - **Planilha "Calendário Engenharia"** (Google Sheets, alimentada por Forms): fonte = aba
   "Dados Estruturados"; o orçado da planilha é modelo por tipo de projeto em heq (horas ÷ 10,5).
 - O wrapper `sqlite.execute` devolve `rowsAffected` — **nunca** checar `r.meta` (é sempre undefined).
+- **Financeiro › Visão geral** (`finVisao` + `visaoFinanceira`/`grupoFin` em src/fin.mjs): regime de
+  caixa sobre `fluxo`. Faturamento = só categoria RECEITAS; retirada de sócios, empréstimos e
+  investimentos em linhas próprias; TRANSF./SALDO/SAQUE fora; o resto das saídas = gasto
+  operacional. Filtro de categoria recorta só o lado (entrada/saída) escolhido. Gráficos clicáveis
+  (mês detalha, categoria filtra); filtros guardados no navegador (`localStorage finvg`).
+- **Banco de horas** (aba do **RH**, ex-"Capacidade × apontado" no Financeiro): sem custo, só horas;
+  lê com `rh.ver` ou `financeiro.ver`, edita com `rh.editar` ou `financeiro.editar`. Mês
+  corrente cobra dias úteis até hoje (`diasUteisAte`); lançamento futuro fica fora; `banco` = saldo
+  acumulado mês a mês.
+- **Gráficos da casca clássica**: biblioteca `_vzCard/_vzColunas/_vzBarras/_vzLinha` com tooltip,
+  legenda e "ver tabela"; cores só pelos tokens `--vz-1..6`, `--vz-pos/--vz-neg` (validados para
+  daltonismo; a paleta `--s1..6` da casa reprova). viewBox mínimo de 560 px; no máximo 2 gráficos
+  por linha (`.vz-grid2`). Fora do Financeiro, gráfico só com contagens/horas.
+- **Abas vivas**: toda aba com dados entra em `TAB_LOAD` (recarrega ao abrir). Aba nova com dados
+  → registrar lá.
+- **CRM**: metas mensais em `cfgGet/cfgSet("crm_metas", tenant)` (ação `crmMetasSet`); negócio
+  vincula projeto por `cc` validado na carteira. `crm_time` é livro legado só leitura.
+- `config` é por tenant: usar sempre `cfgGet/cfgSet/cfgDel(k, v, tenant)`, nunca SQL direto.
+- **Capacidade: fonte única** = `capacidade_vig` (carga semanal datada por pessoa, gravada pelo
+  contrato do RH e pelo editor do banco de horas). `rh_cargo.horas_dia` é só jornada de referência
+  para quem ainda não tem carga. Banco de horas e capacidade do RH usam a mesma regra.
+- **Agenda › Prazos e vencimentos** (ação `prazos`): projetos (prazo previsto), CRM (próxima
+  ação/tarefa), RH (contratos/acordos) e contas previstas sem valor; cada fonte no seu gate.
+- **Pendências › Consistência dos dados** (dono): ação `consistencia` no clássico.
 
 ### Confidencialidade e privacidade (crítico)
 

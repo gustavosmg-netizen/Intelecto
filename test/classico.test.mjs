@@ -32,5 +32,27 @@ test("Financeiro clássico: contas a pagar/receber com arrastar, filtros salvos,
   assert.match(html, /api\("fluxoCc",\{ids:FINC\.sel\.slice\(\)/);
   assert.match(html, /api\("fluxoTag",\{tag:t,ids:FINC\.sel\.slice\(\)/);
   assert.match(html, /api\("filtroSet",\{modulo:"financeiro"/);
-  assert.match(html, /_finResumo\(\);_finContas\(\);_finCarteira\(\)/);
+  assert.match(html, /"fin-tab-contas":function\(\)\{_finContas\(\);\}/); // carrega ao abrir a aba (TAB_LOAD)
+});
+
+test("RH clássico: RCF por cargo (ver, imprimir, editar), ciência na Minha ficha, contratos e acordos", () => {
+  assert.match(html, /data-tab="rh-tab-ct"/);
+  assert.match(html, /data-rcf="'\+esc\(c\.cid\)\+'">RCF do cargo/);
+  assert.match(html, /api\("rcfGet",\{cid:cid\}\)/);
+  assert.match(html, /api\("rcfSet",\{cid:cid,rcf:rcf,novaRevisao:/);
+  assert.match(html, /api\("rcfCiencia",\{cid:/);
+  assert.match(html, /<div id="ficha-rcf"><\/div>/);
+  assert.match(html, /api\("rhContratoSet",\{slug:/);
+  assert.match(html, /api\("rhAcordoSet",\{slug:/);
+  // o RH não pede valor (salário/PJ/bolsa ficam no Financeiro)
+  const i = html.indexOf("function _rhContratos()"); const bloco = html.slice(i, html.indexOf("function _fichaRcf()", i));
+  assert.doesNotMatch(bloco, /id="ct-val"|salario|salário"/i);
+});
+
+test("Vitrine: gate de promoção (descrição, apresentação, produto, publicado); equipe vê só os prontos", () => {
+  assert.match(html, /function _scvGate\(it\)/);
+  assert.match(html, /descricao:String\(it\.resumo\|\|""\)\.trim\(\)\.length>=40/);
+  assert.match(html, /if\(!_SCV\.pode\)_SCVF="prontos";/);
+  const ts = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src/index.ts"), "utf8");
+  assert.match(ts, /temCorpo: \(Number\(x\.corpo_len\) \|\| 0\) >= 80 \? 1 : 0/);
 });
